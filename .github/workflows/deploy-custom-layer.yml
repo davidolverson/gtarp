@@ -1,0 +1,150 @@
+name: Deploy custom layer
+
+# Auto-deploys the Qbox custom layer to the live FiveM server.
+#   - Uploads resources/[custom]/ (and optionally custom.cfg) over SFTP.
+#   - Restarts the FXServer via the Pterodactyl power API so new code loads.
+# See DEPLOY.md for setup, required secrets, and toggles.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'resources/[custom]/**'
+      - 'custom.cfg'
+  workflow_dispatch:
+
+# Never run two deploys at once; queue the newest, cancel an in-flight one.
+concurrency:
+  group: deploy-custom-layer
+  cancel-in-progress: true
+
+env:
+  # Non-secret connection details. Override any of these by creating a repo
+  # variable (Settings > Secrets and variables > Actions > Variables) of the
+  # same name. Secrets (SFTP_PASSWORD, PTERO_API_KEY) are NOT defaulted here.
+  SFTP_HOST: ${{ vars.SFTP_HOST || 'fx-dtx-12.apollopanel.com' }}
+  SFTP_PORT: ${{ vars.SFTP_PORT || '2022' }}
+  SFTP_USERNAME: ${{ vars.SFTP_USERNAME || 'w8bh16e6.221eea0c' }}
+  PANEL_URL: ${{ vars.PANEL_URL || 'https://control.rocketnode.com' }}
+  SERVER_ID: ${{ vars.SERVER_ID || '221eea0c' }}
+  REMOTE_BASE: ${{ vars.REMOTE_BASE || 'txData/QboxLeanPack_0DF2F5.base' }}
+  # Set to 'false' (repo variable UPLOAD_CUSTOM_CFG) to skip pushing custom.cfg.
+  UPLOAD_CUSTOM_CFG: ${{ vars.UPLOAD_CUSTOM_CFG || 'true' }}
+  # Set repo variable MIRROR_DELETE to 'true' for a strict exact mirror that
+  # deletes server-side files not present in the repo. Default is additive.
+  MIRROR_DELETE: ${{ vars.MIRROR_DELETE || 'false' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that deploy secrets are configured
+        id: guard
+        env:
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          if [ -z "$SFTP_PASSWORD" ]; then
+            echo "secrets not configured — skipping deploy."
+            echo "Add the SFTP_PASSWORD secret (see DEPLOY.md) to enable deploys."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Deploy secrets present; proceeding."
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install lftp
+        if: steps.guard.outputs.configured == 'true'
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Upload custom layer over SFTP
+        id: upload
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          DELETE_FLAG=""
+          if [ "$MIRROR_DELETE" = "true" ]; then
+            DELETE_FLAG="--delete"
+            echo "Strict mirror enabled: server-side files absent from the repo will be removed."
+          fi
+
+          # Reverse-mirror (upload) the custom layer. The [custom] and
+          # [config_overrides] folders contain literal square brackets, which
+          # lftp would otherwise treat as glob character classes — so the
+          # brackets are backslash-escaped (\[ \]). cmd:fail-exit makes lftp
+          # return non-zero on any error so the job fails on upload problems.
+          lftp -u "$SFTP_USERNAME,$SFTP_PASSWORD" "sftp://$SFTP_HOST:$SFTP_PORT" <<EOF
+          set sftp:auto-confirm yes
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 30
+          mirror --reverse --verbose --no-perms $DELETE_FLAG resources/\[custom\]/ "$REMOTE_BASE"/resources/\[custom\]/
+          bye
+          EOF
+          echo "Custom layer uploaded to $REMOTE_BASE/resources/[custom]/"
+
+          if [ "$UPLOAD_CUSTOM_CFG" = "true" ]; then
+            lftp -u "$SFTP_USERNAME,$SFTP_PASSWORD" "sftp://$SFTP_HOST:$SFTP_PORT" <<EOF
+          set sftp:auto-confirm yes
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 30
+          put custom.cfg -o "$REMOTE_BASE"/custom.cfg
+          bye
+          EOF
+            echo "custom.cfg uploaded to $REMOTE_BASE/custom.cfg"
+            echo "cfg_uploaded=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping custom.cfg upload (UPLOAD_CUSTOM_CFG != true)."
+            echo "cfg_uploaded=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restart FXServer via Pterodactyl
+        id: restart
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          PTERO_API_KEY: ${{ secrets.PTERO_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PTERO_API_KEY" ]; then
+            echo "::warning::PTERO_API_KEY not set — skipping server restart. Restart manually so new code loads."
+            echo "restarted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          HTTP_CODE=$(curl -sS -o /tmp/ptero_resp.txt -w "%{http_code}" \
+            -X POST "$PANEL_URL/api/client/servers/$SERVER_ID/power" \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d '{"signal":"restart"}')
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "Restart signal accepted (HTTP $HTTP_CODE)."
+            echo "restarted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Restart request failed (HTTP $HTTP_CODE)."
+            cat /tmp/ptero_resp.txt || true
+            exit 1
+          fi
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          {
+            echo "## Deploy summary"
+            if [ "${{ steps.guard.outputs.configured }}" != "true" ]; then
+              echo "- Status: **skipped** (deploy secrets not configured)."
+              exit 0
+            fi
+            echo "- Uploaded: \`resources/[custom]/\` -> \`$REMOTE_BASE/resources/[custom]/\`"
+            echo "- custom.cfg uploaded: \`${{ steps.upload.outputs.cfg_uploaded }}\`"
+            echo "- Strict mirror (--delete): \`$MIRROR_DELETE\`"
+            echo "- Server restart triggered: \`${{ steps.restart.outputs.restarted }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
