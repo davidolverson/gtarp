@@ -42,10 +42,14 @@ jobs:
         id: guard
         env:
           SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+          SFTP_SSH_KEY: ${{ secrets.SFTP_SSH_KEY }}
         run: |
-          if [ -z "$SFTP_PASSWORD" ]; then
+          # An SFTP credential is required: either SSH key (preferred) or
+          # password. This lets the operator drop SFTP_PASSWORD once key auth
+          # is confirmed, as long as SFTP_SSH_KEY remains set.
+          if [ -z "${SFTP_SSH_KEY:-}" ] && [ -z "${SFTP_PASSWORD:-}" ]; then
             echo "secrets not configured — skipping deploy."
-            echo "Add the SFTP_PASSWORD secret (see DEPLOY.md) to enable deploys."
+            echo "Add SFTP_SSH_KEY (preferred) or SFTP_PASSWORD (see DEPLOY.md) to enable deploys."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "Deploy secrets present; proceeding."
@@ -65,6 +69,7 @@ jobs:
         if: steps.guard.outputs.configured == 'true'
         env:
           SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+          SFTP_SSH_KEY: ${{ secrets.SFTP_SSH_KEY }}
         run: |
           set -euo pipefail
 
@@ -74,31 +79,69 @@ jobs:
             echo "Strict mirror enabled: server-side files absent from the repo will be removed."
           fi
 
+          # Auth selection: prefer SSH key (SFTP_SSH_KEY) when present, else
+          # fall back to password (SFTP_PASSWORD). The private key is written to
+          # a 0600 temp file and removed on exit; it is never echoed.
+          KEYFILE=""
+          cleanup() { [ -n "$KEYFILE" ] && rm -f "$KEYFILE" || true; }
+          trap cleanup EXIT
+
+          if [ -n "${SFTP_SSH_KEY:-}" ]; then
+            AUTH_MODE="ssh-key"
+            KEYFILE="$(mktemp)"
+            chmod 600 "$KEYFILE"
+            printf '%s\n' "$SFTP_SSH_KEY" > "$KEYFILE"
+          else
+            AUTH_MODE="password"
+          fi
+          echo "SFTP auth mode: $AUTH_MODE"
+          echo "auth_mode=$AUTH_MODE" >> "$GITHUB_OUTPUT"
+
+          # Run lftp with the chosen auth. lftp commands are read from stdin and
+          # appended after the connection is opened. Common settings (incl. the
+          # cmd:fail-exit that fails the job on any lftp error) are identical
+          # across both auth modes.
+          run_lftp() {
+            local cmds
+            cmds="$(cat)"
+            if [ "$AUTH_MODE" = "ssh-key" ]; then
+              lftp <<LFTP
+          set sftp:auto-confirm yes
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 30
+          set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEYFILE"
+          open -u "$SFTP_USERNAME" "sftp://$SFTP_HOST:$SFTP_PORT"
+          $cmds
+          bye
+          LFTP
+            else
+              lftp <<LFTP
+          set sftp:auto-confirm yes
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 30
+          open -u "$SFTP_USERNAME,$SFTP_PASSWORD" "sftp://$SFTP_HOST:$SFTP_PORT"
+          $cmds
+          bye
+          LFTP
+            fi
+          }
+
           # Reverse-mirror (upload) the custom layer. The [custom] and
           # [config_overrides] folders contain literal square brackets. Inside
           # lftp's own command parser the bracketed path must be passed as a
           # plain double-quoted string — NOT backslash-escaped. (Escaping with
           # \[ \] makes lftp look for a directory literally named "\[custom\]",
-          # which doesn't exist.) cmd:fail-exit makes lftp return non-zero on
-          # any error so the job fails on upload problems.
-          lftp -u "$SFTP_USERNAME,$SFTP_PASSWORD" "sftp://$SFTP_HOST:$SFTP_PORT" <<EOF
-          set sftp:auto-confirm yes
-          set cmd:fail-exit yes
-          set net:max-retries 2
-          set net:timeout 30
+          # which doesn't exist.)
+          run_lftp <<EOF
           mirror --reverse --verbose --no-perms $DELETE_FLAG "resources/[custom]/" "$REMOTE_BASE/resources/[custom]/"
-          bye
           EOF
           echo "Custom layer uploaded to $REMOTE_BASE/resources/[custom]/"
 
           if [ "$UPLOAD_CUSTOM_CFG" = "true" ]; then
-            lftp -u "$SFTP_USERNAME,$SFTP_PASSWORD" "sftp://$SFTP_HOST:$SFTP_PORT" <<EOF
-          set sftp:auto-confirm yes
-          set cmd:fail-exit yes
-          set net:max-retries 2
-          set net:timeout 30
-          put custom.cfg -o "$REMOTE_BASE"/custom.cfg
-          bye
+            run_lftp <<EOF
+          put custom.cfg -o "$REMOTE_BASE/custom.cfg"
           EOF
             echo "custom.cfg uploaded to $REMOTE_BASE/custom.cfg"
             echo "cfg_uploaded=true" >> "$GITHUB_OUTPUT"

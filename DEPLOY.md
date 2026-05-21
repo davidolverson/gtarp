@@ -46,8 +46,32 @@ Create these under **Settings → Secrets and variables → Actions**.
 
 | Name | Value | Where to get it |
 | --- | --- | --- |
-| `SFTP_PASSWORD` | _your RocketNode SFTP/panel password_ | Your panel account's SFTP password (same login used for the panel / file manager SFTP). |
+| `SFTP_SSH_KEY` | _the PRIVATE half of the deploy SSH keypair_ (preferred) | The full Ed25519 private key (`-----BEGIN OPENSSH PRIVATE KEY-----` … `-----END OPENSSH PRIVATE KEY-----`). Paste the **whole** key, including the BEGIN/END lines and trailing newline. Its matching public key goes on the RocketNode account (see below). |
+| `SFTP_PASSWORD` | _your RocketNode SFTP/panel password_ (fallback) | Your panel account's SFTP password (same login used for the panel / file manager SFTP). Still required as a fallback until SSH key auth is confirmed. |
 | `PTERO_API_KEY` | _your Pterodactyl client API key_ | Create one under the RocketNode account **API credentials** page (`control.rocketnode.com` → Account → API Credentials). |
+
+#### SFTP authentication: SSH key preferred, password fallback
+
+The upload step picks its auth automatically:
+
+- If `SFTP_SSH_KEY` is **set**, the workflow writes the private key to a temporary
+  `0600` file and lftp authenticates with it (`ssh -i <keyfile>`). The key file is
+  removed when the step finishes and is never printed in logs.
+- If `SFTP_SSH_KEY` is **empty**, it falls back to password auth using `SFTP_PASSWORD`.
+
+So you can roll the key out with zero downtime: add `SFTP_SSH_KEY` (and the public key
+on the panel), confirm a deploy succeeds with `auth mode: ssh-key`, then optionally
+remove the now-unused `SFTP_PASSWORD` secret.
+
+**Add the PUBLIC key to RocketNode:** open the panel → **Account → SSH Keys** and paste
+the public key (`deploy_key.pub`, the `ssh-ed25519 …` one line). This authorizes the
+keypair for SFTP logins on your account. (Keep the **private** key only in the
+`SFTP_SSH_KEY` GitHub secret — never put the private key on the panel or in the repo.)
+
+**Removing the password after validation:** once a deploy run shows
+`SFTP auth mode: ssh-key` and succeeds, you may delete the `SFTP_PASSWORD` secret. The
+guard step accepts **either** credential, so a key-only configuration (just
+`SFTP_SSH_KEY`) deploys normally — just keep `SFTP_SSH_KEY` set.
 
 ### Variables (non-secret — optional overrides)
 
@@ -72,15 +96,19 @@ Launch SFTP** link.
 
 ## First-time setup checklist
 
-1. Add the two **secrets** (`SFTP_PASSWORD`, `PTERO_API_KEY`).
-2. (Optional) Add any **variables** you need to override.
-3. Merge a change to `main` (or use **Actions → Deploy custom layer → Run workflow**).
-4. Watch the run in the **Actions** tab and confirm the **Deploy summary** shows the
-   upload and that a restart was triggered.
+1. Add an SFTP credential secret — `SFTP_SSH_KEY` (preferred) and/or `SFTP_PASSWORD` —
+   plus `PTERO_API_KEY`.
+2. If using key auth, add the matching **public** key to the panel
+   (**Account → SSH Keys**).
+3. (Optional) Add any **variables** you need to override.
+4. Merge a change to `main` (or use **Actions → Deploy custom layer → Run workflow**).
+5. Watch the run in the **Actions** tab and confirm the **Deploy summary** shows the
+   upload (and the **Upload** step log shows `SFTP auth mode: ssh-key`) and that a
+   restart was triggered.
 
-Until `SFTP_PASSWORD` is set, the workflow runs but **skips** the deploy with a clear
-"secrets not configured" message instead of failing — so adding the workflow won't
-break CI before you've configured it.
+Until at least one SFTP credential (`SFTP_SSH_KEY` or `SFTP_PASSWORD`) is set, the
+workflow runs but **skips** the deploy with a clear "secrets not configured" message
+instead of failing — so adding the workflow won't break CI before you've configured it.
 
 ## Toggles
 
@@ -111,6 +139,9 @@ server-side that isn't committed — set variable `MIRROR_DELETE` = `true`.
 ## Security
 
 Server credentials live **only** in GitHub Actions encrypted secrets and are never
-echoed by the workflow. **Never commit** `SFTP_PASSWORD`, `PTERO_API_KEY`, or any
-other credential to the repo. Only the non-secret connection details (host, port,
-username, panel URL, server id, remote base) appear as workflow defaults / in this doc.
+echoed by the workflow. **Never commit** `SFTP_SSH_KEY`, `SFTP_PASSWORD`, `PTERO_API_KEY`,
+or any other credential to the repo. The SSH **private** key belongs only in the
+`SFTP_SSH_KEY` secret; only its **public** half goes on the panel. The deploy private
+key is written to a temporary `0600` file at runtime and deleted when the step ends.
+Only the non-secret connection details (host, port, username, panel URL, server id,
+remote base) appear as workflow defaults / in this doc.
