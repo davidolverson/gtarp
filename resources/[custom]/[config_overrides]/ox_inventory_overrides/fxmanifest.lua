@@ -16,8 +16,16 @@ server_scripts {
     'server/apply.lua',
 }
 
+client_scripts {
+    'client/render.lua',
+}
+
 dependencies {
     'ox_lib',
     'ox_inventory',
     'qbx_economy_overrides',
 }
+
+-- ox_target is optional: when started, the client renderer uses ox_target
+-- sphere/box/model zones; otherwise it falls back to a lib.points marker
+-- with an E prompt.

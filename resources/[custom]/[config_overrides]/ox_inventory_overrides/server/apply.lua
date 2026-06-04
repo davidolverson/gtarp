@@ -56,16 +56,22 @@ local function applyItems()
 end
 
 local function applyShops()
-    -- Same pattern for shops.
-    local ok, shops = pcall(function() return exports.ox_inventory:Shops() end)
-    if not ok or type(shops) ~= 'table' then
-        print('[ox_inventory_overrides] ox_inventory:Shops() unavailable; skipping merge')
-        return 0
-    end
+    -- ox_inventory v2.47.5 exposes no `Shops()` getter; the canonical way to
+    -- add shops at runtime is the server-side export `RegisterShop(type, details)`
+    -- defined in modules/shops/server.lua. We call it once per ExtraShops entry.
+    -- Note: this registers server-side only; the client-side blip / ox_target
+    -- interaction surface is created by this resource's own client/render.lua.
     local added = 0
     for key, shop in pairs(ExtraShops) do
-        shops[key] = shop
-        added = added + 1
+        local ok, err = pcall(function()
+            exports.ox_inventory:RegisterShop(key, shop)
+        end)
+        if ok then
+            added = added + 1
+        else
+            print(('[ox_inventory_overrides] RegisterShop(%s) failed: %s')
+                :format(tostring(key), tostring(err)))
+        end
     end
     return added
 end
