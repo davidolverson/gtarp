@@ -8,17 +8,13 @@
 
 local function actorName(src)
     if src == 0 then return 'console' end
-    local name = GetPlayerName(src) or ('player:%d'):format(src)
+    local name = Bridge.GetPlayerName(src) or ('player:%d'):format(src)
     return name
 end
 
 local function actorIdentifier(src)
     if src == 0 then return 'console' end
-    local ids = GetPlayerIdentifiers(src) or {}
-    for i = 1, #ids do
-        if ids[i]:sub(1, 8) == 'license:' then return ids[i] end
-    end
-    return ids[1] or ('src:%d'):format(src)
+    return Bridge.GetLicense(src) or ('src:%d'):format(src)
 end
 
 local function log(action, actorSrc, targetSrc, detail)
@@ -52,15 +48,11 @@ end
 
 local function notify(src, title, msg, t)
     if src == 0 then print(('[%s] %s'):format(title, msg)); return end
-    TriggerClientEvent('ox_lib:notify', src, {
-        title = title, description = msg, type = t or 'inform',
-    })
+    Bridge.NotifyClient(src, title, msg, t)
 end
 
 local function targetCoordsOf(src)
-    local ped = GetPlayerPed(src)
-    if not ped or ped == 0 then return nil end
-    return GetEntityCoords(ped)
+    return Bridge.GetCoords(src)
 end
 
 -- ---------------------------------------------------------------------------
@@ -75,7 +67,7 @@ function Handlers.tp(src, args)
     local c = targetCoordsOf(target)
     if not c then return notify(src, 'Staff', 'no such player', 'error') end
     if src == 0 then log('tp', 0, target, 'console teleport'); return end
-    SetEntityCoords(GetPlayerPed(src), c.x, c.y, c.z, false, false, false, false)
+    Bridge.SetCoords(src, c.x, c.y, c.z)
     log('tp', src, target, ('to %.1f,%.1f,%.1f'):format(c.x, c.y, c.z))
 end
 
@@ -95,23 +87,21 @@ function Handlers.bring(src, args)
     if not target then return notify(src, 'Staff', 'usage: /bring <id>', 'error') end
     local me = targetCoordsOf(src)
     if not me then return end
-    SetEntityCoords(GetPlayerPed(target), me.x, me.y, me.z, false, false, false, false)
+    Bridge.SetCoords(target, me.x, me.y, me.z)
     log('bring', src, target, ('to %.1f,%.1f,%.1f'):format(me.x, me.y, me.z))
 end
 
 function Handlers.revive(src, args)
     local target = tonumber(args[1]) or src
     if target == 0 then return notify(src, 'Staff', 'usage: /revive <id>', 'error') end
-    TriggerClientEvent('hospital:client:Revive', target)
+    Bridge.Revive(target)
     log('revive', src, target, '')
 end
 
 function Handlers.heal(src, args)
     local target = tonumber(args[1]) or src
     if target == 0 then return notify(src, 'Staff', 'usage: /heal <id>', 'error') end
-    local ped = GetPlayerPed(target)
-    if ped and ped ~= 0 then
-        SetEntityHealth(ped, 200)
+    if Bridge.Heal(target) then
         log('heal', src, target, 'health=200')
     end
 end

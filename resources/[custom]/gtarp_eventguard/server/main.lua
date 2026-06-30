@@ -38,7 +38,7 @@ local function record(src, eventName, reason)
 
     MySQL.insert.await(
         "INSERT INTO event_violations (player_src, identifier, event_name, reason, created_at) VALUES (?,?,?,?, NOW())",
-        { src, (GetPlayerIdentifiers(src) or {})[1] or '', eventName, reason }
+        { src, Bridge.GetPrimaryIdentifier(src), eventName, reason }
     )
 
     pcall(function()
@@ -46,7 +46,7 @@ local function record(src, eventName, reason)
     end)
 
     if Violations[src] >= (Config.KickThreshold or 3) then
-        DropPlayer(src, 'kicked by eventguard: repeated event violations')
+        Bridge.Kick(src, 'kicked by eventguard: repeated event violations')
     end
 end
 
