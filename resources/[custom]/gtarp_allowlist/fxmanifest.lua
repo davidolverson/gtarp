@@ -13,6 +13,7 @@ shared_scripts {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'bridge/sv_framework.lua',  -- platform adapter — after oxmysql, before logic
     'server/main.lua',
 }
 
