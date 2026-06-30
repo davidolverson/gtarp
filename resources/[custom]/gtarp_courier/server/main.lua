@@ -1,53 +1,14 @@
 -- ============================================================================
 -- gtarp_courier/server/main.lua
 --
--- Player-run delivery board. Postings are persisted in MySQL via oxmysql.
+-- Player-run delivery board. Pure business logic: postings cache, net
+-- events, lifetime sweep. All framework money/identity/notify calls go
+-- through Bridge.* (bridge/sv_framework.lua) so this file is engine- and
+-- framework-agnostic. Our own courier_postings SQL stays here — it is our
+-- schema, fully portable. See docs/GTA6-READINESS.md.
 -- ============================================================================
 
 local Postings = {}  -- id -> posting (snapshot from DB, refreshed on mutation)
-
-local function getPlayer(src)
-    local ok, p = pcall(function() return exports.qbx_core:GetPlayer(src) end)
-    return ok and p or nil
-end
-
-local function getCitizenId(src)
-    local p = getPlayer(src)
-    if not p then return nil end
-    return p.PlayerData and p.PlayerData.citizenid or nil
-end
-
-local function chargePoster(src, amount)
-    local p = getPlayer(src)
-    if not p or not p.Functions then return false end
-    if (p.PlayerData.money.bank or 0) < amount then return false end
-    return p.Functions.RemoveMoney('bank', amount, 'courier-escrow')
-end
-
-local function refundPoster(citizenid, amount)
-    -- Find the online player for citizenid; if offline, deposit via direct
-    -- DB write so the refund isn't lost.
-    for _, src in ipairs(GetPlayers()) do
-        src = tonumber(src)
-        local p = getPlayer(src)
-        if p and p.PlayerData.citizenid == citizenid then
-            p.Functions.AddMoney('bank', amount, 'courier-refund')
-            return true
-        end
-    end
-    MySQL.update.await(
-        "UPDATE players SET money = JSON_SET(money, '$.bank', CAST(JSON_EXTRACT(money,'$.bank') AS UNSIGNED) + ?) WHERE citizenid = ?",
-        { amount, citizenid }
-    )
-    return true
-end
-
-local function payCourier(src, amount)
-    local p = getPlayer(src)
-    if p and p.Functions then
-        p.Functions.AddMoney('bank', amount, 'courier-payout')
-    end
-end
 
 local function loadPostings()
     local rows = MySQL.query.await('SELECT * FROM courier_postings WHERE status = ?', { 'open' })
@@ -66,35 +27,29 @@ local function countActiveByCitizen(citizenid)
     return n
 end
 
-local function notify(src, title, msg, t)
-    TriggerClientEvent('ox_lib:notify', src, {
-        title = title, description = msg, type = t or 'inform',
-    })
-end
-
 -- ---------------------------------------------------------------------------
 -- Net events
 -- ---------------------------------------------------------------------------
 
 RegisterNetEvent('gtarp_courier:post', function(payload)
     local src = source
-    local citizenid = getCitizenId(src)
-    if not citizenid then return notify(src, 'Courier', 'Player not loaded', 'error') end
+    local citizenid = Bridge.GetCitizenId(src)
+    if not citizenid then return Bridge.Notify(src, 'Courier', 'Player not loaded', 'error') end
 
     local b = tonumber(payload and payload.bounty) or 0
     if b < Config.BountyBounds.min or b > Config.BountyBounds.max then
-        return notify(src, 'Courier', ('Bounty must be %d..%d'):format(
+        return Bridge.Notify(src, 'Courier', ('Bounty must be %d..%d'):format(
             Config.BountyBounds.min, Config.BountyBounds.max), 'error')
     end
     if countActiveByCitizen(citizenid) >= Config.MaxPostingsPerPlayer then
-        return notify(src, 'Courier', 'Too many active postings', 'error')
+        return Bridge.Notify(src, 'Courier', 'Too many active postings', 'error')
     end
     if type(payload.pickup) ~= 'table' or type(payload.dropoff) ~= 'table' then
-        return notify(src, 'Courier', 'Invalid pickup/dropoff', 'error')
+        return Bridge.Notify(src, 'Courier', 'Invalid pickup/dropoff', 'error')
     end
 
-    if not chargePoster(src, b) then
-        return notify(src, 'Courier', 'Insufficient bank balance for escrow', 'error')
+    if not Bridge.ChargeBank(src, b, 'courier-escrow') then
+        return Bridge.Notify(src, 'Courier', 'Insufficient bank balance for escrow', 'error')
     end
 
     local id = MySQL.insert.await(
@@ -107,19 +62,19 @@ RegisterNetEvent('gtarp_courier:post', function(payload)
         }
     )
     loadPostings()
-    notify(src, 'Courier', ('Posted #%d for $%d'):format(id, b), 'success')
+    Bridge.Notify(src, 'Courier', ('Posted #%d for $%d'):format(id, b), 'success')
 end)
 
 RegisterNetEvent('gtarp_courier:accept', function(id)
     local src = source
-    local citizenid = getCitizenId(src)
+    local citizenid = Bridge.GetCitizenId(src)
     if not citizenid then return end
     local row = Postings[id]
     if not row or row.status ~= 'open' then
-        return notify(src, 'Courier', 'Posting unavailable', 'error')
+        return Bridge.Notify(src, 'Courier', 'Posting unavailable', 'error')
     end
     if row.poster_citizenid == citizenid then
-        return notify(src, 'Courier', 'Cannot accept your own posting', 'error')
+        return Bridge.Notify(src, 'Courier', 'Cannot accept your own posting', 'error')
     end
     MySQL.update.await(
         "UPDATE courier_postings SET status='taken', courier_citizenid=?, accepted_at=NOW() WHERE id=? AND status='open'",
@@ -135,33 +90,33 @@ end)
 
 RegisterNetEvent('gtarp_courier:complete', function(id)
     local src = source
-    local citizenid = getCitizenId(src)
+    local citizenid = Bridge.GetCitizenId(src)
     if not citizenid then return end
     local row = MySQL.single.await('SELECT * FROM courier_postings WHERE id=?', { id })
     if not row or row.status ~= 'taken' or row.courier_citizenid ~= citizenid then
-        return notify(src, 'Courier', 'Not your active delivery', 'error')
+        return Bridge.Notify(src, 'Courier', 'Not your active delivery', 'error')
     end
     MySQL.update.await(
         "UPDATE courier_postings SET status='complete', completed_at=NOW() WHERE id=?",
         { id }
     )
-    payCourier(src, row.bounty)
+    Bridge.CreditBank(src, row.bounty, 'courier-payout')
     loadPostings()
-    notify(src, 'Courier', ('Delivered. +$%d'):format(row.bounty), 'success')
+    Bridge.Notify(src, 'Courier', ('Delivered. +$%d'):format(row.bounty), 'success')
 end)
 
 RegisterNetEvent('gtarp_courier:cancel', function(id)
     local src = source
-    local citizenid = getCitizenId(src)
+    local citizenid = Bridge.GetCitizenId(src)
     if not citizenid then return end
     local row = Postings[id]
     if not row or row.status ~= 'open' or row.poster_citizenid ~= citizenid then
-        return notify(src, 'Courier', 'Cannot cancel that posting', 'error')
+        return Bridge.Notify(src, 'Courier', 'Cannot cancel that posting', 'error')
     end
     MySQL.update.await("UPDATE courier_postings SET status='cancelled' WHERE id=?", { id })
-    refundPoster(citizenid, row.bounty)
+    Bridge.CreditBankByCitizenId(citizenid, row.bounty, 'courier-refund')
     loadPostings()
-    notify(src, 'Courier', 'Posting cancelled, bounty refunded', 'success')
+    Bridge.Notify(src, 'Courier', 'Posting cancelled, bounty refunded', 'success')
 end)
 
 -- ---------------------------------------------------------------------------
@@ -185,7 +140,7 @@ RegisterCommand('courier', function(source, args)
                 n = n + 1
             end
         end
-        if n == 0 then notify(source, 'Courier', 'No open postings', 'inform') end
+        if n == 0 then Bridge.Notify(source, 'Courier', 'No open postings', 'inform') end
     elseif sub == 'accept' and args[2] then
         local id = tonumber(args[2])
         if id then TriggerEvent('gtarp_courier:accept', { source = source }, id) end
@@ -206,7 +161,7 @@ CreateThread(function()
         if expired then
             for _, r in ipairs(expired) do
                 MySQL.update.await("UPDATE courier_postings SET status='expired' WHERE id=?", { r.id })
-                refundPoster(r.poster_citizenid, r.bounty)
+                Bridge.CreditBankByCitizenId(r.poster_citizenid, r.bounty, 'courier-refund')
             end
             if #expired > 0 then loadPostings() end
         end

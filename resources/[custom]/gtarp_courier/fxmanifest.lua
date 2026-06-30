@@ -12,11 +12,13 @@ shared_scripts {
 }
 
 client_scripts {
+    'bridge/cl_game.lua',   -- game adapter — must load before client logic
     'client/main.lua',
 }
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'bridge/sv_framework.lua',  -- framework adapter — after oxmysql, before logic
     'server/main.lua',
 }
 

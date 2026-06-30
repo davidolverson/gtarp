@@ -38,8 +38,29 @@ The courier board satisfies all four.
   radius, blip colour.
 - `server/main.lua` — postings cache, net events
   (`post`/`accept`/`complete`/`cancel`), command handler, sweep thread.
+  Calls `Bridge.*` only.
 - `client/main.lua` — blip + GPS route on accept, arrival detection,
-  `/courierpost` helper.
+  `/courierpost` helper. Calls `Game.*` only.
+- `bridge/sv_framework.lua` — **framework adapter (server).** The only
+  file that knows qbx_core, the money API, the `players.money` JSON shape,
+  and ox_lib notify. Exposes `Bridge.*`.
+- `bridge/cl_game.lua` — **game adapter (client).** The only file that
+  calls GTA natives (blips, coords, waypoints) and ox_lib notify. Exposes
+  `Game.*`.
+
+## Portability (the bridge pattern)
+
+This resource is the reference implementation of the bridge pattern from
+`docs/GTA6-READINESS.md`. Core logic never touches a framework export or a
+game native directly — those live only under `bridge/`. The escrow rules,
+posting lifecycle, sweep, and our own `courier_postings` SQL are all
+engine-agnostic.
+
+**To port the courier to a new framework or to GTA VI:** rewrite the two
+bridge files against the new money/identity/notify API and the new
+blip/coord natives. The board itself does not change. Verify with the
+gates in `docs/GTA6-READINESS.md` Section 6 (logic files grep clean of
+framework/native calls).
 
 ## Schema
 
