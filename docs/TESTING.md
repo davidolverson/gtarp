@@ -184,9 +184,28 @@ tester:
       starting a robbery pushes a **dispatch blip + notify** to that officer.
 - [ ] Raising `Config.MinPolice` blocks robberies when too few cops are on.
 
+## 14. Mechanic — `gtarp_mechanic`
+
+- [ ] `/setjob mechanic` (or via `gtarp_whitelist_jobs`/admin) + go on duty at
+      Benny's.
+- [ ] Damage a vehicle's engine/body (crash it or `/giveitem` a weapon and
+      shoot it) — a repair prompt appears when a mechanic is nearby, with a
+      **second player standing near the vehicle**.
+- [ ] `[E]` starts the repair; with no second player nearby, it's refused
+      ("No one nearby to invoice").
+- [ ] Completing the repair bar charges the nearby player's bank
+      `Config.RepairCost` and credits the mechanic the same amount; the
+      vehicle's engine/body health and visible damage are fully restored.
+- [ ] The repaired vehicle is on cooldown — re-`[E]`-ing it immediately is
+      refused.
+- [ ] Cancelling the progress bar (move away) charges no one and repairs
+      nothing.
+- [ ] A non-mechanic (or off-duty mechanic) gets "You need to be on duty..."
+      and no repair happens.
+
 ---
 
-## 14. Triage — common failures
+## 15. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |
