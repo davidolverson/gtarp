@@ -147,6 +147,27 @@ keys/instancing lifecycle is Tier 1; only these coords are Tier 3.
 | Shell interior — mid house | `vector4(346.20, -1013.10, -99.20, 0.0)` | _TBD_ | `Shells mid` |
 | Shell interior — trailer | `vector4(1973.30, 3818.40, 33.43, 60.0)` | _TBD_ | `Shells trailer` |
 
+## 10. Grind — gather spots & buyers
+
+Source: `resources/[custom]/gtarp_grind/shared/config.lua`
+(`Config.Activities[*].spots` and `.sell.coords`). Tools/yields/prices/XP are
+Tier 1; only coords are Tier 3.
+
+| Activity | Item | Current (GTA V) | GTA VI value |
+| --- | --- | --- | --- |
+| Fishing | spot 1 | `vector3(-1850.20, -1235.60, 8.62)` | _TBD_ |
+| Fishing | spot 2 | `vector3(1299.80, 4224.90, 33.00)` | _TBD_ |
+| Fishing | spot 3 | `vector3(-1607.90, 5261.30, 3.90)` | _TBD_ |
+| Fishing | buyer | `vector3(-1817.30, -1193.20, 14.30)` | _TBD_ |
+| Mining | spot 1 | `vector3(2954.10, 2782.30, 40.50)` | _TBD_ |
+| Mining | spot 2 | `vector3(2969.40, 2835.60, 42.20)` | _TBD_ |
+| Mining | spot 3 | `vector3(2915.00, 2792.00, 39.80)` | _TBD_ |
+| Mining | buyer | `vector3(1109.60, -2007.90, 31.00)` | _TBD_ |
+| Hunting | spot 1 | `vector3(-1150.40, 4880.70, 220.10)` | _TBD_ |
+| Hunting | spot 2 | `vector3(-560.20, 5335.80, 70.40)` | _TBD_ |
+| Hunting | spot 3 | `vector3(-778.10, 5591.40, 33.50)` | _TBD_ |
+| Hunting | buyer | `vector3(85.20, 6410.30, 31.30)` | _TBD_ |
+
 ---
 
 ## Not in this worksheet (intentionally)

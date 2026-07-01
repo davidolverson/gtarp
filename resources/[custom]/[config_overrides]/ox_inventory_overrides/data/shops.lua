@@ -81,10 +81,14 @@ ExtraShops = {
         name = 'Hardware Store',
         groups = nil,
         inventory = {
-            P('repair_kit',  300),
-            P('tirepack',    180),
-            P('flashlight',  150),
-            P('radio',       450),
+            P('repair_kit',    300),
+            P('tirepack',      180),
+            P('flashlight',    150),
+            P('radio',         450),
+            -- gtarp_grind tools
+            P('fishing_rod',   250),
+            P('pickaxe',       350),
+            P('hunting_knife', 300),
         },
         locations = {
             vector3(2748.4, 3473.4, 55.66),    -- Sandy Shores

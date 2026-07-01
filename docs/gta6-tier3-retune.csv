@@ -41,3 +41,15 @@ housing,Property door - Alhambra Dr,"vector4(1972.40, 3815.20, 33.43, 120.0)",,g
 housing,Shell interior - apartment,"vector4(266.09, -1007.98, -101.01, 0.0)",,gtarp_housing/shared/config.lua :: Config.Shells apartment.interior
 housing,Shell interior - mid house,"vector4(346.20, -1013.10, -99.20, 0.0)",,gtarp_housing/shared/config.lua :: Config.Shells mid.interior
 housing,Shell interior - trailer,"vector4(1973.30, 3818.40, 33.43, 60.0)",,gtarp_housing/shared/config.lua :: Config.Shells trailer.interior
+grind,Fishing spot 1,"vector3(-1850.20, -1235.60, 8.62)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing spot 2,"vector3(1299.80, 4224.90, 33.00)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing spot 3,"vector3(-1607.90, 5261.30, 3.90)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing buyer,"vector3(-1817.30, -1193.20, 14.30)",,gtarp_grind/shared/config.lua :: Activities.fishing.sell.coords
+grind,Mining spot 1,"vector3(2954.10, 2782.30, 40.50)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining spot 2,"vector3(2969.40, 2835.60, 42.20)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining spot 3,"vector3(2915.00, 2792.00, 39.80)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining buyer,"vector3(1109.60, -2007.90, 31.00)",,gtarp_grind/shared/config.lua :: Activities.mining.sell.coords
+grind,Hunting spot 1,"vector3(-1150.40, 4880.70, 220.10)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting spot 2,"vector3(-560.20, 5335.80, 70.40)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting spot 3,"vector3(-778.10, 5591.40, 33.50)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting buyer,"vector3(85.20, 6410.30, 31.30)",,gtarp_grind/shared/config.lua :: Activities.hunting.sell.coords

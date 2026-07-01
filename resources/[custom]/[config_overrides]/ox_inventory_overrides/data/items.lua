@@ -29,4 +29,15 @@ ExtraItems = {
     repair_kit      = { label = 'Repair Kit',      weight = 1200, stack = true },
     flashlight      = { label = 'Flashlight',      weight = 300,  stack = false },
     tirepack        = { label = 'Tire Pack',       weight = 2500, stack = true },
+
+    -- Grind tools (gtarp_grind) — buyable at the Hardware Store.
+    fishing_rod     = { label = 'Fishing Rod',     weight = 1000, stack = false },
+    pickaxe         = { label = 'Pickaxe',         weight = 1500, stack = false },
+    hunting_knife   = { label = 'Hunting Knife',   weight = 400,  stack = false },
+
+    -- Grind yields (gtarp_grind) — sold to the matching buyer.
+    raw_fish        = { label = 'Fish',            weight = 200,  stack = true },
+    raw_ore         = { label = 'Ore',             weight = 300,  stack = true },
+    raw_meat        = { label = 'Raw Meat',        weight = 250,  stack = true },
+    animal_pelt     = { label = 'Animal Pelt',     weight = 400,  stack = true },
 }
