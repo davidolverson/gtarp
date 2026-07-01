@@ -3,8 +3,8 @@
 --
 -- Property lifecycle: seed the for-sale catalog, buy/sell, access keys, and
 -- instanced shell entry/exit. Pure logic — all framework/native access goes
--- through Bridge.* (bridge/sv_framework.lua). Our own `properties` table
--- (sql/0010_properties.sql) is portable, so it stays here.
+-- through Bridge.* (bridge/sv_framework.lua). Our own `gtarp_properties`
+-- table (sql/0010_properties.sql) is portable, so it stays here.
 -- ============================================================================
 
 local properties = {}     -- [id] = { id, owner, street, region, shell, price,
@@ -60,7 +60,7 @@ end
 -- ---------------------------------------------------------------------------
 local function loadAll()
     properties = {}
-    local rows = MySQL.query.await('SELECT * FROM properties') or {}
+    local rows = MySQL.query.await('SELECT * FROM gtarp_properties') or {}
     for _, r in ipairs(rows) do
         local doorOk, door = pcall(json.decode, r.coords or 'null')
         local accOk, access = pcall(json.decode, r.has_access or '[]')
@@ -78,11 +78,11 @@ end
 local function ensureCatalog()
     for _, c in ipairs(Config.Properties) do
         local existing = MySQL.single.await(
-            'SELECT id FROM properties WHERE apartment = ? LIMIT 1', { c.apartment })
+            'SELECT id FROM gtarp_properties WHERE apartment = ? LIMIT 1', { c.apartment })
         if not existing then
             local door = json.encode({ x = c.door.x, y = c.door.y, z = c.door.z, w = c.door.w })
             MySQL.insert.await(
-                'INSERT INTO properties (owner, street, region, has_access, for_sale, price, shell, apartment, coords) \z
+                'INSERT INTO gtarp_properties (owner, street, region, has_access, for_sale, price, shell, apartment, coords) \z
                  VALUES (NULL, ?, ?, ?, 1, ?, ?, ?, ?)',
                 { c.street, c.region, '[]', c.price, c.shell, c.apartment, door })
         end
@@ -134,7 +134,7 @@ RegisterNetEvent('gtarp_housing:buy', function(propId)
         Bridge.Notify(src, 'Housing', 'Payment failed.', 'error'); return
     end
     p.owner = cid; p.for_sale = 0; p.access = {}
-    MySQL.update.await('UPDATE properties SET owner = ?, for_sale = 0, has_access = ? WHERE id = ?',
+    MySQL.update.await('UPDATE gtarp_properties SET owner = ?, for_sale = 0, has_access = ? WHERE id = ?',
         { cid, '[]', propId })
     Bridge.Notify(src, 'Housing', ('Purchased %s for $%d.'):format(p.street, p.price), 'success')
     syncAll()
@@ -151,7 +151,7 @@ RegisterNetEvent('gtarp_housing:sell', function(propId)
     local refund = math.floor((p.price or 0) * (Config.SellBackRate or 0.5))
     Bridge.CreditBank(src, refund, 'property-sellback')
     p.owner = nil; p.for_sale = 1; p.access = {}
-    MySQL.update.await('UPDATE properties SET owner = NULL, for_sale = 1, has_access = ? WHERE id = ?',
+    MySQL.update.await('UPDATE gtarp_properties SET owner = NULL, for_sale = 1, has_access = ? WHERE id = ?',
         { '[]', propId })
     Bridge.Notify(src, 'Housing', ('Sold %s back for $%d.'):format(p.street, refund), 'success')
     syncAll()
@@ -161,7 +161,7 @@ end)
 -- access keys
 -- ---------------------------------------------------------------------------
 local function persistAccess(p)
-    MySQL.update.await('UPDATE properties SET has_access = ? WHERE id = ?',
+    MySQL.update.await('UPDATE gtarp_properties SET has_access = ? WHERE id = ?',
         { json.encode(p.access), p.id })
 end
 

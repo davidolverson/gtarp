@@ -1,12 +1,17 @@
 -- ============================================================================
--- 0010_properties.sql — properties table for the housing/realty resource
+-- 0010_properties.sql — gtarp_properties table for the housing/realty resource
 --
 -- Stores owned/for-sale properties: location (street/region/coords), shell
 -- and apartment identifiers, sale state, price, owner identifier, and JSON
 -- blobs for furniture, extra images, and per-key access lists.
+--
+-- Named `gtarp_properties` (not `properties`) because the Qbox recipe ships
+-- its own bundled qbx_properties resource with a `properties` table of a
+-- different shape — colliding names silently no-op this migration since
+-- CREATE TABLE IF NOT EXISTS does not alter an existing table's columns.
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `properties` (
+CREATE TABLE IF NOT EXISTS `gtarp_properties` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `owner` VARCHAR(50) DEFAULT NULL,
   `street` VARCHAR(100) DEFAULT NULL,

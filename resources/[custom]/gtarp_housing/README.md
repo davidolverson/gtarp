@@ -2,12 +2,17 @@
 
 Player-owned properties for the gtarp custom layer: buy, sell, share keys,
 and enter an instanced shell interior with a per-property stash. Built on the
-existing `properties` table (`sql/0010_properties.sql`) — this resource is the
-logic that table was waiting for.
+existing `gtarp_properties` table (`sql/0010_properties.sql`) — this resource
+is the logic that table was waiting for.
 
 Bridge-pattern (see `docs/GTA6-READINESS.md`): all logic is in `server/` and
-`client/`; every qbx/native/ox_lib call lives in `bridge/`. The `properties`
-SQL is our own schema and stays in the logic.
+`client/`; every qbx/native/ox_lib call lives in `bridge/`. The
+`gtarp_properties` SQL is our own schema and stays in the logic.
+
+Named `gtarp_properties`, not `properties` — the official Qbox recipe ships
+its own `qbx_properties` resource with a same-named `properties` table of a
+different shape. `CREATE TABLE IF NOT EXISTS` silently no-ops against that
+existing table, so a same-named migration here would never actually run.
 
 ## How it works
 

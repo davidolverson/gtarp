@@ -65,7 +65,7 @@ The parts with no hard dependency on the GTA V engine or framework:
   lifecycle.
 - The auto-deploy pipeline (SFTP + panel restart) — engine-independent.
 - SQL schema for **our own** tables (`courier_postings`, `audit_log`,
-  `event_violations`, `allowlist`, `properties`, `grind_skill`, …).
+  `event_violations`, `allowlist`, `gtarp_properties`, `grind_skill`, …).
 - All of `docs/`.
 
 ### Tier 2 — Carries with a bridge rewrite (thin adapter swap)
