@@ -53,3 +53,11 @@ grind,Hunting spot 1,"vector3(-1150.40, 4880.70, 220.10)",,gtarp_grind/shared/co
 grind,Hunting spot 2,"vector3(-560.20, 5335.80, 70.40)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
 grind,Hunting spot 3,"vector3(-778.10, 5591.40, 33.50)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
 grind,Hunting buyer,"vector3(85.20, 6410.30, 31.30)",,gtarp_grind/shared/config.lua :: Activities.hunting.sell.coords
+robbery,Store LTD Mirror Park,"vector3(1163.10, -322.90, 69.20)",,gtarp_robbery/shared/config.lua :: Stores.locations
+robbery,Store LTD Grove St,"vector3(-47.30, -1757.40, 29.42)",,gtarp_robbery/shared/config.lua :: Stores.locations
+robbery,Store 247 Sandy Shores,"vector3(1961.30, 3740.30, 32.34)",,gtarp_robbery/shared/config.lua :: Stores.locations
+robbery,Store 247 Grapeseed,"vector3(1697.90, 4924.20, 42.06)",,gtarp_robbery/shared/config.lua :: Stores.locations
+robbery,Store Robs Liquor Vinewood,"vector3(-1222.10, -906.90, 12.33)",,gtarp_robbery/shared/config.lua :: Stores.locations
+robbery,ATM Legion Sq,"vector3(147.40, -1035.50, 29.34)",,gtarp_robbery/shared/config.lua :: ATMs.locations
+robbery,ATM Del Perro,"vector3(-1204.60, -324.80, 37.87)",,gtarp_robbery/shared/config.lua :: ATMs.locations
+robbery,ATM Sandy Shores,"vector3(1822.40, 3683.10, 34.28)",,gtarp_robbery/shared/config.lua :: ATMs.locations
