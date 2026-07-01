@@ -239,8 +239,11 @@ A resource is "bridge-clean" when:
   ports Qbox, back ESX's successor, or stay framework-neutral behind the
   bridge until a winner is clear? The bridge buys us the option to wait.
 - **Map re-authoring budget.** Tier 3 retunes (coords/models) are the
-  bulk of launch-day GTA VI work. Worth pre-writing a coord/model
-  spreadsheet stub now so it is fill-in-the-blanks later.
+  bulk of launch-day GTA VI work. The fill-in-the-blanks worksheet is now
+  pre-written — see `docs/GTA6-TIER3-RETUNE.md` (and the importable
+  `docs/gta6-tier3-retune.csv`), which catalogs every current GTA V coord,
+  vehicle/weapon model, blip id, and density lever with a blank GTA VI
+  column and the exact source file to paste each value back into.
 - **First-mover vs stability.** Being early on a new engine means broken
   natives and churn. Decide whether gtarp chases the GTA VI launch window
   or lets the framework layer stabilise first.

@@ -1,0 +1,36 @@
+category,item,current_gtav_value,gta6_value,source_file
+spawn,Default spawn - Legion Square,"vector4(195.17, -933.77, 30.69, 144.0)",,resources/[custom]/server_identity/config.lua :: Config.SpawnPoint
+spawn,Default spawn mirror,"vector4(195.17, -933.77, 30.69, 144.0)",,resources/[custom]/server_base/config.lua :: Config.DefaultSpawn
+emergency,Police armoury - Mission Row,"vector3(461.79, -983.04, 30.69) r1.2",,qbx_police_overrides/config.lua :: Config.Armoury[1].coords
+emergency,Police duty toggle - Mission Row,"vector3(442.32, -988.43, 30.69) r1.0",,qbx_police_overrides/config.lua :: Config.DutyToggle.coords
+emergency,Ambulance hospital - Pillbox Hill,"vector3(307.7, -1433.4, 29.9) r3.0",,qbx_ambulance_overrides/config.lua :: Config.Hospitals[1].coords
+emergency,Ambulance duty toggle - Pillbox Hill,"vector3(311.5, -1432.0, 30.0) r1.0",,qbx_ambulance_overrides/config.lua :: Config.DutyToggle.coords
+civilian_job,Trucker Dispatch,"vector3(150.95, -3040.0, 7.04) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.trucker.starter_npc.coords
+civilian_job,Downtown Cab Co (taxi),"vector3(903.13, -174.83, 73.97) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.taxi.starter_npc.coords
+civilian_job,LS Sanitation (garbage),"vector3(-322.65, -1545.13, 27.79) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.garbage.starter_npc.coords
+civilian_job,Bennys LS Customs (mechanic),"vector3(-205.45, -1311.66, 31.30) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.mechanic.starter_npc.coords
+shop,General Store 1 - Innocence Blvd,"vector3(24.47, -1346.62, 29.50)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 2 - Pacific Bluffs,"vector3(-3038.94, 585.95, 7.91)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 3 - Banham Canyon,"vector3(-3242.47, 1001.46, 12.83)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 4 - Paleto Bay,"vector3(1728.66, 6414.16, 35.04)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 5 - Mirror Park,"vector3(1163.37, -323.80, 69.21)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 6 - Tataviam Mtns,"vector3(2557.94, 382.05, 108.62)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 7 - Downtown,"vector3(373.87, 325.89, 103.57)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,Ammu-Nation 1 - Innocence Blvd,"vector3(21.7, -1106.42, 29.80)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ammu_nation.locations
+shop,Ammu-Nation 2 - El Burro Heights,"vector3(810.25, -2157.6, 29.62)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ammu_nation.locations
+shop,Ammu-Nation 3 - Sandy Shores,"vector3(1693.4, 3760.6, 34.71)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ammu_nation.locations
+shop,Hardware Store 1 - Sandy Shores,"vector3(2748.4, 3473.4, 55.66)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.hardware.locations
+shop,Hardware Store 2 - Paleto Bay,"vector3(-422.7, 6136.0, 31.86)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.hardware.locations
+shop,Suburban clothing 1,"vector3(127.0, -223.4, 54.56)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.clothing.locations
+shop,Police Armoury society,"vector3(461.79, -983.04, 30.69)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.police_armoury.locations
+shop,EMS Medical Supply society,"vector3(307.7, -1433.4, 29.9)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ems_medical.locations
+vehicle_model,Police motor pool,"police, police2, police3, policeb, policet",,qbx_police_overrides/config.lua :: Config.VehicleAllowed
+vehicle_model,Ambulance motor pool,ambulance,,qbx_ambulance_overrides/config.lua :: Config.VehicleAllowed
+weapon_model,Police loadout weapon models,"weapon_combatpistol, weapon_stungun, weapon_nightstick, weapon_flashlight",,qbx_police_overrides/config.lua :: Config.LoadoutAllowed
+blip,Courier delivery blip sprite,1,,gtarp_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
+blip,Courier delivery blip colour,5,,gtarp_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
+density,peds,0.9,,qbx_density_overrides/config.lua :: Config.Density.peds
+density,vehicle,0.7,,qbx_density_overrides/config.lua :: Config.Density.vehicle
+density,randomvehicles,0.7,,qbx_density_overrides/config.lua :: Config.Density.randomvehicles
+density,parked,0.8,,qbx_density_overrides/config.lua :: Config.Density.parked
+density,scenario,0.7,,qbx_density_overrides/config.lua :: Config.Density.scenario
