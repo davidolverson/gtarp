@@ -131,6 +131,22 @@ GTA VI native names/behaviour and re-map the density-type keys if they change.
 | `parked` | `0.8` | _carry?_ | parked cars |
 | `scenario` | `0.7` | _carry?_ | scripted scenario crowds |
 
+## 9. Housing — doors & shell interiors
+
+Source: `resources/[custom]/gtarp_housing/shared/config.lua`
+(`Config.Properties[*].door` and `Config.Shells[*].interior`). The buy/sell/
+keys/instancing lifecycle is Tier 1; only these coords are Tier 3.
+
+| Item | Current (GTA V) | GTA VI value | Key |
+| --- | --- | --- | --- |
+| Property door — Integrity Way | `vector4(-47.24, -585.35, 36.96, 340.0)` | _TBD_ | `Properties integrity_1` |
+| Property door — Del Perro Heights | `vector4(-1447.06, -538.79, 34.74, 145.0)` | _TBD_ | `Properties delperro_1` |
+| Property door — Mirror Park Blvd | `vector4(1148.90, -1521.30, 34.90, 100.0)` | _TBD_ | `Properties mirror_1` |
+| Property door — Alhambra Dr (Sandy) | `vector4(1972.40, 3815.20, 33.43, 120.0)` | _TBD_ | `Properties sandy_1` |
+| Shell interior — apartment | `vector4(266.09, -1007.98, -101.01, 0.0)` | _TBD_ | `Shells apartment` |
+| Shell interior — mid house | `vector4(346.20, -1013.10, -99.20, 0.0)` | _TBD_ | `Shells mid` |
+| Shell interior — trailer | `vector4(1973.30, 3818.40, 33.43, 60.0)` | _TBD_ | `Shells trailer` |
+
 ---
 
 ## Not in this worksheet (intentionally)
