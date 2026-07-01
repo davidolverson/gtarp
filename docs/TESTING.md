@@ -203,28 +203,9 @@ tester:
 - [ ] A non-mechanic (or off-duty mechanic) gets "You need to be on duty..."
       and no repair happens.
 
-## 15. Civilian dispatch runs — `gtarp_civilian_runs`
-
-- [ ] On boot the console prints `[gtarp_civilian_runs] loaded 4 curated
-      job(s) with runs`.
-- [ ] On duty as `trucker` (or taxi/garbage/mechanic) near that job's
-      starter NPC, `[E]` opens a menu of that job's runs (route name,
-      payout, cooldown).
-- [ ] Picking a run drops a route blip 150–1000m away (longer for
-      later/pricier runs) and starts a time limit.
-- [ ] Driving to within ~15m of the blip before time runs out pays the
-      run's configured payout to the bank and clears the blip.
-- [ ] Running out of time pays nothing but still applies the cooldown.
-- [ ] Re-picking the same run immediately after completing it is refused
-      (on cooldown) until `cooldown_seconds` elapses.
-- [ ] Off-duty, or on the wrong job, gets "You need to be on duty..." and
-      no run starts.
-- [ ] All four curated jobs (trucker, taxi, garbage, mechanic) work
-      through this same generic loop.
-
 ---
 
-## 16. Triage — common failures
+## 15. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |
