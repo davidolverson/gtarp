@@ -81,6 +81,14 @@ function Bridge.GetVehicleCoords(veh)
     return { x = c.x, y = c.y, z = c.z }
 end
 
+-- {engine, body} health for a networked vehicle. Checked server-side so a
+-- customer can't be invoiced for "repairing" an undamaged car —
+-- GetVehicleEngineHealth/GetVehicleBodyHealth work on any synced vehicle,
+-- same as GetEntityCoords above.
+function Bridge.GetVehicleHealth(veh)
+    return { engine = GetVehicleEngineHealth(veh), body = GetVehicleBodyHealth(veh) }
+end
+
 -- Find the nearest player (excluding `excludeSrc`) within `radius` metres
 -- of `coords`. Returns the server id, or nil if none are close enough —
 -- this is the "customer" a repair gets invoiced to.

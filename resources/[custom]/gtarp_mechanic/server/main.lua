@@ -41,6 +41,12 @@ RegisterNetEvent('gtarp_mechanic:start', function(vehNetId)
         return
     end
 
+    local health = Bridge.GetVehicleHealth(veh)
+    if health.engine >= Config.EngineHealthThreshold and health.body >= Config.BodyHealthThreshold then
+        Bridge.Notify(src, 'Mechanic', 'This vehicle is not damaged.', 'error')
+        return
+    end
+
     local customer = Bridge.NearestOtherPlayer(src, vc, Config.CustomerSearchRadius)
     if not customer then
         Bridge.Notify(src, 'Mechanic', 'No one nearby to invoice for this repair.', 'error')
@@ -49,7 +55,7 @@ RegisterNetEvent('gtarp_mechanic:start', function(vehNetId)
 
     -- Reserve immediately so the same vehicle can't be double-started.
     cooldowns[vehNetId] = now + Config.RepairCooldownSeconds
-    pending[src] = { vehNetId = vehNetId, customer = customer, holdUntil = now + 30 }
+    pending[src] = { vehNetId = vehNetId, customer = customer, startedAt = now, holdUntil = now + 30 }
 
     TriggerClientEvent('gtarp_mechanic:begin', src, vehNetId)
 end)
@@ -59,7 +65,9 @@ RegisterNetEvent('gtarp_mechanic:complete', function(vehNetId)
     local pend = pending[src]
     if not pend or pend.vehNetId ~= vehNetId then return end
     pending[src] = nil
-    if os.time() > pend.holdUntil then return end  -- took too long / tampered
+    local now = os.time()
+    if now > pend.holdUntil then return end  -- took too long / tampered
+    if now - pend.startedAt < math.floor(Config.ProgressMs / 1000) then return end  -- skipped the repair animation
 
     if not Bridge.IsOnDutyMechanic(src) then return end
     local veh = vehicleCoordsOk(src, vehNetId)

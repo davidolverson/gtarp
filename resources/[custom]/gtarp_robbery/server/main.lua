@@ -32,6 +32,11 @@ RegisterNetEvent('gtarp_robbery:start', function(kind, index)
         return
     end
 
+    if Config.RequireWeapon and not Bridge.IsArmed(src) then
+        Bridge.Notify(src, 'Robbery', 'You need a weapon out for this.', 'error')
+        return
+    end
+
     local now = os.time()
     if (cd[kind][index] or 0) > now then
         Bridge.Notify(src, 'Robbery', 'This spot was hit recently. Come back later.', 'error')
@@ -41,7 +46,8 @@ RegisterNetEvent('gtarp_robbery:start', function(kind, index)
 
     -- Reserve immediately so it can't be double-started or spammed.
     cd[kind][index] = now + cfg.cooldown_secs
-    pending[src] = { kind = kind, index = index, holdUntil = now + cfg.hold_seconds + 5 }
+    pending[src] = { kind = kind, index = index, startedAt = now,
+                      holdUntil = now + cfg.hold_seconds + 5 }
 
     Bridge.AlertPolice(loc.coords,
         ('%s — %s'):format(Config.Dispatch.label, loc.label),
@@ -56,9 +62,12 @@ RegisterNetEvent('gtarp_robbery:complete', function(kind, index)
     local pend = pending[src]
     if not pend or pend.kind ~= kind or pend.index ~= index then return end
     pending[src] = nil
+    local elapsed = os.time() - pend.startedAt
     if os.time() > pend.holdUntil then return end  -- took too long / tampered
 
     local cfg = cfgFor(kind)
+    if not cfg then return end
+    if elapsed < cfg.hold_seconds then return end  -- skipped the hold client-side
     local loc = cfg and cfg.locations[index]
     if not loc or not nearby(src, loc.coords) then
         Bridge.Notify(src, 'Robbery', 'You left the counter.', 'error')

@@ -88,7 +88,7 @@ RegisterNetEvent('gtarp_turf:requestTag', function(zoneId)
         return
     end
 
-    pending[src] = { zoneId = zoneId, gangName = gang.name, holdUntil = os.time() + 30 }
+    pending[src] = { zoneId = zoneId, gangName = gang.name, startedAt = os.time(), holdUntil = os.time() + 30 }
     TriggerClientEvent('gtarp_turf:begin', src, { zoneId = zoneId, label = z.label })
 end)
 
@@ -97,7 +97,9 @@ RegisterNetEvent('gtarp_turf:complete', function(zoneId)
     local pend = pending[src]
     if not pend or pend.zoneId ~= zoneId then return end
     pending[src] = nil
-    if os.time() > pend.holdUntil then return end
+    local now = os.time()
+    if now > pend.holdUntil then return end
+    if now - pend.startedAt < math.floor(Config.TagProgressMs / 1000) then return end  -- skipped the tag animation
 
     local z = zones[zoneId]
     if not z then return end

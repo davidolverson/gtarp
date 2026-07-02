@@ -175,7 +175,7 @@ RegisterNetEvent('gtarp_housing:grantAccess', function(propId, targetServerId)
     end
     local targetCid = Bridge.GetCitizenId(tonumber(targetServerId))
     if not targetCid then
-        Bridge.Notify(src, 'Housing', 'That player is not nearby / online.', 'error'); return
+        Bridge.Notify(src, 'Housing', 'That player is not online.', 'error'); return
     end
     if targetCid == cid or contains(p.access, targetCid) then
         Bridge.Notify(src, 'Housing', 'They already have a key.', 'error'); return

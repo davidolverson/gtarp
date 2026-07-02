@@ -132,4 +132,6 @@ end)
 AddEventHandler('playerDropped', function()
     local src = source
     lastGather[src] = nil
+    local cid = Bridge.GetCitizenId(src)
+    if cid then xpCache[cid] = nil end  -- reloaded fresh from DB next session; keeps this bounded to online players
 end)
