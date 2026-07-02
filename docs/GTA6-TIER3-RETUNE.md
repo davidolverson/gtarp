@@ -185,6 +185,18 @@ are Tier 1; only coords are Tier 3.
 | ATM — Del Perro | `vector3(-1204.60, -324.80, 37.87)` | _TBD_ |
 | ATM — Sandy Shores | `vector3(1822.40, 3683.10, 34.28)` | _TBD_ |
 
+## 12. Evidence — locker
+
+Source: `resources/[custom]/gtarp_evidence/shared/config.lua`
+(`Config.LockerCoords`). Log/locker lifecycle is Tier 1; only the coord is
+Tier 3. Matches `qbx_police`'s own Mission Row station coords
+(`config/shared.lua` `locations.duty[1]`) — keep the two in sync if either
+changes.
+
+| Item | Current (GTA V) | GTA VI value |
+| --- | --- | --- |
+| Evidence locker — Mission Row | `vector3(434.0, -983.0, 30.7)` | _TBD_ |
+
 ---
 
 ## Not in this worksheet (intentionally)

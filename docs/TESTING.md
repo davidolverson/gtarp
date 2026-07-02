@@ -203,9 +203,22 @@ tester:
 - [ ] A non-mechanic (or off-duty mechanic) gets "You need to be on duty..."
       and no repair happens.
 
+## 15. Evidence — `gtarp_evidence`
+
+- [ ] On boot the console prints `[gtarp_evidence] evidence locker
+      registered`.
+- [ ] `/setjob police` + go on duty, then `/logevidence Found a weapon at
+      the docks` → "Logged." — works from anywhere, no proximity needed.
+- [ ] `/evidence` shows that entry (officer name, description, timestamp)
+      in a read-only dialog, newest first.
+- [ ] At Mission Row PD (`vector3(434.0, -983.0, 30.7)`), `[E]` opens the
+      evidence locker stash; items placed there persist across relog.
+- [ ] Off duty (or not police), `/logevidence`, `/evidence`, and the
+      locker prompt all refuse with "You need to be on duty...".
+
 ---
 
-## 15. Triage — common failures
+## 16. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |
