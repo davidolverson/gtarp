@@ -2,7 +2,11 @@ name: Deploy custom layer
 
 # Auto-deploys the Qbox custom layer to the live FiveM server.
 #   - Uploads resources/[custom]/ (and optionally custom.cfg) over SFTP.
+#   - Patches custom ox_inventory items into the deployed data/items.lua
+#     (tools/patch-ox-items.sh — runtime merges can never register items).
 #   - Restarts the FXServer via the Pterodactyl power API so new code loads.
+#   - Flags sql/*.sql migrations added/changed since the last successful
+#     deploy — the DB is NEVER touched by CI; apply those manually.
 # See DEPLOY.md for setup, required secrets, and toggles.
 
 on:
@@ -59,10 +63,16 @@ jobs:
       - name: Checkout repository
         if: steps.guard.outputs.configured == 'true'
         uses: actions/checkout@v4
+        with:
+          # Full history so the migration check can diff against the commit of
+          # the last successful deploy (a shallow clone can't reach it).
+          fetch-depth: 0
 
-      - name: Install lftp
+      - name: Install lftp and lua
         if: steps.guard.outputs.configured == 'true'
-        run: sudo apt-get update && sudo apt-get install -y lftp
+        # lua5.4 syntax-checks the patched ox_inventory items.lua before it is
+        # pushed back to the live server.
+        run: sudo apt-get update && sudo apt-get install -y lftp lua5.4
 
       - name: Upload custom layer over SFTP
         id: upload
@@ -150,6 +160,39 @@ jobs:
             echo "cfg_uploaded=false" >> "$GITHUB_OUTPUT"
           fi
 
+          # ---- Sync custom ox_inventory items into the deployed items.lua ----
+          # ox_inventory builds its ItemList ONLY from its own data/items.lua;
+          # the overrides resource's runtime merge can never register items
+          # (Items() returns a msgpack copy). Pull the live file, patch the
+          # GTARP marker block in with tools/patch-ox-items.sh (idempotent,
+          # never shadows recipe-defined names), syntax-check, push it back —
+          # all BEFORE the restart step so the new boot picks it up. On any
+          # failure the live file is left untouched and we warn loudly; the
+          # overrides resource prints FATAL lines at boot for missing items.
+          # NOTE: set -e is suppressed inside an `if (...)` condition, so the
+          # subshell chains every command with && — a failure at any point
+          # (download, patch, syntax check) must skip the upload and report
+          # FAILED, never fall through.
+          OX_ITEMS_STATUS="FAILED — run tools/patch-ox-items.sh against the live resources dir manually"
+          if (
+            WORK="$(mktemp -d)" &&
+            mkdir -p "$WORK/[ox]/ox_inventory/data" &&
+            run_lftp <<EOF &&
+          get "$REMOTE_BASE/resources/[ox]/ox_inventory/data/items.lua" -o "$WORK/[ox]/ox_inventory/data/items.lua"
+          EOF
+            bash tools/patch-ox-items.sh "$WORK" &&
+            lua5.4 -e "assert(loadfile('$WORK/[ox]/ox_inventory/data/items.lua'))" &&
+            run_lftp <<EOF
+          put "$WORK/[ox]/ox_inventory/data/items.lua" -o "$REMOTE_BASE/resources/[ox]/ox_inventory/data/items.lua"
+          EOF
+          ); then
+            OX_ITEMS_STATUS="synced"
+            echo "ox_inventory items patched and re-uploaded."
+          else
+            echo "::warning::ox_inventory item sync FAILED — custom items will NOT register until tools/patch-ox-items.sh is run against the live server's resources dir. ox_inventory_overrides will print FATAL lines at boot naming each missing item."
+          fi
+          echo "ox_items=$OX_ITEMS_STATUS" >> "$GITHUB_OUTPUT"
+
       - name: Restart FXServer via Pterodactyl
         id: restart
         if: steps.guard.outputs.configured == 'true'
@@ -179,6 +222,48 @@ jobs:
             exit 1
           fi
 
+      - name: Check for SQL migrations needing manual apply
+        id: sqlcheck
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # CI NEVER touches the production database. sql/*.sql migrations are
+          # applied manually on the game host — this step just makes sure a
+          # deploy that needs one can't slip by silently. It diffs sql/
+          # against the commit of the last SUCCESSFUL deploy run, so sql-only
+          # pushes (which don't trigger this workflow) are still caught by the
+          # next deploy that does run.
+          LAST_SHA="$(gh run list --workflow deploy-custom-layer.yml --branch "$GITHUB_REF_NAME" --status success --limit 1 --json headSha --jq '.[0].headSha' 2>/dev/null || true)"
+          if [ -n "$LAST_SHA" ] && git cat-file -e "$LAST_SHA" 2>/dev/null; then
+            PENDING="$(git diff --name-only --diff-filter=ACMR "$LAST_SHA"..HEAD -- 'sql/*.sql' || true)"
+            BASIS="new/changed since last successful deploy (\`${LAST_SHA:0:9}\`)"
+          else
+            PENDING="$(ls sql/*.sql 2>/dev/null || true)"
+            BASIS="no prior successful deploy found — listing ALL migrations; apply any not yet applied"
+          fi
+
+          if [ -n "$PENDING" ]; then
+            COUNT="$(echo "$PENDING" | grep -c . || true)"
+            echo "::warning::$COUNT SQL migration file(s) need MANUAL apply on the game host — deploys never touch the DB. See the run summary for the list."
+            {
+              echo "## ⚠️ Manual SQL migrations required"
+              echo "Basis: $BASIS"
+              echo ""
+              echo "$PENDING" | sed 's/^/- `/; s/$/`/'
+              echo ""
+              echo "Apply each on the game host DB before/at restart, e.g.:"
+              echo '```'
+              echo "$PENDING" | sed 's|^|mariadb -u<user> -p <db> < |'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "pending_sql=$COUNT" >> "$GITHUB_OUTPUT"
+          else
+            echo "No SQL migrations pending ($BASIS)."
+            echo "pending_sql=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy summary
         if: always()
         run: |
@@ -190,6 +275,8 @@ jobs:
             fi
             echo "- Uploaded: \`resources/[custom]/\` -> \`$REMOTE_BASE/resources/[custom]/\`"
             echo "- custom.cfg uploaded: \`${{ steps.upload.outputs.cfg_uploaded }}\`"
+            echo "- ox_inventory items: \`${{ steps.upload.outputs.ox_items }}\`"
             echo "- Strict mirror (--delete): \`$MIRROR_DELETE\`"
             echo "- Server restart triggered: \`${{ steps.restart.outputs.restarted }}\`"
+            echo "- SQL migrations pending manual apply: \`${{ steps.sqlcheck.outputs.pending_sql }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -10,7 +10,46 @@ The pipeline is the GitHub Actions workflow
 
 1. **Uploads** `resources/[custom]/` over SFTP to the server's custom-layer path.
 2. **Optionally uploads** `custom.cfg` to the server base.
-3. **Restarts** the FXServer via the Pterodactyl power API.
+3. **Patches custom ox_inventory items** into the deployed
+   `resources/[ox]/ox_inventory/data/items.lua`: downloads the live file, runs
+   `tools/patch-ox-items.sh` (idempotent marker block; never shadows
+   recipe-defined names), syntax-checks it with `lua5.4`, and uploads it back.
+   ox_inventory only reads its own `data/items.lua` at boot — a runtime merge
+   can never register items — so without this step every custom item silently
+   fails to exist. If any part fails, the live file is left untouched and the
+   run warns loudly; run the script manually against the server's resources
+   dir in that case (`ox_inventory_overrides` prints FATAL boot lines naming
+   each unregistered item either way).
+4. **Restarts** the FXServer via the Pterodactyl power API.
+5. **Flags pending SQL migrations**: diffs `sql/*.sql` against the commit of
+   the last *successful* deploy run and, if anything is new or changed, puts a
+   warning + checklist in the run summary. **CI never touches the production
+   DB** — apply migrations manually on the game host. Because the diff basis
+   is the last successful deploy (not the previous push), sql-only pushes that
+   don't trigger this workflow are still caught by the next deploy that does.
+
+## Applying SQL migrations (`tools/apply-migrations.sh`)
+
+The safe way to run the manual migration step. Tracks applied files in a
+`gtarp_schema_migrations` table (filename + sha256), so re-running is a no-op
+and a migration edited *after* being applied fails loudly (exit 2) instead of
+silently re-running.
+
+```bash
+# local test DB (default: docker exec into gtarp-mariadb)
+bash tools/apply-migrations.sh --dry-run   # show what would run
+bash tools/apply-migrations.sh             # apply anything new
+
+# any other DB (e.g. production on the game host)
+MYSQL_CMD="mysql -h<host> -u<user> -p<pw> <db>" bash tools/apply-migrations.sh
+```
+
+**First run on a database that already had migrations applied by hand**
+(both the local test DB and production as of 2026-07-03): run
+`bash tools/apply-migrations.sh --baseline` ONCE first — it records every
+current `sql/*.sql` as applied without executing anything. Skipping the
+baseline on such a DB would replay seed data. The local test DB was
+baselined 2026-07-03; production has NOT been baselined yet.
 
 > **Why the restart matters:** writing files to the server does **not** apply them.
 > FXServer only loads new/changed resource code on (re)start, so the deploy restarts
