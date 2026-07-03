@@ -1,8 +1,7 @@
 # gtarp_robbery
 
 ATM robberies — the illegal side of the economy that gives the police job
-something to respond to. Completes the loop alongside `gtarp_grind` (legal)
-and `gtarp_housing`.
+something to respond to. Completes the loop alongside `gtarp_grind` (legal).
 
 **Store/register robbery is intentionally not here.** The recipe's own
 `qbx_storerobbery` already does that at the exact same store locations

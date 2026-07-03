@@ -34,13 +34,6 @@ density,vehicle,0.7,,qbx_density_overrides/config.lua :: Config.Density.vehicle
 density,randomvehicles,0.7,,qbx_density_overrides/config.lua :: Config.Density.randomvehicles
 density,parked,0.8,,qbx_density_overrides/config.lua :: Config.Density.parked
 density,scenario,0.7,,qbx_density_overrides/config.lua :: Config.Density.scenario
-housing,Property door - Integrity Way,"vector4(-47.24, -585.35, 36.96, 340.0)",,gtarp_housing/shared/config.lua :: Config.Properties integrity_1.door
-housing,Property door - Del Perro Heights,"vector4(-1447.06, -538.79, 34.74, 145.0)",,gtarp_housing/shared/config.lua :: Config.Properties delperro_1.door
-housing,Property door - Mirror Park Blvd,"vector4(1148.90, -1521.30, 34.90, 100.0)",,gtarp_housing/shared/config.lua :: Config.Properties mirror_1.door
-housing,Property door - Alhambra Dr,"vector4(1972.40, 3815.20, 33.43, 120.0)",,gtarp_housing/shared/config.lua :: Config.Properties sandy_1.door
-housing,Shell interior - apartment,"vector4(266.09, -1007.98, -101.01, 0.0)",,gtarp_housing/shared/config.lua :: Config.Shells apartment.interior
-housing,Shell interior - mid house,"vector4(346.20, -1013.10, -99.20, 0.0)",,gtarp_housing/shared/config.lua :: Config.Shells mid.interior
-housing,Shell interior - trailer,"vector4(1973.30, 3818.40, 33.43, 60.0)",,gtarp_housing/shared/config.lua :: Config.Shells trailer.interior
 grind,Fishing spot 1,"vector3(-1850.20, -1235.60, 8.62)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
 grind,Fishing spot 2,"vector3(1299.80, 4224.90, 33.00)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
 grind,Fishing spot 3,"vector3(-1607.90, 5261.30, 3.90)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots

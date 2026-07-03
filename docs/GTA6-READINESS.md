@@ -83,8 +83,6 @@ rewrite one small adapter file per resource against the GTA VI framework.
   is the only runtime binding)
 - `server_base`
 - `server_identity` (loading screen is Tier 1; spawn handler is Tier 3)
-- `gtarp_housing` (buy/sell/keys/stash lifecycle is Tier 1/2; door and
-  shell-interior coords are Tier 3 — see retune worksheet §9)
 - `gtarp_grind` (loop timing, yields, prices, XP are Tier 1; gather-spot
   and buyer coords are Tier 3 — see retune worksheet §10)
 - `gtarp_robbery` (ATM-only — timers, rewards, dispatch logic are Tier 1/2;
@@ -218,7 +216,6 @@ coords are known.
 | `gtarp_perf` | 2 | Bridge `GetGameTimer`; p95/p99 math unchanged. |
 | `server_base` | 2 | Bridge `/coords` natives; banner/logger/`/serverinfo` unchanged. |
 | `server_identity` | 2/3 | Loading screen carries as-is; **respawn coords** are Tier 3. |
-| `gtarp_housing` | 2/3 | Bridge the framework money/inventory calls; buy/sell/keys logic unchanged. **Door and shell-interior coords** (worksheet §9) are Tier 3. |
 | `gtarp_grind` | 2/3 | Bridge inventory/XP calls; loop timing and yields unchanged. **Gather-spot and buyer coords** (worksheet §10) are Tier 3. |
 | `gtarp_robbery` | 2/3 | ATM-only. Bridge police-dispatch/notify calls; timers and rewards unchanged. **ATM coords** (worksheet §11) are Tier 3. Store robbery is recipe-owned `qbx_storerobbery`. |
 | `gtarp_mechanic` | 2 | Bridge the framework money/job calls and repair natives; invoice logic unchanged. No coords of its own. |

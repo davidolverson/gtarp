@@ -145,22 +145,12 @@ tester:
       (armouries, grades, salaries).
 - [ ] Population density matches `qbx_density_overrides` (peds/traffic feel).
 
-## 11. Housing — `gtarp_housing`
+## 11. Housing — removed, use `qbx_properties` (recipe)
 
-- [ ] On boot the console prints `[gtarp_housing] loaded N properties`
-      (N ≥ 4 from the seeded catalog).
-- [ ] For-sale property doors show a blip (Config.ShowForSaleBlips) and a
-      `[E] to buy ($price)` prompt in range.
-- [ ] Buying with enough bank charges the price and flips the door to owned;
-      buying without funds is refused.
-- [ ] Owner `[E]` menu offers Enter / Give key to nearest / Manage keys /
-      Sell back; **Enter** fades you into the shell interior, `/exithome`
-      returns you to the door.
-- [ ] `/stash` inside opens the per-property stash; items persist on relog.
-- [ ] Give a key to a second player → they get an Enter prompt; revoke removes
-      it. **Sell back** refunds 50% and re-lists the property.
-- [ ] Two people entering the same home share one instance; different homes
-      don't overlap (routing buckets).
+`gtarp_housing` was reverted before merge — it duplicated the recipe's own
+`qbx_properties` (buy/rent/keyholders/stash/enter-exit, plus furniture
+decorating and a realtor `/createproperty` flow it didn't have). Test housing
+via `qbx_properties` directly; there is nothing custom to verify here.
 
 ## 12. Grind jobs — `gtarp_grind`
 

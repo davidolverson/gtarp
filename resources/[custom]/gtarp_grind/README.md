@@ -32,7 +32,7 @@ Bridge-pattern (see `docs/GTA6-READINESS.md`): all logic in `server/` +
 - Items + tool prices added to `ox_inventory_overrides` (`data/items.lua`,
   `data/shops.lua`).
 - `sql/0011_grind.sql` (grind_skill table).
-- `ensure gtarp_grind` in `custom.cfg` (after `gtarp_housing`).
+- `ensure gtarp_grind` in `custom.cfg` (after `gtarp_courier`).
 
 ## GTA VI notes (Tier 3)
 
