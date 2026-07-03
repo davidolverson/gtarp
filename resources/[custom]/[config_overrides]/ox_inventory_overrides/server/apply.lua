@@ -37,20 +37,38 @@ local function validateShops()
 end
 
 local function applyItems()
-    -- ox_inventory's runtime items registry. The canonical export is
-    -- ox_inventory:Items() returning the table; we mutate it directly,
-    -- which is the documented extension pattern.
+    -- ox_inventory's runtime items registry, via the ox_inventory:Items()
+    -- export. CAUTION: cross-resource Lua export return values are msgpack
+    -- COPIES, so mutating the returned table only reaches ox_inventory if
+    -- the export exposes a live table (it usually does NOT). We attempt the
+    -- merge, then VERIFY each item with a fresh per-name lookup and fail
+    -- loudly for anything that did not land, instead of silently shipping
+    -- items that AddItem will reject as invalid.
     local ok, items = pcall(function() return exports.ox_inventory:Items() end)
     if not ok or type(items) ~= 'table' then
         print('[ox_inventory_overrides] ox_inventory:Items() unavailable; skipping merge')
         return 0
     end
-    local added = 0
     for name, def in pairs(ExtraItems) do
         if not items[name] then
             items[name] = def
-            added = added + 1
         end
+    end
+    local added, missing = 0, {}
+    for name in pairs(ExtraItems) do
+        local okV, item = pcall(function() return exports.ox_inventory:Items(name) end)
+        if okV and item ~= nil then
+            added = added + 1
+        else
+            missing[#missing + 1] = name
+        end
+    end
+    if #missing > 0 then
+        table.sort(missing)
+        print(('^1[ox_inventory_overrides] FATAL: %d item(s) did NOT register with '
+            .. 'ox_inventory: %s. The runtime merge cannot reach ox_inventory (export '
+            .. 'tables are copies) — run tools/patch-ox-items.sh against the deployed resources dir and restart.^0')
+            :format(#missing, table.concat(missing, ', ')))
     end
     return added
 end

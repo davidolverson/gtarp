@@ -40,4 +40,10 @@ ExtraItems = {
     raw_ore         = { label = 'Ore',             weight = 300,  stack = true },
     raw_meat        = { label = 'Raw Meat',        weight = 250,  stack = true },
     animal_pelt     = { label = 'Animal Pelt',     weight = 400,  stack = true },
+
+    -- Serialized sneakers (gtarp_flashdrop). One base item; per-pair identity
+    -- (label, serial, uid) rides in metadata. Must match Config.Item in
+    -- gtarp_flashdrop/shared/config.lua — that resource presence-checks this
+    -- item at start and disables drops with a console error if it is missing.
+    flashdrop_sneaker = { label = 'Sneakers',      weight = 800,  stack = false },
 }
