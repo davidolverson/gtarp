@@ -37,18 +37,6 @@ function Bridge.AddCash(src, amount, reason)
     return true
 end
 
--- Does an inventory item exist? Gates optional loot so we never try to drop
--- an unregistered item.
-function Bridge.ItemExists(name)
-    local ok, def = pcall(function() return exports.ox_inventory:Items(name) end)
-    return ok and def ~= nil
-end
-
--- Give `count` of `item` to the player (best effort).
-function Bridge.GiveItem(src, item, count)
-    pcall(function() exports.ox_inventory:AddItem(src, item, count or 1) end)
-end
-
 -- Current coords of a player's ped as {x,y,z}, or nil. Anti-abuse proximity.
 function Bridge.GetCoords(src)
     local ped = GetPlayerPed(src)

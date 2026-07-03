@@ -168,19 +168,16 @@ Tier 1; only coords are Tier 3.
 | Hunting | spot 3 | `vector3(-778.10, 5591.40, 33.50)` | _TBD_ |
 | Hunting | buyer | `vector3(85.20, 6410.30, 31.30)` | _TBD_ |
 
-## 11. Robbery — registers & ATMs
+## 11. Robbery — ATMs
 
 Source: `resources/[custom]/gtarp_robbery/shared/config.lua`
-(`Config.Stores.locations`, `Config.ATMs.locations`). Rewards/timers/dispatch
-are Tier 1; only coords are Tier 3.
+(`Config.ATMs.locations`). Reward/timer/dispatch are Tier 1; only coords are
+Tier 3. Store-register robbery is recipe-owned (`qbx_storerobbery`) and bank
+vault heists are recipe-owned (`qbx_bankrobbery`) — neither is tracked here,
+they belong to whatever GTA VI framework re-authors the recipe.
 
 | Target | Current (GTA V) | GTA VI value |
 | --- | --- | --- |
-| Store — LTD Mirror Park | `vector3(1163.10, -322.90, 69.20)` | _TBD_ |
-| Store — LTD Grove St | `vector3(-47.30, -1757.40, 29.42)` | _TBD_ |
-| Store — 247 Sandy Shores | `vector3(1961.30, 3740.30, 32.34)` | _TBD_ |
-| Store — 247 Grapeseed | `vector3(1697.90, 4924.20, 42.06)` | _TBD_ |
-| Store — Rob's Liquor Vinewood | `vector3(-1222.10, -906.90, 12.33)` | _TBD_ |
 | ATM — Legion Sq | `vector3(147.40, -1035.50, 29.34)` | _TBD_ |
 | ATM — Del Perro | `vector3(-1204.60, -324.80, 37.87)` | _TBD_ |
 | ATM — Sandy Shores | `vector3(1822.40, 3683.10, 34.28)` | _TBD_ |

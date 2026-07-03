@@ -1,12 +1,20 @@
 -- ============================================================================
 -- gtarp_robbery/shared/config.lua
 --
--- Store & ATM robberies with a police dispatch alert. Rob a register while
--- armed, hold through a timer, and collect cash (+ a chance of marked items).
--- A dispatch pings on-duty police; a minimum-cops gate is configurable.
+-- ATM robberies with a police dispatch alert. Rob an ATM while armed, hold
+-- through a timer, and collect cash. A dispatch pings on-duty police; a
+-- minimum-cops gate is configurable.
 --
--- DESIGN (rewards, timers, cooldowns, dispatch rules) is Tier 1 and carries.
--- The register/ATM coords are Tier 3 (Los Santos points) — mirrored in
+-- Store/register robbery is intentionally NOT here — the recipe's own
+-- `qbx_storerobbery` already does that at these exact store locations
+-- (registers, safes, cameras, lockpick requirement, cop-count gate). Confirmed
+-- by reading `resources/[qbx]/qbx_storerobbery` directly, not just its
+-- config — see the "verify against the real deployed tree" lesson in
+-- docs/DEVELOPMENT.md. An earlier draft of this resource duplicated it; that
+-- half was removed before merge.
+--
+-- DESIGN (reward, timer, cooldown, dispatch rules) is Tier 1 and carries.
+-- The ATM coords are Tier 3 (Los Santos points) — mirrored in
 -- docs/GTA6-TIER3-RETUNE.md.
 -- ============================================================================
 
@@ -19,7 +27,7 @@ Config.Debug = false
 -- (2–3 is typical for a small serious-RP server).
 Config.MinPolice = 0
 
--- Interaction radius (metres) for a register / ATM.
+-- Interaction radius (metres) for an ATM.
 Config.InteractRadius = 1.8
 
 -- The player must be holding a weapon (not fists/unarmed) to start a robbery.
@@ -28,27 +36,6 @@ Config.RequireWeapon = true
 -- Police dispatch: blip lifetime + label.
 Config.Dispatch = { blipSprite = 161, blipColour = 1, blipScale = 1.2,
                     label = 'Robbery in progress', durationSeconds = 90 }
-
--- ---------------------------------------------------------------------------
--- Store registers — bigger payout, longer hold, longer cooldown.
--- ---------------------------------------------------------------------------
-Config.Stores = {
-    hold_seconds   = 12,
-    cooldown_secs  = 1800,           -- 30 min per store
-    reward_min     = 800,
-    reward_max     = 1800,
-    marked_item    = 'markedbills',  -- optional loot item (only drops if it exists)
-    marked_chance  = 0.5,
-    marked_min     = 1,
-    marked_max     = 3,
-    locations = {
-        { label = 'LTD Mirror Park',    coords = vector3(1163.10, -322.90, 69.20) },
-        { label = 'LTD Grove St',       coords = vector3(-47.30, -1757.40, 29.42) },
-        { label = '247 Sandy Shores',   coords = vector3(1961.30, 3740.30, 32.34) },
-        { label = '247 Grapeseed',      coords = vector3(1697.90, 4924.20, 42.06) },
-        { label = "Rob's Liquor Vinewood", coords = vector3(-1222.10, -906.90, 12.33) },
-    },
-}
 
 -- ---------------------------------------------------------------------------
 -- ATMs — small payout, short hold, short cooldown.

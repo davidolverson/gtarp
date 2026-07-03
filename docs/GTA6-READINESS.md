@@ -87,8 +87,9 @@ rewrite one small adapter file per resource against the GTA VI framework.
   shell-interior coords are Tier 3 — see retune worksheet §9)
 - `gtarp_grind` (loop timing, yields, prices, XP are Tier 1; gather-spot
   and buyer coords are Tier 3 — see retune worksheet §10)
-- `gtarp_robbery` (timers, rewards, dispatch logic are Tier 1/2; store and
-  ATM coords are Tier 3 — see retune worksheet §11)
+- `gtarp_robbery` (ATM-only — timers, rewards, dispatch logic are Tier 1/2;
+  ATM coords are Tier 3 — see retune worksheet §11. Store robbery is
+  recipe-owned `qbx_storerobbery`, not duplicated here)
 - `gtarp_mechanic` (repair-invoice logic, no coords of its own — targets
   whatever damaged vehicle is nearby)
 - `gtarp_evidence` (log/locker lifecycle is Tier 1/2; locker coords are
@@ -219,7 +220,7 @@ coords are known.
 | `server_identity` | 2/3 | Loading screen carries as-is; **respawn coords** are Tier 3. |
 | `gtarp_housing` | 2/3 | Bridge the framework money/inventory calls; buy/sell/keys logic unchanged. **Door and shell-interior coords** (worksheet §9) are Tier 3. |
 | `gtarp_grind` | 2/3 | Bridge inventory/XP calls; loop timing and yields unchanged. **Gather-spot and buyer coords** (worksheet §10) are Tier 3. |
-| `gtarp_robbery` | 2/3 | Bridge police-dispatch/notify calls; timers and rewards unchanged. **Store and ATM coords** (worksheet §11) are Tier 3. |
+| `gtarp_robbery` | 2/3 | ATM-only. Bridge police-dispatch/notify calls; timers and rewards unchanged. **ATM coords** (worksheet §11) are Tier 3. Store robbery is recipe-owned `qbx_storerobbery`. |
 | `gtarp_mechanic` | 2 | Bridge the framework money/job calls and repair natives; invoice logic unchanged. No coords of its own. |
 | `gtarp_evidence` | 2/3 | Bridge the framework job/stash calls; log/locker logic unchanged. **Locker coords** (worksheet §12) are Tier 3. |
 | `gtarp_turf` | 2/3 | Bridge the framework gang calls and blip natives; tag/ownership/leaderboard logic unchanged. **Zone coords** (worksheet §13) are Tier 3. |

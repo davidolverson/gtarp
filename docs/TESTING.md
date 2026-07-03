@@ -173,16 +173,18 @@ tester:
 - [ ] XP persists across relog (`grind_skill` table).
 - [ ] All three loops (fishing / mining / hunting) complete solo.
 
-## 13. Robbery — `gtarp_robbery`
+## 13. Robbery — `gtarp_robbery` (ATM only)
 
-- [ ] With `Config.MinPolice = 0`, draw a weapon at a store register / ATM →
-      `[E]` starts the hold-up; unarmed is refused.
-- [ ] Completing the hold pays cash (store > ATM); moving away cancels it.
-- [ ] A robbed spot is on cooldown (store 30 min / ATM 10 min); a cancelled
-      attempt only locks it ~60s.
+- [ ] With `Config.MinPolice = 0`, draw a weapon at an ATM → `[E]` starts the
+      hold-up; unarmed is refused.
+- [ ] Completing the hold pays cash; moving away cancels it.
+- [ ] A robbed ATM is on cooldown (10 min); a cancelled attempt only locks it
+      ~60s.
 - [ ] With a second player set on-duty police (`/setjob police` + on duty),
       starting a robbery pushes a **dispatch blip + notify** to that officer.
 - [ ] Raising `Config.MinPolice` blocks robberies when too few cops are on.
+- [ ] Store-register robbery is the recipe's own `qbx_storerobbery` — test
+      that separately, it's not part of this resource.
 
 ## 14. Mechanic — `gtarp_mechanic`
 
