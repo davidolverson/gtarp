@@ -46,4 +46,16 @@ ExtraItems = {
     -- gtarp_flashdrop/shared/config.lua — that resource presence-checks this
     -- item at start and disables drops with a console error if it is missing.
     flashdrop_sneaker = { label = 'Sneakers',      weight = 800,  stack = false },
+
+    -- Counterfeit-cash economy (gtarp_counterfeit). Must match Config.Items
+    -- in gtarp_counterfeit/shared/config.lua — that resource presence-checks
+    -- these at start and self-disables with a console error if any is
+    -- missing. counterfeit_cash is FAKE money with a serial in metadata —
+    -- distinct name and semantics from the recipe's `markedbills` (dirty
+    -- REAL money); it is never launderable and never stacks.
+    counterfeit_cash    = { label = 'Bundled Cash',    weight = 120,  stack = false },
+    counterfeit_printer = { label = 'Compact Printer', weight = 9000, stack = false },
+    counterfeit_paper   = { label = 'Linen Paper',     weight = 200,  stack = true },
+    counterfeit_ink     = { label = 'Intaglio Ink',    weight = 350,  stack = true },
+    marker_pen          = { label = 'Detector Pen',    weight = 30,   stack = false },
 }
