@@ -234,7 +234,115 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 
 ---
 
-## 17. Triage — common failures
+## 17. Pumpcoin exchange — `gtarp_pumpcoin`
+
+- [ ] Boot banner: `[gtarp_pumpcoin] exchange online — N coin(s) on the board`.
+- [ ] `[E]` at an exchange laptop opens the NUI; minting a coin costs $5,000
+      and the board lists it as `anon-XXX`, never the creator's name.
+- [ ] Buying moves the price UP along the curve; selling moves it DOWN; a
+      big single buy visibly pays its own slippage (unit price after >
+      before).
+- [ ] `/shill TICKER` (creator only): buyer within 12m gets 5% off; a buyer
+      far away does not; 5-min cooldown enforced.
+- [ ] Rug: dev-dump ≥80% of the premine in one clip → sale executes, buys
+      halt, 🚨 RUGGED broadcast, and ~10 min later the creator is named
+      server-wide + a fraud entry appears in `/evidence`.
+- [ ] Economy sink check: mint + buy + immediate sell nets the player LESS
+      than they put in (2% fee per fill; buys round up, payouts down).
+- [ ] Boot warning fires if config makes the premine worth ≥ MintCost.
+
+## 18. Replay black-box — `gtarp_replay`
+
+- [ ] Boot banner: `[gtarp_replay] black-box online — 4 Hz ring, 90s
+      window, 7d retention`.
+- [ ] Gunshot damage between two players fires an incident; nearby clients
+      upload (console shows accepted uploads); uninvited/duplicate/late
+      uploads are refused.
+- [ ] On-duty investigator at the scene: `/replayscenes` lists the scene,
+      `/replay <id>` spawns alpha ghost peds re-enacting it; SPACE pauses,
+      arrows scrub/speed, X stops.
+- [ ] `/replay <id>` AWAY from the scene coords is refused (server-side
+      proximity gate).
+- [ ] `/replayattach <id>` files a REPLAY EXHIBIT into the evidence log.
+- [ ] `/record`, `/clip`, `/editor` (qbx_smallresources) still work —
+      zero interaction with the Rockstar Editor.
+
+## 19. Streamer clout — `gtarp_clout`
+
+- [ ] Boot banner: `[gtarp_clout] on air — 5 milestones, donations capped
+      at $3000/hr`.
+- [ ] `/golive` without a `streamer_phone` is refused; with one, LIVE head
+      tag appears (visible to OTHER players) + overlay opens.
+- [ ] Viewer math reacts: gunfire within 30m spikes viewers; standing
+      still bleeds them; dying live spikes once then resets the stream.
+- [ ] Donations arrive as in-game cash and stop at the hourly cap.
+- [ ] Holding a milestone 3 ticks unlocks a brand deal; `[E]` at the
+      pawnshop broker pays it exactly once.
+- [ ] On-duty cop `/subpoena <id>` within 15m: streamer's last-24h VOD
+      lands in the evidence log; out-of-range or off-duty is refused.
+- [ ] `/clout` and `/streamers` render without errors.
+
+## 20. Flash drops — `gtarp_flashdrop`
+
+- [ ] Boot banner: `[gtarp_flashdrop] ready — 5 catalog entries, 6
+      locations, scheduler ON`.
+- [ ] `/flashdrop arm` (admin ACE): riddle broadcast → T-5 map blip →
+      claim table spawns; per-player 8s checkout; **one pair per citizen**
+      enforced on a second claim attempt.
+- [ ] Serial supply is hard-capped: claim N+1 when cap is N is refused.
+- [ ] Consignment boutique: list a pair, second player buys it, house
+      takes 10%, provenance shows both owners.
+- [ ] Report a serial stolen → boutique refuses it; fence (Sandy Shores)
+      takes it at 40% retail; fakes fence at 5%.
+- [ ] Counterfeit bench clones a PAST drop for $300; fake passes casual
+      inspection but fails the boutique legit check.
+- [ ] Self-disable check: remove its ox item registration → resource
+      disables loudly at boot instead of half-working (re-run
+      `tools/patch-ox-items.sh` to restore).
+
+## 21. NPC witnesses — `gtarp_witnesses`
+
+- [ ] Boot banner: `[gtarp_witnesses] ready — ... alerts off (default)`.
+- [ ] Fire a gun near ambient peds → suspect gets the "someone saw that"
+      notification; in the desert (no peds in 40m) no witnesses spawn.
+- [ ] On-duty police see witness markers; `[E]` canvass writes the
+      statement into a `gtarp_evidence` case file (facts match the
+      suspect's REAL top colour / mask / vehicle / 3-char partial plate).
+- [ ] Suspect (only) sees their own witnesses; holding a weapon on one
+      ~5s corrupts future canvass facts; $750 payoff silences entirely.
+- [ ] Intimidating a witness in view of ANOTHER witness spawns a fresh
+      witness-intimidation incident against the suspect.
+- [ ] Double-dispatch guard: with `Config.FirePoliceAlerts=false`
+      (default), a store robbery produces exactly ONE police alert (the
+      recipe's own), never a second from this resource.
+- [ ] Markers survive a resource restart (~30 min persistence).
+
+## 22. Counterfeit cash — `gtarp_counterfeit`
+
+- [ ] Boot banners: `restored N placed printer(s)` and `ready — items OK,
+      evidence bags OK, 6 districts, 3 sinks, 2 fences`.
+- [ ] Press placement: refused outside configured districts, refused
+      within 50m of another press, 1 per character max.
+- [ ] Print cycle (paper + ink, 20s, stay at the press) yields 4
+      serialized `counterfeit_cash` wads (`CF-XXXXXX-NN`); wads never
+      stack.
+- [ ] Wads cannot be deposited, laundered, or bulk-exchanged — only
+      sinks/fences/confiscation/evidence-bag remove them.
+- [ ] Each ox_inventory transfer adds a provenance hop; hop 7 pushes the
+      oldest off (trail caps at 6).
+- [ ] Heavy printing raises district heat → police get a WIDE jittered
+      area ping (never a pinpoint); `/counterfeitraid` within 15m of a
+      press clears it.
+- [ ] `marker_pen` on a wad reveals serial/wear/hands-passed.
+- [ ] `/seizefake` consumes a qbx_police `empty_evidence_bag`, bags the
+      wad, and `/runserial` at the evidence locker opens the lead cascade
+      into the batch's network.
+- [ ] Distinctness check: recipe `markedbills` from a store robbery still
+      launder normally — the two systems never interact.
+
+---
+
+## 23. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |
@@ -244,4 +352,5 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 | `/coords` "access denied" for admin | Missing `add_ace group.admin command.coords allow` (in `custom.cfg`) or principal not mapped to `group.admin`. |
 | Courier escrow not charged | oxmysql not connected, or `qbx_economy_overrides` not started before `gtarp_courier`. |
 | A `[custom]` resource missing | Its `ensure` line missing from `custom.cfg`, or the folder wasn't copied into the live `resources/` tree. |
-| DB errors on boot | SQL migrations in `sql/` not applied in order to the Qbox DB. |
+| DB errors on boot | SQL migrations in `sql/` not applied — run `tools/apply-migrations.sh` (on a DB that pre-dates the tool, `--baseline` ONCE first; see DEPLOY.md). |
+| Custom items "don't exist" / flashdrop self-disables | Deployed `ox_inventory/data/items.lua` missing the GTARP block — run `tools/patch-ox-items.sh <resources-dir>` (CI does this for production deploys). |
