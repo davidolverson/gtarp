@@ -49,6 +49,11 @@ RegisterNetEvent('gtarp_robbery:start', function(index)
         Config.Dispatch.durationSeconds,
         Config.Dispatch.blipSprite, Config.Dispatch.blipColour, Config.Dispatch.blipScale)
 
+    -- Server-only signal for shadow listeners (gtarp_witnesses): fired ONLY
+    -- after every gate above passed, so rejected/forged starts never leak.
+    -- TriggerEvent (local), never a net event — clients cannot fake this.
+    TriggerEvent('gtarp_robbery:started', src)
+
     TriggerClientEvent('gtarp_robbery:begin', src, { index = index, hold = Config.ATMs.hold_seconds })
 end)
 
