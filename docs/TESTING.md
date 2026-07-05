@@ -50,6 +50,12 @@ tester:
       gtarp_staff, gtarp_eventguard, gtarp_allowlist (if enabled),
       gtarp_courier, gtarp_perf, server_identity, server_base`.
 - [ ] `/serverinfo` typed in the **server console** prints the identity line.
+- [ ] **Contract self-tests** (dev boots only): launch with
+      `+set gtarp:devtest 1` and confirm the console prints
+      `[gtarp_devtest] ✔ N passed, 0 failed, 3 skipped`. Any FAIL line means
+      a cross-resource contract (evidence v2 API, staff log sink, export
+      shapes) broke — do not ship. Production leaves the convar unset;
+      the resource then prints one "disabled" line and does nothing.
 
 ---
 
