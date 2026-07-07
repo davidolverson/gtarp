@@ -139,6 +139,17 @@ local function testShapes()
         fail('eventguard — resource not started')
     end
 
+    if resourceUp('gtarp_insurance') then
+        try('insurance.GetSummary', function()
+            local s = exports.gtarp_insurance:GetSummary()
+            check(type(s) == 'table' and type(s.activePolicies) == 'number'
+                and type(s.pendingClaims) == 'number',
+                'insurance.GetSummary returns {activePolicies, pendingClaims}')
+        end)
+    else
+        fail('insurance — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -221,6 +232,7 @@ local REQUIRED_TABLES = {
     gtarp_flashdrop   = { 'gtarp_flashdrop_drops', 'gtarp_flashdrop_serials',
                           'gtarp_flashdrop_provenance', 'gtarp_flashdrop_listings' },
     gtarp_grind       = { 'grind_skill' },
+    gtarp_insurance   = { 'gtarp_insurance_policies', 'gtarp_insurance_claims' },
     gtarp_pumpcoin    = { 'gtarp_pumpcoin_coins', 'gtarp_pumpcoin_holdings', 'gtarp_pumpcoin_trades' },
     gtarp_replay      = { 'gtarp_replay_scenes', 'gtarp_replay_participants' },
     gtarp_staff       = { 'audit_log' },
