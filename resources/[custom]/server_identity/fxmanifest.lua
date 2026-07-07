@@ -12,6 +12,7 @@ shared_scripts {
 }
 
 client_scripts {
+    'bridge/cl_game.lua',   -- game adapter — must load before client logic
     'client/main.lua',
 }
 

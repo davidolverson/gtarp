@@ -59,10 +59,10 @@ end
 
 CreateThread(function()
     local period = Config.SamplePeriodMs or 250
-    local last = GetGameTimer()
+    local last = Bridge.GetTimerMs()
     while true do
         Wait(period)
-        local now = GetGameTimer()
+        local now = Bridge.GetTimerMs()
         local delta = now - last
         pushSample(delta)
         last = now

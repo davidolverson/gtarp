@@ -38,7 +38,7 @@ local function record(src, eventName, reason)
 
     MySQL.insert.await(
         "INSERT INTO event_violations (player_src, identifier, event_name, reason, created_at) VALUES (?,?,?,?, NOW())",
-        { src, (GetPlayerIdentifiers(src) or {})[1] or '', eventName, reason }
+        { src, Bridge.GetPrimaryIdentifier(src), eventName, reason }
     )
 
     pcall(function()
@@ -46,7 +46,7 @@ local function record(src, eventName, reason)
     end)
 
     if Violations[src] >= (Config.KickThreshold or 3) then
-        DropPlayer(src, 'kicked by eventguard: repeated event violations')
+        Bridge.Kick(src, 'kicked by eventguard: repeated event violations')
     end
 end
 
@@ -79,8 +79,19 @@ local function guard(eventName, budget)
     end)
 end
 
+-- onResourceStart can fire more than once for this resource's own name in
+-- some boot sequences (observed: guards silently double-registering,
+-- halving every rate-limit budget and doubling violation counts — false
+-- kicks after as few as 2 real breaches). Guard registration is not safe
+-- to run twice in the same VM, so make it idempotent regardless of how
+-- many times the event fires.
+local guardsRegistered = false
+
 AddEventHandler('onResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
+    if guardsRegistered then return end
+    guardsRegistered = true
+
     local n = 0
     for name, budget in pairs(Config.Events) do
         guard(name, budget)

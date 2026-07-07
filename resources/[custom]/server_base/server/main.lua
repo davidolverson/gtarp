@@ -1,3 +1,12 @@
+-- ============================================================================
+-- server_base/server/main.lua
+--
+-- Pure logic: the startup banner, connect logger, /serverinfo, and /coords.
+-- All player-identity and game-native calls go through Bridge.*
+-- (bridge/sv_framework.lua) so this file is engine-agnostic. To port to
+-- GTA VI, rewrite the bridge, not this file. See docs/GTA6-READINESS.md.
+-- ============================================================================
+
 local function printBanner()
     local name = Config.ServerName or 'server_base'
     print('========================================')
@@ -19,7 +28,7 @@ end)
 
 AddEventHandler('playerConnecting', function(name, _setKickReason, deferrals)
     local src = source
-    local ids = GetPlayerIdentifiers(src) or {}
+    local ids = Bridge.GetIdentifiers(src)
     print(('[server_base] connecting: name=%q src=%d identifiers=%d'):format(
         tostring(name), src, #ids
     ))
@@ -42,9 +51,7 @@ RegisterCommand('serverinfo', function(source)
     if source == 0 then
         print(msg)
     else
-        TriggerClientEvent('chat:addMessage', source, {
-            args = { 'server_base', msg },
-        })
+        Bridge.ChatToPlayer(source, 'server_base', msg)
     end
 end, false)
 
@@ -56,20 +63,16 @@ RegisterCommand('coords', function(source, args)
         print('[server_base] /coords must be run with a player id from console')
         return
     end
-    local ped = GetPlayerPed(target)
-    if not ped or ped == 0 then
+    local pose = Bridge.GetCoordsAndHeading(target)
+    if not pose then
         print(('[server_base] /coords: no ped for player %d'):format(target))
         return
     end
-    local pos = GetEntityCoords(ped)
-    local heading = GetEntityHeading(ped)
     local line = ('[server_base] coords player=%d  vector4(%.2f, %.2f, %.2f, %.1f)'):format(
-        target, pos.x, pos.y, pos.z, heading
+        target, pose.x, pose.y, pose.z, pose.w
     )
     print(line)
     if source ~= 0 then
-        TriggerClientEvent('chat:addMessage', source, {
-            args = { 'server_base', line },
-        })
+        Bridge.ChatToPlayer(source, 'server_base', line)
     end
 end, true)

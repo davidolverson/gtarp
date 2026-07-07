@@ -1,0 +1,240 @@
+# TESTING — smoke-test runbook for the gtarp custom layer
+
+Run this after a boot to confirm every custom resource works and that the
+GTA VI bridge refactor left behaviour unchanged. It complements
+`docs/SETUP.md` (fresh box) and `gtarp-server/LOCAL-SETUP.md` (local solo
+box). Nothing here needs GTA VI — it validates the live GTA V server.
+
+The custom layer is **bridge-clean**: every resource under
+`resources/[custom]/` keeps its logic in `server/` / `client/` and all
+framework/native calls in `bridge/`. These tests assert the *behaviour* is
+identical to the pre-bridge version — if a bridged resource misbehaves, the
+bug is almost always in that resource's `bridge/` adapter, not its logic.
+
+---
+
+## 0. Before you can join — allowlist
+
+`gtarp_allowlist` ships secure-by-default: `Config.FailOpen = false` and
+`Config.AllowedRoles = {}` (empty). **With those defaults nobody can join** —
+every connect is denied unless the player is allowlisted. Pick one for a
+tester:
+
+- **Local solo box:** already handled — `gtarp-server/staging/custom.cfg`
+  comments out `ensure gtarp_allowlist`, so the gate is off. Re-enable before
+  going public.
+- **DB allowlist (recommended for staging):** add your license identifier:
+  ```sql
+  INSERT INTO allowlist (identifier, enabled) VALUES ('license:XXXXXXXX', 1);
+  ```
+  Find your license in the console: connect once (you'll be denied), then read
+  the `gtarp_allowlist` deny line in `audit_log` / console, or run `/coords`
+  from console after adding a temporary row.
+- **Discord role:** set `gtarp:discord_bot_token` + `gtarp:discord_guild_id`
+  convars and add your role id to `Config.AllowedRoles` in
+  `resources/[custom]/gtarp_allowlist/config.lua`.
+
+---
+
+## 1. Boot-time checks (server console — before joining)
+
+- [ ] No red `SCRIPT ERROR` / `Failed to load` lines for any `[custom]`
+      resource during startup.
+- [ ] Banner prints: `server_base started — version 0.1.0`.
+- [ ] All custom resources report started. Quick check from console:
+      `ensure` lines in `custom.cfg` all resolve — run `resmon 1` and confirm
+      each of these is listed and green:
+      `qbx_core_overrides, qbx_economy_overrides, qbx_police_overrides,
+      qbx_ambulance_overrides, qbx_civilian_jobs_overrides,
+      ox_inventory_overrides, qbx_density_overrides, gtarp_whitelist_jobs,
+      gtarp_staff, gtarp_eventguard, gtarp_allowlist (if enabled),
+      gtarp_courier, gtarp_perf, server_identity, server_base`.
+- [ ] `/serverinfo` typed in the **server console** prints the identity line.
+
+---
+
+## 2. Identity & spawn — `server_identity` + `server_base`
+
+- [ ] Dark loading screen appears on join (owned by `server_identity`).
+- [ ] Multichar UI shows **2** character slots (`qbx:multichar_slots`).
+- [ ] New character spawns at **Legion Square**
+      `vector4(195.17, -933.77, 30.69, 144.0)` after selection (a brief fade
+      covers the reposition — this is `Game.PlaceAtSpawn` in the bridge).
+- [ ] Welcome notification fires **once**, only after the character is fully
+      loaded — never on the character-select screen
+      (`server_base` → `Game.OnPlayerLoaded`).
+- [ ] Log out to character select and pick a slot again → repositioned to
+      Legion Square again (the one-shot guard re-arms via
+      `Game.OnPlayerLoggedOut`).
+- [ ] Discord rich presence shows the server name (needs a real
+      `DiscordAppId` in `server_identity/config.lua`; placeholder = no
+      presence, not an error).
+
+## 3. Admin commands — `server_base`
+
+- [ ] As an `group.admin` principal: `/coords` prints your `vector4(...)` to
+      chat and console (`Bridge.GetCoordsAndHeading`).
+- [ ] `/coords <id>` for another online player prints their coords.
+- [ ] As a non-admin: `/coords` is rejected (ACE gate).
+- [ ] `/serverinfo` in chat replies with the identity line
+      (`Bridge.ChatToPlayer`).
+
+## 4. Allowlist gate — `gtarp_allowlist` (only if ensured)
+
+- [ ] A non-allowlisted player is denied with a friendly message
+      (`DenyNoRole` / `DenyNoLink` / `DenyTimeout`).
+- [ ] An allowlisted player (DB row or Discord role) joins normally.
+- [ ] Each deny writes an `allowlist_deny` row to `audit_log`
+      (via the `gtarp_staff` export).
+- [ ] Behaviour parity: the "Checking allowlist…" progress text still shows
+      during connect (`Bridge.OnConnecting` → `gate.update`).
+
+## 5. Signature feature — `gtarp_courier`
+
+- [ ] Set a map waypoint, then `/courierpost <bounty> <label>` → escrow is
+      debited from your **bank** by the bounty (affordability pre-check
+      blocks if you can't cover it).
+- [ ] A routed delivery blip + GPS route appears to the accepting player
+      (`Game.CreateRouteBlip`).
+- [ ] Driving within the delivery radius (~8 m) auto-completes the run and
+      pays the courier (`gtarp_courier:complete`).
+- [ ] Rows land in `courier_postings`; a cancelled/expired posting refunds
+      the poster (online = live credit, offline = DB `players.money` write via
+      the bridge).
+
+## 6. Staff toolkit — `gtarp_staff`
+
+- [ ] `/tp`, `/tpm`, `/bring`, `/goto`, `/revive`, `/heal`, `/giveitem`
+      behave for `group.admin` / `group.mod` per the ACE matrix in
+      `custom.cfg`; a `group.trial` principal is limited to `/coords`.
+- [ ] Each staff action writes an `audit_log` row.
+- [ ] If `gtarp:staff_webhook` is set, actions post to the Discord webhook.
+- [ ] Non-staff cannot run staff commands (ACE denies).
+
+## 7. Job whitelist — `gtarp_whitelist_jobs`
+
+- [ ] A staff/EUP principal can `/setjob` a player into a whitelisted
+      emergency-services job (police/ambulance).
+- [ ] A non-whitelisted principal is blocked with a notify
+      (`Bridge.Notify`).
+- [ ] The job actually applies (grade/duty) via `Bridge.SetJob`.
+
+## 8. Anti-abuse — `gtarp_eventguard`
+
+- [ ] Triggering a guarded money/inventory event from an untrusted client
+      path is rejected and logged to `event_violations`.
+- [ ] Legitimate framework money updates still work (paychecks, courier
+      payout, banking).
+
+## 9. Performance sampler — `gtarp_perf`
+
+- [ ] `gtarp_perf` runs without error; p95/p99 frame/tick numbers are
+      sampled (`Bridge` wraps `GetGameTimer`).
+- [ ] If a report webhook/convar is configured, a perf report posts on the
+      configured cadence.
+
+## 10. Economy & world config — `[config_overrides]`
+
+- [ ] New character starts with **$500 cash / $5000 bank**
+      (`qbx:starting_cash` / `qbx:starting_bank`).
+- [ ] On-duty paycheck fires roughly every **7 minutes**
+      (`qbx:paycheck_interval_minutes`, on-duty only).
+- [ ] Shops open and sell the overridden catalog
+      (`ox_inventory_overrides/data/shops.lua` + `items.lua`).
+- [ ] Police / ambulance / civilian job configs reflect the overrides
+      (armouries, grades, salaries).
+- [ ] Population density matches `qbx_density_overrides` (peds/traffic feel).
+
+## 11. Housing — removed, use `qbx_properties` (recipe)
+
+`gtarp_housing` was reverted before merge — it duplicated the recipe's own
+`qbx_properties` (buy/rent/keyholders/stash/enter-exit, plus furniture
+decorating and a realtor `/createproperty` flow it didn't have). Test housing
+via `qbx_properties` directly; there is nothing custom to verify here.
+
+## 12. Grind jobs — `gtarp_grind`
+
+- [ ] Buy a Fishing Rod / Pickaxe / Hunting Knife at the Hardware Store
+      (Sandy Shores / Paleto).
+- [ ] At a gather spot, `[E]` runs a progress bar and grants the yield; doing
+      it **without the tool** is refused; spamming hits the 8s cooldown.
+- [ ] Selling at the matching buyer pays cash for the whole stack; the price
+      rises as your activity XP climbs (check across several sells).
+- [ ] XP persists across relog (`grind_skill` table).
+- [ ] All three loops (fishing / mining / hunting) complete solo.
+
+## 13. Robbery — `gtarp_robbery` (ATM only)
+
+- [ ] With `Config.MinPolice = 0`, draw a weapon at an ATM → `[E]` starts the
+      hold-up; unarmed is refused.
+- [ ] Completing the hold pays cash; moving away cancels it.
+- [ ] A robbed ATM is on cooldown (10 min); a cancelled attempt only locks it
+      ~60s.
+- [ ] With a second player set on-duty police (`/setjob police` + on duty),
+      starting a robbery pushes a **dispatch blip + notify** to that officer.
+- [ ] Raising `Config.MinPolice` blocks robberies when too few cops are on.
+- [ ] Store-register robbery is the recipe's own `qbx_storerobbery` — test
+      that separately, it's not part of this resource.
+
+## 14. Mechanic — `gtarp_mechanic`
+
+- [ ] `/setjob mechanic` (or via `gtarp_whitelist_jobs`/admin) + go on duty at
+      Benny's.
+- [ ] Damage a vehicle's engine/body (crash it or `/giveitem` a weapon and
+      shoot it) — a repair prompt appears when a mechanic is nearby, with a
+      **second player standing near the vehicle**.
+- [ ] `[E]` starts the repair; with no second player nearby, it's refused
+      ("No one nearby to invoice").
+- [ ] Completing the repair bar charges the nearby player's bank
+      `Config.RepairCost` and credits the mechanic the same amount; the
+      vehicle's engine/body health and visible damage are fully restored.
+- [ ] The repaired vehicle is on cooldown — re-`[E]`-ing it immediately is
+      refused.
+- [ ] Cancelling the progress bar (move away) charges no one and repairs
+      nothing.
+- [ ] A non-mechanic (or off-duty mechanic) gets "You need to be on duty..."
+      and no repair happens.
+
+## 15. Evidence — `gtarp_evidence`
+
+- [ ] On boot the console prints `[gtarp_evidence] evidence locker
+      registered`.
+- [ ] `/setjob police` + go on duty, then `/logevidence Found a weapon at
+      the docks` → "Logged." — works from anywhere, no proximity needed.
+- [ ] `/evidence` shows that entry (officer name, description, timestamp)
+      in a read-only dialog, newest first.
+- [ ] At Mission Row PD (`vector3(434.0, -983.0, 30.7)`), `[E]` opens the
+      evidence locker stash; items placed there persist across relog.
+- [ ] Off duty (or not police), `/logevidence`, `/evidence`, and the
+      locker prompt all refuse with "You need to be on duty...".
+
+## 16. Turf — `gtarp_turf`
+
+- [ ] On boot the console prints `[gtarp_turf] loaded 6 turf zone(s)`.
+- [ ] All six zones show a blip (white/unclaimed by default on a fresh DB).
+- [ ] `/setgang <name>` into a gang, walk to a zone → `[E]` starts tagging;
+      completing it flips the zone's `owner_gang` and blip colour/label.
+- [ ] Without a gang (`PlayerData.gang.name == 'none'`), the tag attempt
+      is refused ("You need to be in a gang...").
+- [ ] Re-tagging a zone your own gang already holds is refused ("Your
+      gang already holds this turf.").
+- [ ] A second player in a rival gang can flip an already-claimed zone —
+      no defender-presence requirement in v1.
+- [ ] `/turf` shows a leaderboard (gangs ranked by zones held) plus any
+      unclaimed zones.
+- [ ] Restarting the resource preserves ownership (seeded via
+      `INSERT IGNORE`, not reset).
+
+---
+
+## 17. Triage — common failures
+
+| Symptom | Likely cause |
+| --- | --- |
+| Can't join at all | `gtarp_allowlist` enabled with empty allowlist — see §0. |
+| `attempt to index nil (global 'Bridge'/'Game')` | Bridge script not loaded before logic — check `fxmanifest.lua` load order (bridge line above the logic line). |
+| Welcome / spawn never fires | Framework loaded-event not reaching the bridge — confirm `qbx_core` started before `server_base`/`server_identity`. |
+| `/coords` "access denied" for admin | Missing `add_ace group.admin command.coords allow` (in `custom.cfg`) or principal not mapped to `group.admin`. |
+| Courier escrow not charged | oxmysql not connected, or `qbx_economy_overrides` not started before `gtarp_courier`. |
+| A `[custom]` resource missing | Its `ensure` line missing from `custom.cfg`, or the folder wasn't copied into the live `resources/` tree. |
+| DB errors on boot | SQL migrations in `sql/` not applied in order to the Qbox DB. |

@@ -12,6 +12,7 @@ shared_scripts {
 }
 
 server_scripts {
+    'bridge/sv_game.lua',   -- game/runtime adapter — must load before logic
     'server/main.lua',
 }
 

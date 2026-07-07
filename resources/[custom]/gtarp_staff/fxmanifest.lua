@@ -13,6 +13,7 @@ shared_scripts {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'bridge/sv_framework.lua',  -- framework + game adapter — before logic
     'server/main.lua',
 }
 

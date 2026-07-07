@@ -1,0 +1,58 @@
+category,item,current_gtav_value,gta6_value,source_file
+spawn,Default spawn - Legion Square,"vector4(195.17, -933.77, 30.69, 144.0)",,resources/[custom]/server_identity/config.lua :: Config.SpawnPoint
+spawn,Default spawn mirror,"vector4(195.17, -933.77, 30.69, 144.0)",,resources/[custom]/server_base/config.lua :: Config.DefaultSpawn
+emergency,Police armoury - Mission Row,"vector3(461.79, -983.04, 30.69) r1.2",,qbx_police_overrides/config.lua :: Config.Armoury[1].coords
+emergency,Police duty toggle - Mission Row,"vector3(442.32, -988.43, 30.69) r1.0",,qbx_police_overrides/config.lua :: Config.DutyToggle.coords
+emergency,Ambulance hospital - Pillbox Hill,"vector3(307.7, -1433.4, 29.9) r3.0",,qbx_ambulance_overrides/config.lua :: Config.Hospitals[1].coords
+emergency,Ambulance duty toggle - Pillbox Hill,"vector3(311.5, -1432.0, 30.0) r1.0",,qbx_ambulance_overrides/config.lua :: Config.DutyToggle.coords
+civilian_job,Trucker Dispatch,"vector3(150.95, -3040.0, 7.04) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.trucker.starter_npc.coords
+civilian_job,Downtown Cab Co (taxi),"vector3(903.13, -174.83, 73.97) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.taxi.starter_npc.coords
+civilian_job,LS Sanitation (garbage),"vector3(-322.65, -1545.13, 27.79) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.garbage.starter_npc.coords
+civilian_job,Bennys LS Customs (mechanic),"vector3(-205.45, -1311.66, 31.30) r1.5",,qbx_civilian_jobs_overrides/config.lua :: Config.Jobs.mechanic.starter_npc.coords
+shop,General Store 1 - Innocence Blvd,"vector3(24.47, -1346.62, 29.50)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 2 - Pacific Bluffs,"vector3(-3038.94, 585.95, 7.91)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 3 - Banham Canyon,"vector3(-3242.47, 1001.46, 12.83)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 4 - Paleto Bay,"vector3(1728.66, 6414.16, 35.04)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 5 - Mirror Park,"vector3(1163.37, -323.80, 69.21)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 6 - Tataviam Mtns,"vector3(2557.94, 382.05, 108.62)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,General Store 7 - Downtown,"vector3(373.87, 325.89, 103.57)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.general_store.locations
+shop,Ammu-Nation 1 - Innocence Blvd,"vector3(21.7, -1106.42, 29.80)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ammu_nation.locations
+shop,Ammu-Nation 2 - El Burro Heights,"vector3(810.25, -2157.6, 29.62)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ammu_nation.locations
+shop,Ammu-Nation 3 - Sandy Shores,"vector3(1693.4, 3760.6, 34.71)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ammu_nation.locations
+shop,Hardware Store 1 - Sandy Shores,"vector3(2748.4, 3473.4, 55.66)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.hardware.locations
+shop,Hardware Store 2 - Paleto Bay,"vector3(-422.7, 6136.0, 31.86)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.hardware.locations
+shop,Suburban clothing 1,"vector3(127.0, -223.4, 54.56)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.clothing.locations
+shop,Police Armoury society,"vector3(461.79, -983.04, 30.69)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.police_armoury.locations
+shop,EMS Medical Supply society,"vector3(307.7, -1433.4, 29.9)",,ox_inventory_overrides/data/shops.lua :: ExtraShops.ems_medical.locations
+vehicle_model,Police motor pool,"police, police2, police3, policeb, policet",,qbx_police_overrides/config.lua :: Config.VehicleAllowed
+vehicle_model,Ambulance motor pool,ambulance,,qbx_ambulance_overrides/config.lua :: Config.VehicleAllowed
+weapon_model,Police loadout weapon models,"weapon_combatpistol, weapon_stungun, weapon_nightstick, weapon_flashlight",,qbx_police_overrides/config.lua :: Config.LoadoutAllowed
+blip,Courier delivery blip sprite,1,,gtarp_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
+blip,Courier delivery blip colour,5,,gtarp_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
+density,peds,0.9,,qbx_density_overrides/config.lua :: Config.Density.peds
+density,vehicle,0.7,,qbx_density_overrides/config.lua :: Config.Density.vehicle
+density,randomvehicles,0.7,,qbx_density_overrides/config.lua :: Config.Density.randomvehicles
+density,parked,0.8,,qbx_density_overrides/config.lua :: Config.Density.parked
+density,scenario,0.7,,qbx_density_overrides/config.lua :: Config.Density.scenario
+grind,Fishing spot 1,"vector3(-1850.20, -1235.60, 8.62)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing spot 2,"vector3(1299.80, 4224.90, 33.00)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing spot 3,"vector3(-1607.90, 5261.30, 3.90)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing buyer,"vector3(-1817.30, -1193.20, 14.30)",,gtarp_grind/shared/config.lua :: Activities.fishing.sell.coords
+grind,Mining spot 1,"vector3(2954.10, 2782.30, 40.50)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining spot 2,"vector3(2969.40, 2835.60, 42.20)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining spot 3,"vector3(2915.00, 2792.00, 39.80)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining buyer,"vector3(1109.60, -2007.90, 31.00)",,gtarp_grind/shared/config.lua :: Activities.mining.sell.coords
+grind,Hunting spot 1,"vector3(-1150.40, 4880.70, 220.10)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting spot 2,"vector3(-560.20, 5335.80, 70.40)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting spot 3,"vector3(-778.10, 5591.40, 33.50)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting buyer,"vector3(85.20, 6410.30, 31.30)",,gtarp_grind/shared/config.lua :: Activities.hunting.sell.coords
+robbery,ATM Legion Sq,"vector3(147.40, -1035.50, 29.34)",,gtarp_robbery/shared/config.lua :: ATMs.locations
+robbery,ATM Del Perro,"vector3(-1204.60, -324.80, 37.87)",,gtarp_robbery/shared/config.lua :: ATMs.locations
+robbery,ATM Sandy Shores,"vector3(1822.40, 3683.10, 34.28)",,gtarp_robbery/shared/config.lua :: ATMs.locations
+evidence,Evidence locker Mission Row,"vector3(434.0, -983.0, 30.7)",,gtarp_evidence/shared/config.lua :: Config.LockerCoords
+turf,Zone Legion Square,"vector3(195.17, -933.77, 30.69)",,gtarp_turf/shared/config.lua :: Config.Zones
+turf,Zone Grove Street,"vector3(-47.30, -1757.40, 29.42)",,gtarp_turf/shared/config.lua :: Config.Zones
+turf,Zone Mirror Park,"vector3(1163.10, -322.90, 69.20)",,gtarp_turf/shared/config.lua :: Config.Zones
+turf,Zone Vinewood,"vector3(-1222.10, -906.90, 12.33)",,gtarp_turf/shared/config.lua :: Config.Zones
+turf,Zone Sandy Shores,"vector3(1961.30, 3740.30, 32.34)",,gtarp_turf/shared/config.lua :: Config.Zones
+turf,Zone Paleto Bay,"vector3(1728.66, 6414.16, 35.04)",,gtarp_turf/shared/config.lua :: Config.Zones
