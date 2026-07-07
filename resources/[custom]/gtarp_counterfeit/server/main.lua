@@ -47,6 +47,13 @@ local function dbg(msg)
     if Config.Debug then print('[gtarp_counterfeit] ' .. msg) end
 end
 
+-- Soft dependency: news bulletins go out iff gtarp_discord is running with
+-- the 'heat' feed configured. Never blocks or errors the heat sweep.
+local function discordAnnounce(payload)
+    if not Bridge.ResourceStarted('gtarp_discord') then return end
+    pcall(function() exports.gtarp_discord:Announce('heat', payload) end)
+end
+
 -- Per-source rate limit. Returns true when the call is allowed.
 local function rl(src, key)
     local window = Config.RateLimits[key] or 1
@@ -509,6 +516,14 @@ CreateThread(function()
                     Bridge.PingPoliceArea(coords, Config.Heat.PingRadius,
                         ('Counterfeit activity suspected — %s area'):format(d.label),
                         Config.HeatBlip.durationSec)
+                    -- Public bulletin rides the same threshold+cooldown gate
+                    -- as the police ping, and is vaguer: district label
+                    -- only, no coordinates, no heat number.
+                    discordAnnounce({
+                        title = 'COUNTERFEIT BILLS IN CIRCULATION',
+                        description = ('Weazel News: merchants around %s report suspicious cash. LSPD has increased patrols in the area.')
+                            :format(d.label),
+                    })
                     dbg(('heat ping: %s (%.1f)'):format(districtId, h.heat))
                 end
             end

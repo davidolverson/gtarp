@@ -38,6 +38,13 @@ local tickSec = math.max(1, math.floor(Config.TickIntervalMs / 1000))
 
 local function now() return os.time() end
 
+-- Soft dependency: going-live posts go out iff gtarp_discord is running
+-- with the 'live' feed configured. Never blocks or errors stream flows.
+local function discordAnnounce(payload)
+    if GetResourceState('gtarp_discord') ~= 'started' then return end
+    pcall(function() exports.gtarp_discord:Announce('live', payload) end)
+end
+
 local function dbg(...)
     if Config.Debug then print('[gtarp_clout]', ...) end
 end
@@ -332,6 +339,13 @@ RegisterCommand('golive', function(src)
     Bridge.Notify(src, 'Clout', 'You are LIVE. Everything you film is on the record.', 'success')
     if Config.AnnounceGoLive then
         Bridge.NotifyAll('📡 LIVE', ('%s just went live. Smile — you might be content.'):format(name), 'inform')
+        -- Mirrors the in-city NotifyAll gate: no city-wide announce, no
+        -- Discord announce.
+        discordAnnounce({
+            title = ('📡 %s IS LIVE'):format(name),
+            description = ('Started with %d viewers. Everything filmed is on the record — VODs are subpoenable.')
+                :format(s.viewers),
+        })
     end
     dbg(('stream started: %s (%s)'):format(name, cid))
 end, false)

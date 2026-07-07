@@ -122,6 +122,13 @@ end
 -- Create a case, or return the existing one for `incidentKey`. Race-safe:
 -- the UNIQUE key on incident_key plus INSERT IGNORE means two systems
 -- reporting the same incident concurrently converge on one case.
+-- Soft dependency: new-case posts go to the police Discord feed iff
+-- gtarp_discord is running with it configured. Never blocks case creation.
+local function discordAnnounce(payload)
+    if GetResourceState('gtarp_discord') ~= 'started' then return end
+    pcall(function() exports.gtarp_discord:Announce('police', payload) end)
+end
+
 local function ensureCase(incidentKey, title, createdBy, createdByName)
     title = clamp(title, Config.CaseTitleMax)
     if not title then return nil, 'title required' end
@@ -142,7 +149,18 @@ local function ensureCase(incidentKey, title, createdBy, createdByName)
             'INSERT IGNORE INTO gtarp_evidence_cases (incident_key, title, status, created_by, created_by_name) VALUES (?, ?, ?, ?, ?)',
             { incidentKey, title, 'open', createdBy, createdByName })
     end)
-    if ok and insertId and insertId > 0 then return insertId end
+    if ok and insertId and insertId > 0 then
+        -- Only genuinely NEW cases announce (idempotent re-ensures return
+        -- above). devtest's probe cases stay out of the feed.
+        if createdBy ~= 'gtarp_devtest' then
+            discordAnnounce({
+                title = ('CASE #%d OPENED'):format(insertId),
+                description = title,
+                fields = { { name = 'Source', value = createdByName, inline = true } },
+            })
+        end
+        return insertId
+    end
 
     -- INSERT IGNORE returned no id: someone else won the incident_key race.
     if incidentKey then

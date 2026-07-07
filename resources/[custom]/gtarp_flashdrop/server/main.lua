@@ -37,6 +37,13 @@ local function dbg(msg)
     if Config.Debug then print('[gtarp_flashdrop] ' .. msg) end
 end
 
+-- Soft dependency: hype posts go out iff gtarp_discord is running with the
+-- 'drops' feed configured. Never blocks or errors the drop lifecycle.
+local function discordAnnounce(payload)
+    if GetResourceState('gtarp_discord') ~= 'started' then return end
+    pcall(function() exports.gtarp_discord:Announce('drops', payload) end)
+end
+
 -- Per-source rate limit. Returns true when the call is allowed.
 local function rl(src, key)
     local window = Config.RateLimits[key] or 1
@@ -257,6 +264,13 @@ local function arm(catalogCode, locationId, hintLeadSec, revealLeadSec, liveDura
     }
 
     dbg(('armed drop #%d %s @ %s (live in %ds)'):format(id, catalog.code, location.id, hintLead))
+    -- Location and turf callout stay OUT of the post — the in-game hint
+    -- system owns reveals; Discord only builds the line.
+    discordAnnounce({
+        title = ('DROP INCOMING — %s'):format(catalog.label),
+        description = ('%d units at $%d retail. Serialized, provenance-taped. Location hits in-city in ~%d min — be there or pay resale.')
+            :format(catalog.cap, catalog.retail, math.max(1, math.floor(hintLead / 60))),
+    })
     return true
 end
 

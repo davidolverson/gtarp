@@ -254,6 +254,41 @@ local function testTables()
     end
 end
 
+-- gtarp_discord's announce contract: shape, unknown-feed rejection, and —
+-- when any feed has a webhook configured on this boot — a real queue accept
+-- (delivery itself lands in the console as an HTTP failure line if the
+-- webhook is bad, and posts a clearly-labelled probe embed if it's good).
+local function testDiscord()
+    if not resourceUp('gtarp_discord') then
+        fail('discord — resource not started')
+        return
+    end
+
+    local stats
+    if not try('discord.GetStats', function()
+        stats = exports.gtarp_discord:GetStats()
+    end) then return end
+    if not check(type(stats) == 'table' and type(stats.liveFeeds) == 'table'
+        and type(stats.queued) == 'number' and type(stats.dropped) == 'number',
+        'discord.GetStats returns {queued, dropped, liveFeeds}') then return end
+
+    try('discord.Announce unknown feed', function()
+        check(exports.gtarp_discord:Announce('no_such_feed', { title = 'x' }) == false,
+            'discord.Announce(unknown feed) returns false')
+    end)
+
+    if #stats.liveFeeds == 0 then
+        skip('discord.Announce delivery — no feed webhooks configured on this boot')
+    else
+        try('discord.Announce live feed', function()
+            check(exports.gtarp_discord:Announce(stats.liveFeeds[1], {
+                title = '[devtest] contract probe',
+                description = 'Queued by gtarp_devtest — safe to ignore.',
+            }) == true, ('discord.Announce queues to live feed "%s"'):format(stats.liveFeeds[1]))
+        end)
+    end
+end
+
 local function testPlayerBound()
     -- These contracts need a live player source; exercising them with a
     -- fake src would test error paths, not the contract. Visible SKIPs so
@@ -283,6 +318,7 @@ AddEventHandler('onResourceStart', function(resource)
         testShapes()
         testItems()
         testTables()
+        testDiscord()
         testPlayerBound()
         local mark = failed == 0 and '✔' or '✘'
         print(('[gtarp_devtest] %s %d passed, %d failed, %d skipped'):format(mark, passed, failed, skipped))

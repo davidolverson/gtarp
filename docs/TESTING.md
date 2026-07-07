@@ -359,7 +359,32 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 
 ---
 
-## 23. Triage — common failures
+## 23. Discord announcer — `gtarp_discord`
+
+- [ ] Boot banner lists live vs off feeds and matches the
+      `gtarp:discord_*` convars actually set in `custom.cfg`.
+- [ ] With no convars set: banner says `live: (none)`, gameplay in every
+      producer (flashdrop, pumpcoin, clout, evidence, counterfeit) is
+      unaffected, and no HTTP traffic leaves the server.
+- [ ] With a feed configured: arm a flashdrop (`/flashdrop` admin path) —
+      one "DROP INCOMING" embed lands in the channel with **no location**;
+      mint a pumpcoin — one "NEW LISTING" embed with **no creator name**;
+      `/golive` — one going-live embed only when the in-city announce also
+      fires; open a new evidence case — one "CASE #N OPENED" embed in the
+      police channel; push a district over the counterfeit heat threshold —
+      one Weazel bulletin per ping cooldown, district label only.
+- [ ] Rug pull: "RUG PULL" embed immediately (holder count, no identity),
+      then "RUG REVEALED" embed with the name only after the in-city
+      reveal fires.
+- [ ] Flood clamp: >10 posts to one feed inside a minute drops the excess
+      with a `[gtarp_discord]` console line; other feeds keep delivering.
+- [ ] Bad webhook URL: console shows `delivery failed (HTTP 4xx)` lines,
+      queue keeps draining, server stays healthy.
+- [ ] devtest boot (`set gtarp:devtest 1`): GetStats/Announce contract
+      PASSes; with a configured feed, exactly one `[devtest] contract
+      probe` embed lands.
+
+## 24. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |

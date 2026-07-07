@@ -32,6 +32,13 @@ local DAY = 86400
 
 local function now() return os.time() end
 
+-- Soft dependency: exchange posts go out iff gtarp_discord is running with
+-- the 'market' feed configured. Never blocks or errors exchange flows.
+local function discordAnnounce(payload)
+    if GetResourceState('gtarp_discord') ~= 'started' then return end
+    pcall(function() exports.gtarp_discord:Announce('market', payload) end)
+end
+
 local function dbg(...)
     if Config.Debug then print('[gtarp_pumpcoin]', ...) end
 end
@@ -437,6 +444,13 @@ RegisterNetEvent('gtarp_pumpcoin:mint', function(data)
     }
 
     dbg(('minted %s ($%s) by %s'):format(name, ticker, cid))
+    -- Creator identity stays out of the post — anonymity until a rug
+    -- reveal is the whole game.
+    discordAnnounce({
+        title = ('NEW LISTING — %s $%s %s'):format(name, ticker, emoji),
+        description = ('Fresh on the board at $%.2f. Bonding-curve priced — early buys move it. %s')
+            :format(launchPrice, verified and 'Verified creator.' or 'Anonymous creator. You know the risks.'),
+    })
     Bridge.Notify(src, 'Exchange',
         ('%s $%s is live. Your dev wallet holds %d units. Nobody knows it is you.')
         :format(emoji, ticker, Config.DevAllocationUnits), 'success')
@@ -558,6 +572,11 @@ local function broadcastRug(coin)
             TriggerClientEvent('gtarp_pumpcoin:rugged', s, { coinId = coin.id, ticker = coin.ticker })
         end
     end
+    discordAnnounce({
+        title = ('🚨 RUG PULL — $%s %s'):format(coin.ticker, coin.emoji),
+        description = ('The dev just dumped the wallet on %d holder(s). Identity hits the public record in %d minutes.')
+            :format(#holders, minutes),
+    })
 end
 
 RegisterNetEvent('gtarp_pumpcoin:sell', function(data)
@@ -774,6 +793,13 @@ local function revealCreator(coin)
     Bridge.NotifyAll('🕵️ RUG REVEALED',
         ('$%s %s was rugged by %s. Settle it in RP — that is now public record.')
         :format(coin.ticker, coin.emoji, coin.creator_name), 'error')
+    -- Same information the in-city NotifyAll just made public record —
+    -- never post an identity Discord-first.
+    discordAnnounce({
+        title = ('🕵️ RUG REVEALED — $%s'):format(coin.ticker),
+        description = ('%s rugged $%s. Public record now. Settle it in the city.')
+            :format(coin.creator_name, coin.ticker),
+    })
 
     if Config.WriteEvidenceOnReveal then
         pcall(function()
