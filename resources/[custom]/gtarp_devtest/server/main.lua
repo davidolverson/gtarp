@@ -9,6 +9,12 @@
 --   * gtarp_staff's Log export actually landing an audit_log row
 --   * gtarp_courier GetOpenPostings / gtarp_eventguard GetViolations /
 --     gtarp_perf GetSummary shapes
+--   * every ExtraItems name actually registered in ox_inventory (the
+--     runtime-merge no-op bug shipped silently for weeks — this catches a
+--     fresh deploy where tools/patch-ox-items.sh wasn't run)
+--   * every DB table each started gtarp resource needs actually existing
+--     (deploy does NOT auto-apply sql/ migrations — this catches the miss
+--     loudly instead of via first-use query errors)
 --
 -- Gated on the `gtarp:devtest` convar (default OFF — production never runs
 -- this). Enable for one boot on the local test server:
@@ -143,6 +149,98 @@ local function testShapes()
     end
 end
 
+-- Every ExtraItems declaration must be visible in ox_inventory's runtime
+-- items table. exports.ox_inventory:Items() returns a msgpack COPY — safe
+-- for reading presence, useless for writing (which is exactly the bug this
+-- test exists to catch).
+local function testItems()
+    if not resourceUp('ox_inventory') then
+        fail('items — ox_inventory not started')
+        return
+    end
+    if not resourceUp('ox_inventory_overrides') then
+        fail('items — ox_inventory_overrides not started')
+        return
+    end
+
+    local src = LoadResourceFile('ox_inventory_overrides', 'data/items.lua')
+    if not check(type(src) == 'string' and #src > 0,
+        'items — ExtraItems declaration file readable') then return end
+
+    local env = {}
+    local chunk, lerr = load(src, '@ox_inventory_overrides/data/items.lua', 't', env)
+    if not check(chunk ~= nil,
+        ('items — ExtraItems file compiles%s'):format(chunk and '' or (': ' .. tostring(lerr)))) then return end
+    if not try('items — ExtraItems file runs', chunk) then return end
+
+    local names = {}
+    for name in pairs(env.ExtraItems or {}) do names[#names + 1] = name end
+    table.sort(names)
+    if not check(#names > 0, 'items — ExtraItems declares at least one item') then return end
+
+    local registered
+    if not try('items — ox_inventory:Items()', function()
+        registered = exports.ox_inventory:Items()
+    end) then return end
+    if not check(type(registered) == 'table', 'items — ox_inventory:Items() returns table') then return end
+
+    local missing = {}
+    for _, n in ipairs(names) do
+        if registered[n] == nil then missing[#missing + 1] = n end
+    end
+    check(#missing == 0, #missing == 0
+        and ('items — all %d custom items registered in ox_inventory'):format(#names)
+        or ('items — %d/%d custom items MISSING from ox_inventory: %s — run tools/patch-ox-items.sh against the deployed resources dir')
+            :format(#missing, #names, table.concat(missing, ', ')))
+end
+
+-- Each started gtarp resource's tables must exist. One information_schema
+-- round-trip, then set lookups — no per-table queries.
+local REQUIRED_TABLES = {
+    gtarp_allowlist   = { 'allowlist' },
+    gtarp_clout       = { 'gtarp_clout_streamers', 'gtarp_clout_deals', 'gtarp_clout_vod' },
+    gtarp_counterfeit = { 'gtarp_counterfeit_printers', 'gtarp_counterfeit_batches',
+                          'gtarp_counterfeit_wads', 'gtarp_counterfeit_hops',
+                          'gtarp_counterfeit_leads', 'gtarp_counterfeit_heat' },
+    gtarp_courier     = { 'courier_postings' },
+    gtarp_eventguard  = { 'event_violations' },
+    gtarp_evidence    = { 'gtarp_evidence', 'gtarp_evidence_cases', 'gtarp_evidence_suspects' },
+    gtarp_flashdrop   = { 'gtarp_flashdrop_drops', 'gtarp_flashdrop_serials',
+                          'gtarp_flashdrop_provenance', 'gtarp_flashdrop_listings' },
+    gtarp_grind       = { 'grind_skill' },
+    gtarp_pumpcoin    = { 'gtarp_pumpcoin_coins', 'gtarp_pumpcoin_holdings', 'gtarp_pumpcoin_trades' },
+    gtarp_replay      = { 'gtarp_replay_scenes', 'gtarp_replay_participants' },
+    gtarp_staff       = { 'audit_log' },
+    gtarp_turf        = { 'gtarp_turf' },
+    gtarp_witnesses   = { 'gtarp_witnesses_incidents', 'gtarp_witnesses' },
+}
+
+local function testTables()
+    local present = {}
+    local ok = pcall(function()
+        local rows = MySQL.query.await(
+            'SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()') or {}
+        for _, r in ipairs(rows) do present[r.t or r.T] = true end
+    end)
+    if not check(ok and next(present) ~= nil, 'tables — information_schema readable') then return end
+
+    local resources = {}
+    for resource in pairs(REQUIRED_TABLES) do resources[#resources + 1] = resource end
+    table.sort(resources)
+    for _, resource in ipairs(resources) do
+        if resourceUp(resource) then
+            local missing = {}
+            for _, t in ipairs(REQUIRED_TABLES[resource]) do
+                if not present[t] then missing[#missing + 1] = t end
+            end
+            check(#missing == 0, #missing == 0
+                and ('tables — %s: all %d present'):format(resource, #REQUIRED_TABLES[resource])
+                or ('tables — %s MISSING %s — apply the matching sql/ migration')
+                    :format(resource, table.concat(missing, ', ')))
+        end
+    end
+end
+
 local function testPlayerBound()
     -- These contracts need a live player source; exercising them with a
     -- fake src would test error paths, not the contract. Visible SKIPs so
@@ -170,6 +268,8 @@ AddEventHandler('onResourceStart', function(resource)
         testEvidence()
         testStaffLog()
         testShapes()
+        testItems()
+        testTables()
         testPlayerBound()
         local mark = failed == 0 and '✔' or '✘'
         print(('[gtarp_devtest] %s %d passed, %d failed, %d skipped'):format(mark, passed, failed, skipped))

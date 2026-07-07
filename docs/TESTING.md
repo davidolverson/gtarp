@@ -50,12 +50,17 @@ tester:
       gtarp_staff, gtarp_eventguard, gtarp_allowlist (if enabled),
       gtarp_courier, gtarp_perf, server_identity, server_base`.
 - [ ] `/serverinfo` typed in the **server console** prints the identity line.
-- [ ] **Contract self-tests** (dev boots only): launch with
-      `+set gtarp:devtest 1` and confirm the console prints
-      `[gtarp_devtest] ✔ N passed, 0 failed, 3 skipped`. Any FAIL line means
-      a cross-resource contract (evidence v2 API, staff log sink, export
-      shapes) broke — do not ship. Production leaves the convar unset;
-      the resource then prints one "disabled" line and does nothing.
+- [ ] **Contract self-tests** (dev boots only): enable with
+      `set gtarp:devtest 1` in a cfg (txAdmin does NOT forward `+set` from
+      the FXServer command line to the inner server) and confirm the console
+      prints `[gtarp_devtest] ✔ N passed, 0 failed, 3 skipped` (32/0/3 as of
+      the items+tables groups). Any FAIL line means a cross-resource
+      contract broke — evidence v2 API, staff log sink, export shapes,
+      an ExtraItems name missing from ox_inventory's runtime table (run
+      `tools/patch-ox-items.sh`), or a gtarp table missing from the DB
+      (apply the matching `sql/` migration) — do not ship. Production
+      leaves the convar unset; the resource then prints one "disabled"
+      line and does nothing.
 
 ---
 
