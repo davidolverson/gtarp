@@ -3,8 +3,8 @@ game 'gta5'
 lua54 'yes'
 
 author 'EvThatGuy'
-version '0.2.0'
-description 'gtarp mdt — police mobile data terminal (BOLOs, warrants, bookings, case files, reports)'
+version '0.3.0'
+description 'gtarp mdt — police mobile data terminal (BOLOs, warrants, bookings, case files, reports, 911 log)'
 
 -- Server-only on purpose: every command reads server state and replies in
 -- chat. There is nothing for a client script to do and therefore nothing

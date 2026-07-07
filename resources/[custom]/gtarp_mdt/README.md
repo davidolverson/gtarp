@@ -41,6 +41,14 @@ running and falls back to identical built-in defaults when it isn't.
   trail it never wrote.
 - `/mdtcase` suspect lines flag `ACTIVE WARRANT #N` on identified
   suspects, closing the loop: fraud flag → case file → warrant → booking.
+- `/calls [n]` — the 911 log. A passive recorder on the recipe's central
+  `police:server:policeAlert` funnel (houserobbery, storerobbery,
+  counterfeit heat pings, witness gunfire reports all flow through it) —
+  the recipe notifies whoever is on duty and forgets; the MDT remembers.
+  Per-source flood guard, 7-day retention. Known coverage gap: the two
+  producers that fire the officer notify directly client-side
+  (qbx_truckrobbery, qbx_police's cam command) bypass the funnel and are
+  not recorded.
 
 ## Design notes
 

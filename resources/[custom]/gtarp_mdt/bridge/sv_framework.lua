@@ -119,6 +119,30 @@ function Bridge.GetMDTContract()
     return ok and type(mdt) == 'table' and mdt or nil
 end
 
+-- Subscribe to the recipe's central police-alert funnel
+-- (police:server:policeAlert — houserobbery/storerobbery/counterfeit/
+-- witnesses all flow through it). handler(text, src|nil, coords|nil).
+-- Net-registered because storerobbery-style producers trigger it FROM
+-- the client; same nil-source fallback the recipe handler uses. The
+-- framework event name lives here, not in logic.
+function Bridge.OnPoliceAlert(handler)
+    RegisterNetEvent('police:server:policeAlert', function(text, _camId, playerSource)
+        local src = tonumber(playerSource)
+        if not src or src == 0 then
+            src = (source and source ~= 0) and source or nil
+        end
+        local coords
+        if src then
+            local ped = GetPlayerPed(src)
+            if ped and ped ~= 0 then
+                local c = GetEntityCoords(ped)
+                coords = { x = c.x, y = c.y, z = c.z }
+            end
+        end
+        handler(tostring(text or ''), src, coords)
+    end)
+end
+
 function Bridge.ResourceStarted(name)
     return GetResourceState(name) == 'started'
 end

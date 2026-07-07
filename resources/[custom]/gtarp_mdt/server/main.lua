@@ -87,6 +87,7 @@ local function cmdMdt(src)
     local bolos = activeBoloCount()
     lines[#lines + 1] = ('%d active BOLO(s) — /bolos to list, /bolo [text] to issue'):format(bolos)
     lines[#lines + 1] = ('%d active warrant(s) — /warrants to list'):format(activeWarrantCount())
+    lines[#lines + 1] = ('%d call(s) in 24h — /calls for the 911 log'):format(calls24h())
     local cases = openCases(Config.Cases.ListLimit)
     if cases then
         lines[#lines + 1] = ('%d open case file(s)%s — /mdtcases to list'):format(
@@ -571,6 +572,92 @@ local function cmdReport(src, args)
 end
 
 -- ---------------------------------------------------------------------------
+-- Dispatch call history (v0.3.0) — passive recorder on the recipe's
+-- central alert funnel. Known coverage gap, documented in README: the
+-- two producers that TriggerClientEvent the officer notify directly
+-- (qbx_truckrobbery, one qbx_police command) never touch the server
+-- funnel and are not recorded.
+-- ---------------------------------------------------------------------------
+
+local lastCallBySrc = {}   -- [src or 0] = ts, flood guard on the recorder
+
+local function calls24h()
+    local n = 0
+    pcall(function()
+        local r = MySQL.single.await(
+            'SELECT COUNT(*) AS n FROM gtarp_mdt_calls WHERE created_at >= NOW() - INTERVAL 24 HOUR')
+        n = r and tonumber(r.n) or 0
+    end)
+    return n
+end
+
+local function pruneCalls()
+    pcall(function()
+        MySQL.update.await(
+            'DELETE FROM gtarp_mdt_calls WHERE created_at < NOW() - INTERVAL ? DAY',
+            { Config.Calls.RetentionDays })
+    end)
+end
+
+local function recordCall(text, src, coords)
+    if not Config.Calls.Enabled then return end
+    text = text:gsub('^%s+', ''):gsub('%s+$', '')
+    if text == '' then return end
+    if #text > Config.Calls.TextMax then text = text:sub(1, Config.Calls.TextMax) end
+
+    local key = src or 0
+    local t = now()
+    if (lastCallBySrc[key] or 0) + Config.Calls.PerSourceCdSec > t then return end
+    lastCallBySrc[key] = t
+
+    local label = ''
+    if src then
+        local cid = Bridge.GetCitizenId(src)
+        label = cid and ('citizen %s'):format(cid) or ''
+    end
+    pcall(function()
+        MySQL.insert.await(
+            'INSERT INTO gtarp_mdt_calls (text, x, y, z, src_label) VALUES (?, ?, ?, ?, ?)',
+            { text, coords and coords.x or nil, coords and coords.y or nil,
+              coords and coords.z or nil, label })
+    end)
+    dbg(('call logged: %s'):format(text))
+end
+
+-- /calls [n] — recent 911 traffic
+local function cmdCalls(src, args)
+    if not gate(src, 'calls') then return end
+    local n = math.min(math.max(math.floor(tonumber(args[1]) or Config.Calls.ListDefault), 1),
+        Config.Calls.ListMax)
+    local rows = {}
+    pcall(function()
+        rows = MySQL.query.await([[
+            SELECT id, text, src_label,
+                   TIMESTAMPDIFF(MINUTE, created_at, NOW()) AS age_m
+            FROM gtarp_mdt_calls ORDER BY id DESC LIMIT ?
+        ]], { n }) or {}
+    end)
+    if #rows == 0 then
+        Bridge.Reply(src, { 'no calls on the log' })
+        return
+    end
+    local lines = {}
+    for _, c in ipairs(rows) do
+        lines[#lines + 1] = ('#%d [%dm ago] %s%s'):format(
+            c.id, tonumber(c.age_m) or 0, c.text,
+            c.src_label ~= '' and (' — ' .. c.src_label) or '')
+    end
+    Bridge.Reply(src, lines)
+end
+
+CreateThread(function()
+    while true do
+        Wait(12 * 3600 * 1000)
+        pruneCalls()
+    end
+end)
+
+-- ---------------------------------------------------------------------------
 -- Commands + boot
 -- ---------------------------------------------------------------------------
 AddEventHandler('onResourceStart', function(resource)
@@ -593,11 +680,18 @@ AddEventHandler('onResourceStart', function(resource)
     Bridge.RegisterCommand('warrants', function(source) cmdWarrants(source) end)
     Bridge.RegisterCommand('warrantclear', function(source, args) cmdWarrantClear(source, args) end)
     Bridge.RegisterCommand('book', function(source, args) cmdBook(source, args) end)
+    Bridge.RegisterCommand('calls', function(source, args) cmdCalls(source, args) end)
 
-    print(('[gtarp_mdt] desk online — %d active BOLO(s), %d active warrant(s), %d report(s), %d booking(s); contract %s, case system %s')
-        :format(activeBoloCount(), activeWarrantCount(), reportCount(), bookingCount(),
+    if Config.Calls.Enabled then
+        Bridge.OnPoliceAlert(recordCall)
+        pruneCalls()
+    end
+
+    print(('[gtarp_mdt] desk online — %d active BOLO(s), %d active warrant(s), %d report(s), %d booking(s), %d call(s)/24h; contract %s, case system %s, call log %s')
+        :format(activeBoloCount(), activeWarrantCount(), reportCount(), bookingCount(), calls24h(),
             Bridge.GetMDTContract() and 'qbx_police_overrides' or 'built-in defaults',
-            Bridge.ResourceStarted('gtarp_evidence') and 'ONLINE' or 'offline'))
+            Bridge.ResourceStarted('gtarp_evidence') and 'ONLINE' or 'offline',
+            Config.Calls.Enabled and 'ON' or 'off'))
 end)
 
 -- ADDITIVE export — sibling systems (gtarp_citations' overdue escalation)
@@ -630,5 +724,6 @@ exports('GetSummary', function()
         reports = reportCount(),
         activeWarrants = activeWarrantCount(),
         bookings = bookingCount(),
+        calls24h = calls24h(),
     }
 end)

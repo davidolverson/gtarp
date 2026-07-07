@@ -51,6 +51,18 @@ Config.Warrants = {
     ChargesMax     = 500,
 }
 
+-- Dispatch call history (v0.3.0) — a passive recorder on the recipe's
+-- central police:server:policeAlert funnel. The recipe notifies on-duty
+-- officers and forgets; /calls reads the log back.
+Config.Calls = {
+    Enabled        = true,
+    TextMax        = 140,   -- alert text stored/displayed at most this long
+    PerSourceCdSec = 5,     -- one logged alert per reporting source per window
+    ListDefault    = 8,     -- /calls default rows
+    ListMax        = 20,    -- /calls [n] cap
+    RetentionDays  = 7,     -- prune rows older than this (boot + every 12h)
+}
+
 -- Per-source command cooldowns (seconds).
 Config.RateLimits = {
     mdt          = 2,
@@ -64,4 +76,5 @@ Config.RateLimits = {
     warrants     = 2,
     warrantclear = 2,
     book         = 10,
+    calls        = 2,
 }

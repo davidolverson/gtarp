@@ -445,10 +445,15 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       the notify. `/warrantclear [#]` flips one to `dropped` instead.
 - [ ] Physical side unaffected: recipe `/cuff` `/jail` `/unjail` still
       work exactly as before (this layer never touches them).
+- [ ] 911 log: trigger any funnel alert (rob a store register, fire a
+      gun near an NPC witness, counterfeit heat ping) → `/calls` shows it
+      with age and reporting citizen; repeat alerts from the same source
+      inside 5s log once. `qbx_truckrobbery` alerts do NOT appear
+      (documented gap — direct client notify, bypasses the funnel).
 - [ ] `enabled = false` in `qbx_police_overrides` `Config.MDT` → boot
       prints the disabled line, no MDT commands exist.
 - [ ] devtest boot: `mdt.GetSummary` + `evidence.ListCases` PASS; all
-      four `gtarp_mdt_*` tables present.
+      five `gtarp_mdt_*` tables present.
 
 ## 26. Citations — `gtarp_citations`
 
