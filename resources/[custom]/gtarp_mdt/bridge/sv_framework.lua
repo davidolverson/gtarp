@@ -123,13 +123,25 @@ end
 -- (police:server:policeAlert — houserobbery/storerobbery/counterfeit/
 -- witnesses all flow through it). handler(text, src|nil, coords|nil).
 -- Net-registered because storerobbery-style producers trigger it FROM
--- the client; same nil-source fallback the recipe handler uses. The
--- framework event name lives here, not in logic.
+-- the client. `source` is the CitizenFX-resolved sender of this net event
+-- and cannot be spoofed by the client; the `playerSource` payload argument
+-- CAN — a modified client can TriggerServerEvent this directly with any
+-- value it likes. We now trust `source` first whenever this fired from a
+-- real client (source ~= 0), and only fall back to the payload value when
+-- source == 0 (a trusted server-side resource raised this internally via
+-- TriggerEvent and resolved the player itself). Getting this backwards let
+-- a modified client frame another citizen in the persistent /calls log and
+-- burn that citizen's alert cooldown — this resource is the first consumer
+-- to persist this event's attribution to a queryable police record, so the
+-- recipe's looser handling of it is not safe to inherit here.
 function Bridge.OnPoliceAlert(handler)
     RegisterNetEvent('police:server:policeAlert', function(text, _camId, playerSource)
-        local src = tonumber(playerSource)
-        if not src or src == 0 then
-            src = (source and source ~= 0) and source or nil
+        local src
+        if source and source ~= 0 then
+            src = source
+        else
+            src = tonumber(playerSource)
+            if src == 0 then src = nil end
         end
         local coords
         if src then
