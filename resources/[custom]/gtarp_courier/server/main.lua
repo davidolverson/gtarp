@@ -101,6 +101,18 @@ RegisterNetEvent('gtarp_courier:complete', function(id)
     if not row or row.status ~= 'taken' or row.courier_citizenid ~= citizenid then
         return Bridge.Notify(src, 'Courier', 'Not your active delivery', 'error')
     end
+
+    -- The client only fires this after ITS OWN distance check passes — that
+    -- is presentation, not proof. A modified client can call this event the
+    -- instant a delivery is accepted and collect the bounty from anywhere.
+    -- Re-check arrival against the server's own read of the courier's
+    -- position before paying out real money.
+    local here = Bridge.GetCoords(src)
+    local dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z }
+    if not here or Bridge.Distance(here, dropoff) > (Config.DeliveryRadiusMeters + Config.DeliveryArrivalSlack) then
+        return Bridge.Notify(src, 'Courier', 'You are not at the dropoff yet.', 'error')
+    end
+
     MySQL.update.await(
         "UPDATE courier_postings SET status='complete', completed_at=NOW() WHERE id=?",
         { id }

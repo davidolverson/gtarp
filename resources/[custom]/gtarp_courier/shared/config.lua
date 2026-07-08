@@ -20,8 +20,13 @@ Config.PostingLifetimeMinutes = 30
 Config.MaxPostingsPerPlayer = 3
 
 -- Distance in metres at which a delivery is considered completed when
--- the courier arrives at the dropoff.
+-- the courier arrives at the dropoff. Client-side detection uses this
+-- directly; the server re-checks it against its OWN read of the courier's
+-- position (see gtarp_courier:complete) with a small extra allowance
+-- below for the gap between the client's 1.5s poll and the network
+-- round-trip — never the raw client claim.
 Config.DeliveryRadiusMeters = 8.0
+Config.DeliveryArrivalSlack = 6.0
 
 -- Blip colour for accepted delivery destination on the courier's map.
 Config.DeliveryBlipColor = 5
