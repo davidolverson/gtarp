@@ -523,7 +523,48 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] devtest boot: `tips.GetSummary` + `mdt.LogCall` round-trip PASS
       (probe row inserted into gtarp_mdt_calls and cleaned up).
 
-## 29. Triage — common failures
+## 29. Wanted board — `gtarp_bounty`
+
+- [ ] Boot banner: `board open — N contract(s) posted ($N total); warrant
+      sync ONLINE` (`off` if `gtarp_mdt` is stopped and
+      `Config.State.RequireMdt` is true).
+- [ ] State sync: issue a warrant on a citizen (`/warrant` via `gtarp_mdt`),
+      wait one sync (≤180s, or restart `gtarp_bounty` to sync immediately on
+      boot) → `/bounties` shows a `[STATE]` contract on that citizen with no
+      poster, funded from nothing (no player's bank moves). Serve/drop the
+      warrant → next sync closes the contract with no refund needed.
+- [ ] `/postbounty [citizenid] [amount] [reason]` away from the Bounty
+      Board → location error. At the board, on yourself → "cannot post a
+      bounty on yourself". On a real citizen with insufficient bank funds →
+      "need $N in the bank", nothing escrowed. With funds → bank debited,
+      `[PRIVATE by YourName]` row appears in `/bounties`.
+- [ ] Posting a 4th contract while 3 are still open (`MaxOpenPerCitizen`)
+      → rejected; posting again inside the 30s cooldown → rejected.
+- [ ] `/cancelbounty [#]` on someone else's contract → "no open contract of
+      yours". On your own unclaimed contract → 90% refunded, 10% fee kept,
+      row flips `cancelled`, disappears from `/bounties`.
+- [ ] `/capture [#]` from far away → "need to be right on top of them". Up
+      close but the target at full health → "still putting up too much of
+      a fight". Beat the target down (health ≤120 on the 100-200 ped
+      scale) and get within 3m → contract pays out to the hunter's bank
+      immediately; target gets a "just collected the bounty on your head"
+      notify.
+- [ ] Self-claim guards: poster cannot `/capture` their own posted
+      contract; the target themselves cannot `/capture` a bounty on their
+      own head. Both refused server-side regardless of what the client
+      sends.
+- [ ] Race guard: two hunters both meet the proximity+health bar and both
+      run `/capture [#]` — exactly one gets paid, the other sees "someone
+      beat you to that contract" (the guarded `UPDATE ... WHERE
+      status='active'` — verify only one bank credit happened).
+- [ ] TTL expiry: set a private contract's `expires_at` into the past in
+      the DB, wait one sweep (≤180s) → row flips `expired`, poster
+      refunded in full (no fee — natural expiry, not a cancel), notified
+      if online.
+- [ ] devtest boot: `bounty.GetSummary` shape PASSes; `gtarp_bounty_contracts`
+      table present.
+
+## 30. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |

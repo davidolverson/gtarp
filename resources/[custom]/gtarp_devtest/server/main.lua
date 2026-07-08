@@ -245,6 +245,17 @@ local function testShapes()
         fail('insurance — resource not started')
     end
 
+    if resourceUp('gtarp_bounty') then
+        try('bounty.GetSummary', function()
+            local s = exports.gtarp_bounty:GetSummary()
+            check(type(s) == 'table' and type(s.activeContracts) == 'number'
+                and type(s.totalAmount) == 'number',
+                'bounty.GetSummary returns {activeContracts, totalAmount}')
+        end)
+    else
+        fail('bounty — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -317,6 +328,7 @@ end
 -- round-trip, then set lookups — no per-table queries.
 local REQUIRED_TABLES = {
     gtarp_allowlist   = { 'allowlist' },
+    gtarp_bounty      = { 'gtarp_bounty_contracts' },
     gtarp_clout       = { 'gtarp_clout_streamers', 'gtarp_clout_deals', 'gtarp_clout_vod' },
     gtarp_counterfeit = { 'gtarp_counterfeit_printers', 'gtarp_counterfeit_batches',
                           'gtarp_counterfeit_wads', 'gtarp_counterfeit_hops',
