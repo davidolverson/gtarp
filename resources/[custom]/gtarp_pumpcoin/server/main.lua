@@ -28,6 +28,17 @@ local Billboards = {}       -- billboard id -> { coords, label, expires }
 local NextBillboardId = 1
 local Cooldowns = {}        -- citizenid -> { key -> epoch of last accepted use }
 
+-- In-flight ticker reservations. The uniqueness scan below only reads the
+-- in-memory Coins table, and Coins[coinId] is not populated until AFTER
+-- isVerifiedCreator's (conditional) turf query and two DB inserts yield —
+-- without this, two players racing to mint the identical ticker both pass
+-- the uniqueness check in the same window and both land live coins sharing
+-- one ticker (there is no DB UNIQUE constraint on ticker: it must stay
+-- reusable after a delist, so the guard has to be this in-memory reservation,
+-- same idiom as gtarp_counterfeit's placingPrinter). Cleared on every exit
+-- path below.
+local MintingTickers = {}   -- ticker -> true while its mint insert is in flight
+
 local DAY = 86400
 
 local function now() return os.time() end
@@ -369,6 +380,10 @@ RegisterNetEvent('gtarp_pumpcoin:mint', function(data)
     end
 
     -- Caps + ticker uniqueness among non-delisted coins.
+    if MintingTickers[ticker] then
+        Bridge.Notify(src, 'Exchange', ('$%s is already on the board.'):format(ticker), 'error')
+        return
+    end
     local liveCount, myCount = 0, 0
     for _, coin in pairs(Coins) do
         if coin.ticker == ticker then
@@ -393,8 +408,14 @@ RegisterNetEvent('gtarp_pumpcoin:mint', function(data)
         return
     end
 
+    -- Reserve the ticker for the rest of this mint. Every exit path from here
+    -- on must clear it — the success path clears it once Coins[coinId] itself
+    -- becomes the permanent record.
+    MintingTickers[ticker] = true
+
     -- Charge, then persist. Refund + un-stamp the cooldown on DB failure.
     if not Bridge.ChargeBank(src, Config.MintCost, 'pumpcoin-mint') then
+        MintingTickers[ticker] = nil
         refundCooldown(cid, 'mint')
         Bridge.Notify(src, 'Exchange', ('Minting costs $%d (bank).'):format(Config.MintCost), 'error')
         return
@@ -428,6 +449,7 @@ RegisterNetEvent('gtarp_pumpcoin:mint', function(data)
         if not Bridge.CreditBank(src, Config.MintCost, 'pumpcoin-mint-refund') then
             Bridge.CreditBankByCitizenId(cid, Config.MintCost, 'pumpcoin-mint-refund')
         end
+        MintingTickers[ticker] = nil
         refundCooldown(cid, 'mint')
         Bridge.Notify(src, 'Exchange', 'Mint failed — you were refunded.', 'error')
         return
@@ -442,6 +464,10 @@ RegisterNetEvent('gtarp_pumpcoin:mint', function(data)
         verified = verified, status = 'live', revealed = 0,
         created_ts = now(), rugged_ts = nil,
     }
+    -- Coins[coinId] is now the permanent authority for this ticker (the
+    -- uniqueness scan above sees it on every future mint) — release the
+    -- in-flight reservation.
+    MintingTickers[ticker] = nil
 
     dbg(('minted %s ($%s) by %s'):format(name, ticker, cid))
     -- Creator identity stays out of the post — anonymity until a rug
