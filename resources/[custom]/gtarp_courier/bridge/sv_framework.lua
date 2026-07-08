@@ -78,3 +78,18 @@ function Bridge.Notify(src, title, msg, t)
         title = title, description = msg, type = t or 'inform',
     })
 end
+
+-- Current coords of a player's ped as {x,y,z}, or nil. This is the server's
+-- OWN read of position — the delivery-complete handler never trusts the
+-- client's own "I arrived" claim (see server/main.lua gtarp_courier:complete).
+function Bridge.GetCoords(src)
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 then return nil end
+    local c = GetEntityCoords(ped)
+    return { x = c.x, y = c.y, z = c.z }
+end
+
+-- Distance in metres between two coord tables (accepts vector3 too).
+function Bridge.Distance(a, b)
+    return #(vector3(a.x, a.y, a.z) - vector3(b.x, b.y, b.z))
+end

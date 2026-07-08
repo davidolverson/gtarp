@@ -77,11 +77,20 @@ local function acceptPosting(src, id)
     if row.poster_citizenid == citizenid then
         return Bridge.Notify(src, 'Courier', 'Cannot accept your own posting', 'error')
     end
-    MySQL.update.await(
+    -- The local Postings cache can be stale if two couriers race the same
+    -- posting: both read status='open' before either write lands. The
+    -- UPDATE's own WHERE status='open' is the real atomic gate — only one
+    -- of the two racing UPDATEs affects a row. Check that before telling
+    -- THIS courier they won, or the loser gets a false "accepted" blip for
+    -- a delivery the DB actually assigned to someone else.
+    local marked = MySQL.update.await(
         "UPDATE courier_postings SET status='taken', courier_citizenid=?, accepted_at=NOW() WHERE id=? AND status='open'",
         { citizenid, id }
-    )
+    ) == 1
     loadPostings()
+    if not marked then
+        return Bridge.Notify(src, 'Courier', 'Posting unavailable', 'error')
+    end
     TriggerClientEvent('gtarp_courier:onAccepted', src, {
         id = id,
         dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z },
@@ -101,6 +110,18 @@ RegisterNetEvent('gtarp_courier:complete', function(id)
     if not row or row.status ~= 'taken' or row.courier_citizenid ~= citizenid then
         return Bridge.Notify(src, 'Courier', 'Not your active delivery', 'error')
     end
+
+    -- The client only fires this after ITS OWN distance check passes — that
+    -- is presentation, not proof. A modified client can call this event the
+    -- instant a delivery is accepted and collect the bounty from anywhere.
+    -- Re-check arrival against the server's own read of the courier's
+    -- position before paying out real money.
+    local here = Bridge.GetCoords(src)
+    local dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z }
+    if not here or Bridge.Distance(here, dropoff) > (Config.DeliveryRadiusMeters + Config.DeliveryArrivalSlack) then
+        return Bridge.Notify(src, 'Courier', 'You are not at the dropoff yet.', 'error')
+    end
+
     MySQL.update.await(
         "UPDATE courier_postings SET status='complete', completed_at=NOW() WHERE id=?",
         { id }
@@ -169,6 +190,20 @@ CreateThread(function()
                 Bridge.CreditBankByCitizenId(r.poster_citizenid, r.bounty, 'courier-refund')
             end
             if #expired > 0 then loadPostings() end
+        end
+
+        -- 'taken' postings have no other expiry path: a courier who accepts
+        -- and then goes idle/logs off/never travels locks the poster's
+        -- escrow forever otherwise. Sweep those too, on a longer clock.
+        local abandoned = MySQL.query.await(
+            "SELECT id, poster_citizenid, bounty FROM courier_postings WHERE status='taken' AND accepted_at < (NOW() - INTERVAL ? MINUTE)",
+            { Config.AcceptedLifetimeMinutes }
+        )
+        if abandoned then
+            for _, r in ipairs(abandoned) do
+                MySQL.update.await("UPDATE courier_postings SET status='expired' WHERE id=?", { r.id })
+                Bridge.CreditBankByCitizenId(r.poster_citizenid, r.bounty, 'courier-refund-abandoned')
+            end
         end
     end
 end)
