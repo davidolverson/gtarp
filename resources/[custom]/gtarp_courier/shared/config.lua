@@ -28,5 +28,13 @@ Config.MaxPostingsPerPlayer = 3
 Config.DeliveryRadiusMeters = 8.0
 Config.DeliveryArrivalSlack = 6.0
 
+-- Deliveries left in status='taken' longer than this are treated as
+-- abandoned (courier disconnected, went idle, or never intended to
+-- finish) and swept the same way expired 'open' postings are: bounty
+-- refunded to the poster, row marked 'expired'. Without this an
+-- accept-and-vanish permanently locks another player's escrowed money —
+-- 'taken' rows have no other expiry path.
+Config.AcceptedLifetimeMinutes = 60
+
 -- Blip colour for accepted delivery destination on the courier's map.
 Config.DeliveryBlipColor = 5

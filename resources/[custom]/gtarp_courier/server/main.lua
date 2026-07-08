@@ -191,6 +191,20 @@ CreateThread(function()
             end
             if #expired > 0 then loadPostings() end
         end
+
+        -- 'taken' postings have no other expiry path: a courier who accepts
+        -- and then goes idle/logs off/never travels locks the poster's
+        -- escrow forever otherwise. Sweep those too, on a longer clock.
+        local abandoned = MySQL.query.await(
+            "SELECT id, poster_citizenid, bounty FROM courier_postings WHERE status='taken' AND accepted_at < (NOW() - INTERVAL ? MINUTE)",
+            { Config.AcceptedLifetimeMinutes }
+        )
+        if abandoned then
+            for _, r in ipairs(abandoned) do
+                MySQL.update.await("UPDATE courier_postings SET status='expired' WHERE id=?", { r.id })
+                Bridge.CreditBankByCitizenId(r.poster_citizenid, r.bounty, 'courier-refund-abandoned')
+            end
+        end
     end
 end)
 
