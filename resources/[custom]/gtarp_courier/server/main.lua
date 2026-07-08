@@ -77,11 +77,20 @@ local function acceptPosting(src, id)
     if row.poster_citizenid == citizenid then
         return Bridge.Notify(src, 'Courier', 'Cannot accept your own posting', 'error')
     end
-    MySQL.update.await(
+    -- The local Postings cache can be stale if two couriers race the same
+    -- posting: both read status='open' before either write lands. The
+    -- UPDATE's own WHERE status='open' is the real atomic gate — only one
+    -- of the two racing UPDATEs affects a row. Check that before telling
+    -- THIS courier they won, or the loser gets a false "accepted" blip for
+    -- a delivery the DB actually assigned to someone else.
+    local marked = MySQL.update.await(
         "UPDATE courier_postings SET status='taken', courier_citizenid=?, accepted_at=NOW() WHERE id=? AND status='open'",
         { citizenid, id }
-    )
+    ) == 1
     loadPostings()
+    if not marked then
+        return Bridge.Notify(src, 'Courier', 'Posting unavailable', 'error')
+    end
     TriggerClientEvent('gtarp_courier:onAccepted', src, {
         id = id,
         dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z },
