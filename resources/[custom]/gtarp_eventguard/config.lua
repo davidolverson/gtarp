@@ -26,6 +26,32 @@ Config.Events = {
     ['gtarp_courier:complete'] = { calls = 20, window_seconds = 60  },
     ['gtarp_courier:cancel']   = { calls = 10, window_seconds = 60  },
 
+    -- gtarp_robbery — ATM two-phase flow. `complete` is the money-touching
+    -- event (Bridge.AddCash payout); `start`/`cancel` are budgeted too since
+    -- they drive the police dispatch fan-out and the per-ATM cooldown
+    -- reservation. ensure order in custom.cfg puts gtarp_eventguard before
+    -- gtarp_robbery, so these guards register first in the handler chain.
+    ['gtarp_robbery:start']    = { calls = 10, window_seconds = 60 },
+    ['gtarp_robbery:complete'] = { calls = 10, window_seconds = 60 },
+    ['gtarp_robbery:cancel']   = { calls = 10, window_seconds = 60 },
+
+    -- gtarp_mechanic — repair-invoice two-phase flow. `complete` charges the
+    -- customer's bank and credits the mechanic (Bridge.ChargeBank /
+    -- Bridge.CreditBank). Budget sized generously so a busy on-duty
+    -- mechanic working multiple vehicles isn't throttled.
+    ['gtarp_mechanic:start']    = { calls = 20, window_seconds = 60 },
+    ['gtarp_mechanic:complete'] = { calls = 20, window_seconds = 60 },
+    ['gtarp_mechanic:cancel']   = { calls = 10, window_seconds = 60 },
+
+    -- gtarp_turf — territory capture two-phase flow. `complete` writes
+    -- gtarp_turf (owner_gang flip = the reputation payout). `requestSync`
+    -- is read-only but fans a full zone snapshot out per call — same
+    -- "blunt budget as defense-in-depth" reasoning as ox_inventory below.
+    ['gtarp_turf:requestSync'] = { calls = 20, window_seconds = 30 },
+    ['gtarp_turf:requestTag']  = { calls = 10, window_seconds = 60 },
+    ['gtarp_turf:complete']    = { calls = 10, window_seconds = 60 },
+    ['gtarp_turf:cancel']      = { calls = 10, window_seconds = 60 },
+
     -- ox_inventory shop purchase fan-out — recipe-shipped net event.
     -- ox_inventory does its own per-event data validation (Utils.LogExploit);
     -- this blunt call-count budget is defense-in-depth on top.
