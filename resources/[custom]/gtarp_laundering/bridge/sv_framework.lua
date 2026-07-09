@@ -48,8 +48,11 @@ end
 function Bridge.CreditBank(src, amount, reason)
     local p = getPlayer(src)
     if not p or not p.Functions then return false end
-    p.Functions.AddMoney('bank', amount, reason)
-    return true
+    -- Return AddMoney's real result (not a blind true) so the caller's refund
+    -- path actually fires if the credit didn't land — otherwise removed dirty
+    -- money could vanish uncredited.
+    local ok, res = pcall(function() return p.Functions.AddMoney('bank', amount, reason) end)
+    return ok and res ~= false
 end
 
 -- Presence check: can ox_inventory resolve this item name? Used at boot to

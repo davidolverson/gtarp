@@ -73,6 +73,12 @@ end
 local function cmdBorrow(src, args)
     if src == 0 then return end
     if not enabled then Bridge.Notify(src, 'Loan Shark', 'The shark isn\'t around.', 'error'); return end
+    -- The whole point of the shark is that defaulting has teeth (a warrant via
+    -- gtarp_mdt). If that enforcement is offline, defaulting costs nothing and
+    -- borrowing becomes free dirty money on a timer — so don't lend without it.
+    if not Bridge.ResourceStarted('gtarp_mdt') then
+        Bridge.Notify(src, 'Loan Shark', 'The shark\'s enforcement is offline right now — no loans.', 'error'); return
+    end
     local t = now()
     if (lastAction[src] or 0) + Config.CooldownSec > t then
         Bridge.Notify(src, 'Loan Shark', 'Hold on.', 'error'); return

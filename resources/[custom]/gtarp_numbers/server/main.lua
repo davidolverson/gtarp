@@ -17,6 +17,7 @@ local claimLock  = {}     -- [citizenid] = true while a collect is in flight
 local openDrawSeq = 1     -- the draw new bets accumulate into
 local nextDrawAt = 0      -- os.time() the open draw resolves (for the countdown)
 local drawEnabled = false -- gated on the win-item existing at boot
+local drawNonce  = 0      -- per-draw counter folded into the reseed
 
 math.randomseed(os.time())
 
@@ -40,12 +41,31 @@ end
 -- ---------------------------------------------------------------------------
 local function runDraw()
     local seq = openDrawSeq
+    -- Advance the open sequence BEFORE snapshotting so any bet placed from here
+    -- on attaches to the NEXT draw, and resolve every open bet with draw_seq <=
+    -- seq so a straggler inserted mid-resolve is still swept — never orphaned
+    -- with its stake lost. (fixes the resolve-window orphaned-bet race)
+    openDrawSeq = seq + 1
+    nextDrawAt = now() + Config.DrawIntervalSec
+
+    -- Reseed per draw from entropy a client can't observe (sub-second os.clock +
+    -- server game timer + a nonce). The winning number is drawn from math.random,
+    -- which is NOT a CSPRNG — seeded only once at boot from os.time(), the whole
+    -- future sequence would be brute-forceable from the public winning-number
+    -- history, letting a player predict draws and print money at 60x. Reseeding
+    -- each draw from unobservable entropy breaks that boot-seed prediction.
+    drawNonce = drawNonce + 1
+    math.randomseed((os.time() * 1000)
+        + math.floor((os.clock() % 1) * 1e6)
+        + (Bridge.GameTimer() % 1000000)
+        + drawNonce * 2654435761)
+    math.random(); math.random()  -- warm the reseeded state
     local win = math.random(0, Config.MaxNumber)
 
     local bets = {}
     pcall(function()
         bets = MySQL.query.await(
-            "SELECT id, citizenid, number, stake FROM gtarp_numbers_bets WHERE draw_seq = ? AND status = 'open'",
+            "SELECT id, citizenid, number, stake FROM gtarp_numbers_bets WHERE draw_seq <= ? AND status = 'open'",
             { seq }) or {}
     end)
 
@@ -72,9 +92,6 @@ local function runDraw()
             "INSERT INTO gtarp_numbers_draws (draw_seq, winning_number, bets, staked, payout_total) VALUES (?, ?, ?, ?, ?)",
             { seq, win, #bets, staked, payoutTotal })
     end)
-
-    openDrawSeq = seq + 1
-    nextDrawAt = now() + Config.DrawIntervalSec
 
     for cid, amt in pairs(winners) do
         local sid = Bridge.GetSourceByCitizenId(cid)

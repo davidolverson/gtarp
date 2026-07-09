@@ -113,26 +113,46 @@ local function cmdShakedown(src)
     end
 
     local amount = math.random(Config.PayoutMin, Config.PayoutMax)
+    local flagged = math.random() < Config.ReportChance
+
+    -- Record the collection (the durable per-business cooldown claim) BEFORE
+    -- paying, so a swallowed insert can't leave the business collectable again
+    -- right after a payout (free-repeat hole). If the insert fails, nobody pays.
+    local rowId
+    local okIns = pcall(function()
+        rowId = MySQL.insert.await(
+            [[INSERT INTO gtarp_protection_collections
+                (gang, business_id, zone_id, citizenid, amount, flagged)
+              VALUES (?, ?, ?, ?, ?, ?)]],
+            { gang.name, business.id, business.zone, cid, amount, flagged and 1 or 0 })
+    end)
+    if not okIns or not rowId then
+        collectLock[business.id] = nil
+        Bridge.Notify(src, 'Protection', "Couldn't work the books right now — try again.", 'error')
+        return
+    end
+
+    -- Now hand over the cash; if it fails, void the claim so the business isn't
+    -- falsely locked for a payout that never happened.
     if not Bridge.GiveItem(src, Config.Payout, amount) then
+        pcall(function()
+            MySQL.update.await("DELETE FROM gtarp_protection_collections WHERE id = ?", { rowId })
+        end)
         collectLock[business.id] = nil
         Bridge.Notify(src, 'Protection', "Couldn't take the cash right now — try again.", 'error')
         return
     end
 
-    local flagged = math.random() < Config.ReportChance
-    local caseId
+    -- Reported? fire the alert + evidence and attach the case to the row.
     if flagged then
         Bridge.PoliceAlert(src, 'Suspected extortion in progress')
-        caseId = fileEvidence(cid, business, amount)
+        local caseId = fileEvidence(cid, business, amount)
+        if caseId then
+            pcall(function()
+                MySQL.update.await("UPDATE gtarp_protection_collections SET evidence_case_id = ? WHERE id = ?", { caseId, rowId })
+            end)
+        end
     end
-
-    pcall(function()
-        MySQL.insert.await(
-            [[INSERT INTO gtarp_protection_collections
-                (gang, business_id, zone_id, citizenid, amount, flagged, evidence_case_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?)]],
-            { gang.name, business.id, business.zone, cid, amount, flagged and 1 or 0, caseId })
-    end)
 
     collectLock[business.id] = nil
     Bridge.Notify(src, 'Protection',

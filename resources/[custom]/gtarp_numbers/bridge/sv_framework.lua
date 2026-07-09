@@ -95,6 +95,13 @@ function Bridge.ResourceStarted(name)
     return GetResourceState(name) == 'started'
 end
 
+-- High-resolution server timer (ms since server start). Mixed into the
+-- per-draw RNG reseed as an entropy source a client can't observe — see the
+-- reseed in server/main.lua runDraw() (defeats boot-seed prediction of draws).
+function Bridge.GameTimer()
+    return GetGameTimer()
+end
+
 -- Unrestricted chat command (all gating is server-side in the handler).
 function Bridge.RegisterCommand(name, handler)
     RegisterCommand(name, handler, false)

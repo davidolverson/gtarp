@@ -50,7 +50,10 @@ end
 function Bridge.TakeBank(src, amount, reason)
     local p = getPlayer(src)
     if not p or not p.Functions then return false end
-    return p.Functions.RemoveMoney('bank', amount, reason) == true
+    -- pcall-wrapped (like GiveDirty) so a framework throw can't unwind the
+    -- caller and leak its in-flight repay lock.
+    local ok, res = pcall(function() return p.Functions.RemoveMoney('bank', amount, reason) end)
+    return ok and res == true
 end
 
 -- Refund a clean-bank repayment (used only when a repayment races the default
@@ -58,7 +61,7 @@ end
 function Bridge.GiveBank(src, amount, reason)
     local p = getPlayer(src)
     if not p or not p.Functions then return false end
-    p.Functions.AddMoney('bank', amount, reason)
+    pcall(function() p.Functions.AddMoney('bank', amount, reason) end)
     return true
 end
 
