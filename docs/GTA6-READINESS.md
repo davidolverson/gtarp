@@ -98,6 +98,9 @@ rewrite one small adapter file per resource against the GTA VI framework.
   guard are Tier 1/2; the Bounty Board desk coords are Tier 3)
 - `gtarp_fightclub` (queue/pairing, betting pool, parimutuel payout math,
   and the knockout/forfeit sweep are Tier 1/2; the Ring coords are Tier 3)
+- `gtarp_ransom` (kidnap re-validation, demand/pay ledger, expiry sweep,
+  and the evidence/warrant hookup are Tier 1/2; the drop point coords are
+  Tier 3)
 
 ### Tier 3 — Rewrite / retune (bound to the GTA V world)
 Anything tied to the Los Santos map, the GTA V model set, or GTA V
@@ -227,6 +230,7 @@ coords are known.
 | `gtarp_turf` | 2/3 | Bridge the framework gang calls and blip natives; tag/ownership/leaderboard logic unchanged. **Zone coords** (worksheet §13) are Tier 3. |
 | `gtarp_bounty` | 2/3 | Bridge the framework money/health/position calls; contract ledger, warrant sync, and capture-guard logic unchanged. **Bounty Board desk coords** are Tier 3. |
 | `gtarp_fightclub` | 2/3 | Bridge the framework money/health/position/weapon calls; queue pairing, betting pool, knockout/forfeit sweep, and parimutuel payout math unchanged. **Ring coords** are Tier 3. |
+| `gtarp_ransom` | 2/3 | Bridge the framework money/citizen/position/metadata calls; kidnap re-validation, demand/pay ledger, expiry sweep, and evidence/warrant hookup unchanged. **Drop point coords** are Tier 3. |
 | `[config_overrides]/qbx_economy` | 1 (values) | Re-wire to new framework's economy keys; **numbers carry**. |
 | `[config_overrides]/ox_inventory` (items) | 1 (data) | Item catalog carries; re-wire to new inventory API; shop **coords** Tier 3. |
 | `[config_overrides]/qbx_police` etc. | 3 | Re-author coords + **model names**; grade/salary **design** carries. |

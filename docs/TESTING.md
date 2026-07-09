@@ -620,3 +620,39 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 | A `[custom]` resource missing | Its `ensure` line missing from `custom.cfg`, or the folder wasn't copied into the live `resources/` tree. |
 | DB errors on boot | SQL migrations in `sql/` not applied — run `tools/apply-migrations.sh` (on a DB that pre-dates the tool, `--baseline` ONCE first; see DEPLOY.md). |
 | Custom items "don't exist" / flashdrop self-disables | Deployed `ox_inventory/data/items.lua` missing the GTARP block — run `tools/patch-ox-items.sh <resources-dir>` (CI does this for production deploys). |
+
+## 32. Kidnapping ransom ledger — `gtarp_ransom`
+
+- [ ] Boot banner: `ledger open — N active case(s) ($X demanded); mdt escalation ONLINE` (or `offline` if `gtarp_mdt` isn't running).
+- [ ] Cuff a citizen (handcuffed/dead/laststand) and use the recipe's
+      "Kidnap" radial option on them from within ~5m → no visible
+      confirmation (this resource is silent on the validated-kidnap event
+      itself), but `/demandransom 500 meet at the docks` now succeeds for
+      the kidnapper within the next 10 minutes
+      (`Config.Ransom.DemandWindowSec`).
+- [ ] `/demandransom` with no prior validated kidnap (or after the 10-
+      minute window lapses) → "You have not just kidnapped anyone."
+- [ ] `/demandransom` amount outside `$250-15000` or instructions outside
+      `5-140` chars → usage error, no case opened.
+- [ ] A second `/demandransom` against the same still-restrained victim
+      while a case is already active → "There is already an active ransom
+      on that person."
+- [ ] `/payransom <id>` away from the drop point → "You need to be at the
+      drop point downtown." At the drop point with insufficient bank funds
+      → "You need $X in the bank." With funds → bank debited the exact
+      case amount, kidnapper's bank credited the same amount, case flips
+      to `paid`, and (if `gtarp_mdt` is running) a warrant is issued on the
+      kidnapper.
+- [ ] Race guard: two rapid `/payransom` calls on the same case (or a
+      `/payransom` racing the expiry sweep) → exactly one payer is charged
+      and exactly one payout lands — verify the losing side is refunded in
+      full, not silently dropped.
+- [ ] Let a case sit past `Config.Ransom.TimeoutMinutes` unpaid → next
+      sweep tick (`Config.Ransom.SweepSec`) flips it to `expired`, no
+      money moves, and (if `gtarp_mdt` is running) a warrant is still
+      issued — kidnapping is a felony whether or not the ransom was paid.
+- [ ] `gtarp_evidence` integration: every case (demanded, paid, or
+      expired) has a linked case file reachable via `/mdtcase` once
+      `gtarp_mdt` is running, with the kidnapper linked as a suspect.
+- [ ] devtest boot: `ransom.GetSummary` shape PASSes;
+      `gtarp_ransom_cases` table present.

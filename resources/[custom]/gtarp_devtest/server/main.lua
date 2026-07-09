@@ -267,6 +267,17 @@ local function testShapes()
         fail('fightclub — resource not started')
     end
 
+    if resourceUp('gtarp_ransom') then
+        try('ransom.GetSummary', function()
+            local s = exports.gtarp_ransom:GetSummary()
+            check(type(s) == 'table' and type(s.activeCases) == 'number'
+                and type(s.totalDemanded) == 'number',
+                'ransom.GetSummary returns {activeCases, totalDemanded}')
+        end)
+    else
+        fail('ransom — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -358,6 +369,7 @@ local REQUIRED_TABLES = {
                           'gtarp_mdt_warrants', 'gtarp_mdt_bookings',
                           'gtarp_mdt_calls' },
     gtarp_pumpcoin    = { 'gtarp_pumpcoin_coins', 'gtarp_pumpcoin_holdings', 'gtarp_pumpcoin_trades' },
+    gtarp_ransom      = { 'gtarp_ransom_cases' },
     gtarp_replay      = { 'gtarp_replay_scenes', 'gtarp_replay_participants' },
     gtarp_staff       = { 'audit_log' },
     gtarp_turf        = { 'gtarp_turf' },

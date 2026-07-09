@@ -47,11 +47,11 @@ mkdir -p "$DIR/shared"
   echo "version '0.1.0'"
   echo "description 'gtarp $NAME'"
   echo
-  echo "shared_scripts {"
-  echo "    '@ox_lib/init.lua',"
-  echo "    'shared/config.lua',"
-  echo "}"
   if [ "$CLIENT" = 1 ]; then
+    echo "shared_scripts {"
+    echo "    '@ox_lib/init.lua',"
+    echo "    'shared/config.lua',"
+    echo "}"
     echo
     echo "client_scripts {"
     echo "    'bridge/cl_game.lua',   -- game adapter — must load before client logic"
@@ -62,6 +62,9 @@ mkdir -p "$DIR/shared"
     echo
     echo "server_scripts {"
     [ "$WITH_DB" = 1 ] && echo "    '@oxmysql/lib/MySQL.lua',"
+    # --server-only: no shared_scripts block (nothing to ship to clients) —
+    # config.lua loads here instead. Precedent: gtarp_bounty's hand-fixed manifest.
+    [ "$CLIENT" = 0 ] && echo "    'shared/config.lua',"
     echo "    'bridge/sv_framework.lua',  -- framework adapter — before server logic"
     echo "    'server/main.lua',"
     echo "}"
@@ -173,11 +176,13 @@ if [ "$WITH_DB" = 1 ]; then
   NEXT="$(printf '%04d' $(( 10#${NEXT:-0} + 1 )))"
   cat > "$REPO/sql/${NEXT}_${NAME}.sql" <<EOF
 -- ${NEXT}_${NAME}.sql — tables for gtarp_$NAME. Apply after the qbx base schema.
-CREATE TABLE IF NOT EXISTS \`${NAME}\` (
+-- gtarp_-prefixed per the table-naming convention (see docs/GTA6-READINESS.md
+-- history — an unprefixed table silently collided with a recipe resource once).
+CREATE TABLE IF NOT EXISTS \`gtarp_${NAME}\` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     citizenid VARCHAR(64) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_${NAME}_citizenid (citizenid)
+    INDEX idx_gtarp_${NAME}_citizenid (citizenid)
 );
 EOF
   echo "  + sql/${NEXT}_${NAME}.sql"
