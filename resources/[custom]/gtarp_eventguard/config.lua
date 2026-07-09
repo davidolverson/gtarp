@@ -63,4 +63,13 @@ Config.Events = {
     -- from a modified client on top of the resource's own UNIQUE(citizenid)
     -- guard and its own tighter Config.AcceptCooldownSec.
     ['gtarp_onboarding:acceptRules'] = { calls = 3, window_seconds = 60 },
+
+    -- evidence:server:CreateCasing — recipe-shipped net event (qbx_police).
+    -- gtarp_gunrunning registers a second handler on it to cross-reference
+    -- fired-weapon serials against its black-market sales registry. The
+    -- handler only writes to gtarp_evidence on a real serial match (a cheap
+    -- read-only lookup otherwise), same "blunt budget as defense-in-depth"
+    -- reasoning as ox_inventory:openInventory above — normal gunfire can
+    -- legitimately fire this often, so the budget is sized generously.
+    ['evidence:server:CreateCasing'] = { calls = 60, window_seconds = 60 },
 }

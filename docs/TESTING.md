@@ -680,3 +680,32 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       for the accepting citizenid.
 - [ ] devtest boot: `onboarding.GetSummary` shape PASSes; `gtarp_onboarding`
       table present.
+
+## 34. Black-market weapon dealer + ballistics — `gtarp_gunrunning`
+
+- [ ] Boot banner: `dealer open — N sale(s) all-time ($X), ballistics
+      tracing ONLINE` (or `offline` if `gtarp_evidence` isn't running).
+- [ ] `/buyweapon` with no arg (or a bad index) away from the dealer →
+      prints the catalog with prices, no charge.
+- [ ] `/buyweapon <#>` away from the drop point → "You need to be at the
+      scrapyard lot."
+- [ ] `/buyweapon <#>` at the drop point with insufficient bank funds →
+      "You need $X in the bank," nothing charged, no item granted.
+- [ ] `/buyweapon <#>` at the drop point with funds → exact catalog price
+      debited, the weapon appears in inventory with a `GR-XXXXXX` serial in
+      its metadata, and a `gtarp_gunrunning_sales` row exists for that
+      serial/citizenid/price.
+- [ ] Fire the purchased weapon → the recipe's own shell-casing evidence
+      flow is unaffected (casing still drops, still collectible/dustable
+      exactly as before this resource existed).
+- [ ] Fire the purchased weapon within earshot of anyone with
+      `gtarp_evidence` running → a case opens (or an existing recent one for
+      the same serial gets a new entry, not a duplicate case — 5-minute
+      incident-key bucket) with a `ballistics_match` entry and the buyer
+      linked as a suspect. Fire it several times in a row → still one case,
+      multiple entries, not one case per shot.
+- [ ] Fire a non-purchased (recipe-default) weapon → no case opens, no
+      lookup match (confirms the hook only fires on a real serial match,
+      not on every gunshot server-wide).
+- [ ] devtest boot: `gunrunning.GetSummary` shape PASSes;
+      `gtarp_gunrunning_sales` table present.

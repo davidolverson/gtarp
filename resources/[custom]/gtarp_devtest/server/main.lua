@@ -288,6 +288,17 @@ local function testShapes()
         fail('onboarding — resource not started')
     end
 
+    if resourceUp('gtarp_gunrunning') then
+        try('gunrunning.GetSummary', function()
+            local s = exports.gtarp_gunrunning:GetSummary()
+            check(type(s) == 'table' and type(s.totalSales) == 'number'
+                and type(s.totalRevenue) == 'number',
+                'gunrunning.GetSummary returns {totalSales, totalRevenue}')
+        end)
+    else
+        fail('gunrunning — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -372,6 +383,7 @@ local REQUIRED_TABLES = {
     gtarp_flashdrop   = { 'gtarp_flashdrop_drops', 'gtarp_flashdrop_serials',
                           'gtarp_flashdrop_provenance', 'gtarp_flashdrop_listings' },
     gtarp_grind       = { 'grind_skill' },
+    gtarp_gunrunning  = { 'gtarp_gunrunning_sales' },
     gtarp_citations   = { 'gtarp_citations' },
     gtarp_insurance   = { 'gtarp_insurance_policies', 'gtarp_insurance_claims' },
     gtarp_legal       = { 'gtarp_legal_petitions' },
