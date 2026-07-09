@@ -101,6 +101,9 @@ rewrite one small adapter file per resource against the GTA VI framework.
 - `gtarp_ransom` (kidnap re-validation, demand/pay ledger, expiry sweep,
   and the evidence/warrant hookup are Tier 1/2; the drop point coords are
   Tier 3)
+- `gtarp_onboarding` (rules-acceptance gate, starter-grant guard, and
+  tour content are entirely Tier 1/2 — no world coords at all, the whole
+  resource carries with a bridge rewrite only)
 
 ### Tier 3 — Rewrite / retune (bound to the GTA V world)
 Anything tied to the Los Santos map, the GTA V model set, or GTA V

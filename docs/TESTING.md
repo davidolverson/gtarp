@@ -656,3 +656,27 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       `gtarp_mdt` is running, with the kidnapper linked as a suspect.
 - [ ] devtest boot: `ransom.GetSummary` shape PASSes;
       `gtarp_ransom_cases` table present.
+
+## 33. New-player onboarding — `gtarp_onboarding`
+
+- [ ] Boot banner: `online — N citizen(s) onboarded all-time`.
+- [ ] A brand-new citizen's first character load → the mandatory rules
+      dialog appears with no way to dismiss it except the single confirm
+      button (no cancel/decline option).
+- [ ] After confirming → `Config.StarterCash.amount` lands in the
+      citizen's bank exactly once, the tour panel appears, and a
+      `gtarp_onboarding` row now exists for that citizenid
+      (`starter_cash_granted = 1`).
+- [ ] Reconnect / relog the same citizen → no rules dialog, no second
+      starter-cash grant (row already exists — `UNIQUE(citizenid)` blocks
+      a second `INSERT`).
+- [ ] Race guard: two near-simultaneous `gtarp_onboarding:acceptRules`
+      events for the same citizen (e.g. a modified client replaying it) →
+      exactly one grant lands; the second `INSERT` fails the unique
+      constraint and grants nothing.
+- [ ] `/rules` at any time → re-shows the rules text read-only; does not
+      touch `gtarp_onboarding` or re-trigger the tour/grant.
+- [ ] `gtarp_staff` audit log has an `onboarding_rules_accepted` entry
+      for the accepting citizenid.
+- [ ] devtest boot: `onboarding.GetSummary` shape PASSes; `gtarp_onboarding`
+      table present.

@@ -278,6 +278,16 @@ local function testShapes()
         fail('ransom — resource not started')
     end
 
+    if resourceUp('gtarp_onboarding') then
+        try('onboarding.GetSummary', function()
+            local s = exports.gtarp_onboarding:GetSummary()
+            check(type(s) == 'table' and type(s.totalAccepted) == 'number',
+                'onboarding.GetSummary returns {totalAccepted}')
+        end)
+    else
+        fail('onboarding — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -368,6 +378,7 @@ local REQUIRED_TABLES = {
     gtarp_mdt         = { 'gtarp_mdt_bolos', 'gtarp_mdt_reports',
                           'gtarp_mdt_warrants', 'gtarp_mdt_bookings',
                           'gtarp_mdt_calls' },
+    gtarp_onboarding  = { 'gtarp_onboarding' },
     gtarp_pumpcoin    = { 'gtarp_pumpcoin_coins', 'gtarp_pumpcoin_holdings', 'gtarp_pumpcoin_trades' },
     gtarp_ransom      = { 'gtarp_ransom_cases' },
     gtarp_replay      = { 'gtarp_replay_scenes', 'gtarp_replay_participants' },

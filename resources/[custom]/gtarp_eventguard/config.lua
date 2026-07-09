@@ -56,4 +56,11 @@ Config.Events = {
     -- ox_inventory does its own per-event data validation (Utils.LogExploit);
     -- this blunt call-count budget is defense-in-depth on top.
     ['ox_inventory:openInventory'] = { calls = 30, window_seconds = 30 },
+
+    -- gtarp_onboarding — the accept event writes gtarp_onboarding and
+    -- (first time only) credits starter cash. A real accept only ever
+    -- fires once per citizen; the budget just bounds retry/replay spam
+    -- from a modified client on top of the resource's own UNIQUE(citizenid)
+    -- guard and its own tighter Config.AcceptCooldownSec.
+    ['gtarp_onboarding:acceptRules'] = { calls = 3, window_seconds = 60 },
 }
