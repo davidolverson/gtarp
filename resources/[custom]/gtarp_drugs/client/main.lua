@@ -230,6 +230,85 @@ RegisterNetEvent('gtarp_drugs:sellMenuData', function(d)
 end)
 
 -- ---------------------------------------------------------------------------
+-- DRY — the drying rack (state comes from the server; buds dry to Heavenly)
+-- ---------------------------------------------------------------------------
+RegisterNetEvent('gtarp_drugs:dryMenuData', function(d)
+    if not d then return end
+
+    local options = {
+        {
+            title = 'Drying Rack — Heavenly tier',
+            description = ('Hang fresh buds ~%d min to dry them to Heavenly (×1.30)'):format(d.dryMinutes or 30),
+            icon = 'fas fa-wind',
+            disabled = true,
+        },
+    }
+
+    for _, slot in ipairs(d.slots or {}) do
+        if slot.state == 'empty' then
+            options[#options + 1] = {
+                title = ('Slot %d — empty'):format(slot.index),
+                description = 'Hang a stack of fresh buds to dry',
+                icon = 'fas fa-plus',
+                onSelect = function()
+                    local sub = {}
+                    for _, b in ipairs(d.freshBuds or {}) do
+                        sub[#sub + 1] = {
+                            title = ('%s [%s] x%d'):format(b.label, Config.QualityLabel(b.quality), b.count),
+                            description = 'Hang this whole stack to dry → Heavenly',
+                            icon = 'fas fa-cannabis',
+                            onSelect = function()
+                                if Game.ProgressBar('Hanging buds…', (Config.Dry.loadSeconds or 4) * 1000) then
+                                    TriggerServerEvent('gtarp_drugs:dryStart', slot.index, b.slot)
+                                end
+                            end,
+                        }
+                    end
+                    if #sub == 0 then
+                        sub[#sub + 1] = {
+                            title = 'No fresh buds on you',
+                            description = 'Harvest a plant first — dried buds cannot be re-dried',
+                            icon = 'fas fa-ban',
+                            disabled = true,
+                        }
+                    end
+                    Game.OpenMenu('gtarp_drugs_dry_load', ('Slot %d — hang buds'):format(slot.index), sub, 'gtarp_drugs_dry')
+                end,
+            }
+        elseif slot.state == 'drying' then
+            options[#options + 1] = {
+                title = ('Slot %d — %s drying'):format(slot.index, slot.strainLabel or 'Buds'),
+                description = ('Ready in ~%d min'):format(math.max(1, math.floor((slot.secondsLeft or 0) / 60))),
+                icon = 'fas fa-hourglass-half',
+                disabled = true,
+            }
+        elseif slot.state == 'ready' then
+            if slot.owner then
+                options[#options + 1] = {
+                    title = ('Slot %d — %s dried!'):format(slot.index, slot.strainLabel or 'Buds'),
+                    description = 'Collect your Heavenly buds',
+                    icon = 'fas fa-cannabis',
+                    onSelect = function()
+                        if Game.ProgressBar('Taking down buds…', (Config.Dry.collectSeconds or 4) * 1000) then
+                            TriggerServerEvent('gtarp_drugs:dryCollect', slot.index)
+                        end
+                    end,
+                }
+            else
+                options[#options + 1] = {
+                    title = ('Slot %d — in use'):format(slot.index),
+                    description = 'Only the owner can take these down',
+                    icon = 'fas fa-ban',
+                    disabled = true,
+                }
+            end
+        end
+    end
+
+    Game.OpenMenu('gtarp_drugs_dry', 'Drying Rack', options)
+end)
+
+-- ---------------------------------------------------------------------------
 -- Fallback point dispatch (used only when qbx_police is absent)
 -- ---------------------------------------------------------------------------
 RegisterNetEvent('gtarp_drugs:dispatch', function(d)
@@ -255,6 +334,11 @@ CreateThread(function()
     handles[#handles + 1] = Game.CreateInteraction(
         'mix', Config.Mix.coords, Config.Mix.radius, Config.Mix.label, 'fas fa-blender',
         function() TriggerServerEvent('gtarp_drugs:mixMenu') end)
+
+    -- Drying rack (buds → Heavenly)
+    handles[#handles + 1] = Game.CreateInteraction(
+        'dry', Config.Dry.coords, Config.Dry.radius, Config.Dry.label, 'fas fa-wind',
+        function() TriggerServerEvent('gtarp_drugs:dryMenu') end)
 
     -- NPC street-buyer
     buyerPed = Game.SpawnPed(Config.Sell.pedModel, Config.Sell.coords, Config.Sell.pedHeading)

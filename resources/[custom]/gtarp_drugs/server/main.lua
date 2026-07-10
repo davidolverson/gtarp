@@ -878,6 +878,240 @@ RegisterNetEvent('gtarp_drugs:sell', function(slot, item)
 end)
 
 -- ===========================================================================
+-- DRY (the drying rack → Heavenly quality)
+-- ===========================================================================
+-- Load fresh (undried) weed_bud into a rack slot; it dries over wall-clock
+-- time (a drugs_processes row, kind='dry', epoch seconds), resolved on
+-- interaction like the grow timers. On collect the whole stack comes back
+-- bumped to Heavenly (tier 4) with dried=true, so the price engine applies the
+-- ×1.30 markup on any later mix/sell. One drying run per slot; the process is
+-- server-owned by its starter; collect is an atomic claim so it can't double.
+
+-- Validate a client rack-slot index (fails CLOSED on a bad index).
+local function validDrySlot(stationId)
+    stationId = tonumber(stationId)
+    if not stationId then return nil end
+    if stationId < 1 or stationId > Config.Dry.slots then return nil end
+    return math.floor(stationId)
+end
+
+-- The live drying process at a rack slot (running/collecting), or nil.
+local function processAtSlot(stationId)
+    local row
+    pcall(function()
+        row = MySQL.single.await(
+            "SELECT * FROM drugs_processes \z
+             WHERE kind = 'dry' AND station_id = ? AND status IN ('running','collecting') LIMIT 1",
+            { stationId })
+    end)
+    return row
+end
+
+-- Rack snapshot for the client menu (server truth).
+RegisterNetEvent('gtarp_drugs:dryMenu', function()
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not near(src, Config.Dry.coords, Config.Dry.radius + Config.Dry.proximitySlack) then
+        Bridge.Notify(src, Config.Dry.label, 'You are not at the drying rack.', 'error')
+        return
+    end
+
+    local t = now()
+    local slots = {}
+    for i = 1, Config.Dry.slots do
+        local row = processAtSlot(i)
+        if not row then
+            slots[i] = { index = i, state = 'empty' }
+        else
+            local ready = t >= (tonumber(row.finish_at) or 0)
+            local strain
+            local okI, input = pcall(function() return json.decode(row.input_json or '{}') end)
+            if okI and type(input) == 'table' then strain = input.strain end
+            local d = Config.Drugs[strain]
+            slots[i] = {
+                index = i,
+                state = ready and 'ready' or 'drying',
+                owner = (row.owner_cid == cid),
+                secondsLeft = ready and 0 or math.max(0, (tonumber(row.finish_at) or 0) - t),
+                strainLabel = d and d.label or strain or 'Buds',
+            }
+        end
+    end
+
+    -- Fresh (undried) bud stacks the player can hang.
+    local freshBuds = {}
+    for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.bud)) do
+        local m = s.metadata or {}
+        if not m.dried then
+            local d = Config.Drugs[m.strain] or {}
+            freshBuds[#freshBuds + 1] = {
+                slot = s.slot, count = s.count,
+                label = d.label or 'Buds', quality = normQuality(m.quality),
+            }
+        end
+    end
+
+    TriggerClientEvent('gtarp_drugs:dryMenuData', src, {
+        slots = slots, freshBuds = freshBuds,
+        dryMinutes = math.max(1, math.floor(Config.Dry.baseDrySeconds / 60)),
+    })
+end)
+
+RegisterNetEvent('gtarp_drugs:dryStart', function(stationId, budSlot)
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not cooldownOk(src, 'dry', 2) then return end
+    if not near(src, Config.Dry.coords, Config.Dry.radius + Config.Dry.proximitySlack) then
+        Bridge.Notify(src, Config.Dry.label, 'You are not at the drying rack.', 'error')
+        return
+    end
+
+    stationId = validDrySlot(stationId)
+    if not stationId then return end
+    budSlot = tonumber(budSlot)
+    if not budSlot then return end
+
+    if processAtSlot(stationId) then
+        Bridge.Notify(src, Config.Dry.label, 'That rack slot is already in use.', 'error')
+        return
+    end
+
+    -- Re-read the base slot's REAL metadata; only fresh (undried) buds qualify.
+    local s = Bridge.GetSlot(src, Config.Items.bud, budSlot)
+    if not s then
+        Bridge.Notify(src, Config.Dry.label, 'Pick fresh buds you actually have.', 'error')
+        return
+    end
+    local m = s.metadata or {}
+    if m.dried then
+        Bridge.Notify(src, Config.Dry.label, 'Those buds are already dried.', 'error')
+        return
+    end
+    local strain = m.strain
+    if not Config.Drugs[strain] then
+        Bridge.Notify(src, Config.Dry.label, 'The rack cannot dry those.', 'error')
+        return
+    end
+
+    local count = s.count
+    local effects = cloneEffects(m.effects)
+
+    -- Consume the whole fresh stack FIRST; if the DB insert fails (or the slot
+    -- was taken in a race → UNIQUE(kind,station_id) dup), hand the buds back.
+    if not Bridge.RemoveItemFromSlot(src, Config.Items.bud, count, budSlot) then
+        Bridge.Notify(src, Config.Dry.label, 'Could not load the rack — try again.', 'error')
+        return
+    end
+
+    local t = now()
+    local finish = t + math.floor(Config.Dry.baseDrySeconds)
+    local ok = pcall(function()
+        MySQL.insert.await(
+            'INSERT INTO drugs_processes \z
+             (owner_cid, station_id, kind, input_json, started_at, finish_at, status) \z
+             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            { cid, stationId, 'dry',
+              json.encode({ strain = strain, effects = effects, count = count }),
+              t, finish, 'running' })
+    end)
+    if not ok then
+        Bridge.GiveItem(src, Config.Items.bud, count, m)  -- restore the fresh stack
+        Bridge.Notify(src, Config.Dry.label, 'That slot would not take — try again.', 'error')
+        return
+    end
+
+    Bridge.Notify(src, Config.Dry.label,
+        ('Hung %dx buds to dry — Heavenly in ~%d min.'):format(
+            count, math.max(1, math.floor((finish - t) / 60))), 'success')
+    dbg(('%s started drying %dx %s at rack slot %d'):format(cid, count, strain, stationId))
+end)
+
+RegisterNetEvent('gtarp_drugs:dryCollect', function(stationId)
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not cooldownOk(src, 'dryCollect', 3) then return end
+    if not near(src, Config.Dry.coords, Config.Dry.radius + Config.Dry.proximitySlack) then
+        Bridge.Notify(src, Config.Dry.label, 'You are not at the drying rack.', 'error')
+        return
+    end
+
+    stationId = validDrySlot(stationId)
+    if not stationId then return end
+
+    local row = processAtSlot(stationId)
+    if not row then
+        Bridge.Notify(src, Config.Dry.label, 'Nothing is drying here.', 'error')
+        return
+    end
+    if row.owner_cid ~= cid then
+        Bridge.Notify(src, Config.Dry.label, 'These are not your buds.', 'error')
+        return
+    end
+
+    local t = now()
+    if t < (tonumber(row.finish_at) or 0) then
+        Bridge.Notify(src, Config.Dry.label,
+            ('Not dry yet — about %d min to go.'):format(
+                math.max(1, math.ceil(((tonumber(row.finish_at) or t) - t) / 60))), 'error')
+        return
+    end
+
+    -- Atomic claim: flip running -> collecting so a double-fire can't collect
+    -- the same rack slot twice. Only the winner proceeds.
+    local claimed = 0
+    pcall(function()
+        claimed = MySQL.update.await(
+            "UPDATE drugs_processes SET status = 'collecting' WHERE id = ? AND status = 'running'",
+            { row.id }) or 0
+    end)
+    if claimed == 0 then return end
+
+    local okI, input = pcall(function() return json.decode(row.input_json or '{}') end)
+    if not okI or type(input) ~= 'table' then input = {} end
+    local strain = input.strain
+    local drug = Config.Drugs[strain]
+    local count = math.max(1, math.floor(tonumber(input.count) or 1))
+    local effects = cloneEffects(input.effects)
+    if not drug then
+        -- Config drifted out from under a stored strain — free the slot, no grant.
+        pcall(function() MySQL.query.await('DELETE FROM drugs_processes WHERE id = ?', { row.id }) end)
+        Bridge.Notify(src, Config.Dry.label, 'The rack could not resolve those buds.', 'error')
+        return
+    end
+
+    -- Bump to Heavenly (tier 4); the price engine applies ×1.30 on mix/sell.
+    local quality = Config.HeavenlyTier
+    local meta = {
+        strain = strain,
+        quality = quality,
+        effects = effects,
+        dried = true,
+        label = ('%s Buds [%s]'):format(drug.label or strain, Config.QualityLabel(quality)),
+        description = ('%s • %s • %s'):format(
+            drug.label or 'Weed', Config.QualityLabel(quality), effectsLine(effects)),
+    }
+
+    if not Bridge.CanCarry(src, Config.Items.bud, count) or not Bridge.GiveItem(src, Config.Items.bud, count, meta) then
+        -- No room — put the process back so nothing is lost.
+        pcall(function()
+            MySQL.update.await("UPDATE drugs_processes SET status = 'running' WHERE id = ?", { row.id })
+        end)
+        Bridge.Notify(src, Config.Dry.label, 'Your hands are full — collect again with room.', 'error')
+        return
+    end
+
+    pcall(function() MySQL.query.await('DELETE FROM drugs_processes WHERE id = ?', { row.id }) end)
+    addXp(cid, Config.Dry.xp)
+
+    Bridge.Notify(src, Config.Dry.label,
+        ('Collected %dx %s buds — %s.'):format(count, drug.label or strain, Config.QualityLabel(quality)), 'success')
+    dbg(('%s collected %dx dried %s (q%d) from rack slot %d'):format(cid, count, strain, quality, stationId))
+end)
+
+-- ===========================================================================
 -- Housekeeping
 -- ===========================================================================
 
@@ -936,6 +1170,13 @@ AddEventHandler('onResourceStart', function(resource)
         MySQL.query.await("DELETE FROM drugs_plants WHERE stage = 'harvested'")
     end)
 
+    -- A crash mid-collect can strand a dry process at 'collecting' (its buds
+    -- were consumed at load time but never handed back); revert to 'running'
+    -- so the owner can collect their Heavenly buds again — never delete these.
+    pcall(function()
+        MySQL.query.await("UPDATE drugs_processes SET status = 'running' WHERE status = 'collecting'")
+    end)
+
     booted = true
     local sales, dirty = 0, 0
     pcall(function()
@@ -951,7 +1192,7 @@ end)
 
 --- Totals for devtest and future consumers.
 exports('GetSummary', function()
-    local out = { totalSales = 0, totalDirtyEarned = 0, flaggedSales = 0, activePlants = 0 }
+    local out = { totalSales = 0, totalDirtyEarned = 0, flaggedSales = 0, activePlants = 0, activeDries = 0 }
     pcall(function()
         local r = MySQL.single.await(
             'SELECT COUNT(*) AS c, COALESCE(SUM(net_dirty),0) AS s, COALESCE(SUM(flagged),0) AS f FROM drugs_sales')
@@ -962,6 +1203,9 @@ exports('GetSummary', function()
         end
         local p = MySQL.single.await("SELECT COUNT(*) AS c FROM drugs_plants WHERE stage = 'growing'")
         out.activePlants = p and tonumber(p.c) or 0
+        local dr = MySQL.single.await(
+            "SELECT COUNT(*) AS c FROM drugs_processes WHERE kind = 'dry' AND status IN ('running','collecting')")
+        out.activeDries = dr and tonumber(dr.c) or 0
     end)
     return out
 end)

@@ -71,6 +71,18 @@ Config.Events = {
     ['gtarp_drugs:sellMenu']  = { calls = 20, window_seconds = 30 },
     ['gtarp_drugs:sell']      = { calls = 20, window_seconds = 60 },
 
+    -- gtarp_drugs drying rack (Phase-2 → Heavenly quality). `dryStart` consumes
+    -- a fresh bud stack into a drugs_processes wall-clock timer; `dryCollect`
+    -- grants the dried (Heavenly) buds back on the atomic collect claim;
+    -- `dryMenu` is a read-only snapshot that fans a per-slot DB read + inventory
+    -- scan per call, so it gets a blunt call-count budget as defense-in-depth
+    -- (same reasoning as the menu events above). Each has its own per-player
+    -- server-side cooldown too; same ensure-order requirement (gtarp_eventguard
+    -- before gtarp_drugs).
+    ['gtarp_drugs:dryMenu']    = { calls = 20, window_seconds = 30 },
+    ['gtarp_drugs:dryStart']   = { calls = 15, window_seconds = 60 },
+    ['gtarp_drugs:dryCollect'] = { calls = 20, window_seconds = 60 },
+
     -- ox_inventory shop purchase fan-out — recipe-shipped net event.
     -- ox_inventory does its own per-event data validation (Utils.LogExploit);
     -- this blunt call-count budget is defense-in-depth on top.

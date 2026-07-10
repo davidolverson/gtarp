@@ -57,6 +57,14 @@ branded product with stacking effects + quality → sell → dirty cash → laun
   an ox_target grow plot, water over **wall-clock DB timers resolved on
   interaction** (restart-safe, no client ticks), harvest `weed_bud` with
   `{strain,quality,effects,dried}` metadata. Neglect (water → 0%) drops quality/yield.
+- 🌬️ **Drying rack → Heavenly** — hang a stack of fresh `weed_bud` on the rack
+  (ox_target) to dry it over a **wall-clock `drugs_processes` timer** (`kind='dry'`,
+  epoch seconds, resolved on interaction like the grow timers). On collect the buds
+  come back **bumped to Heavenly (tier 4, ×1.30)** with `dried=true`, and the price
+  engine applies the markup on any later mix/sell. One run per rack slot (UNIQUE
+  `(kind,station_id)`); server-owned by its starter; **atomic `running→collecting`
+  collect claim**; a crash-stranded run reverts to `running` at boot (never lost).
+  No new item — the rack is a world station.
 - 🧪 **Mixing station** — pick a base stack + one additive; the **server** resolves
   effects (append-if-absent, 8-cap, order kept), recomputes quality + unit price
   via the spec §5 formula, sanitizes a player brand, mints one `weed_product`
@@ -72,13 +80,13 @@ branded product with stacking effects + quality → sell → dirty cash → laun
   multipliers, 5 quality tiers, and the server-authoritative `Config.Price` helper.
 - 🛡️ **Server-authoritative** — never trusts client price/effects/quality/amount;
   recomputes from config + metadata; consumes inputs before granting outputs;
-  proximity re-derived server-side; all SQL parameterized. 9 net events registered
+  proximity re-derived server-side; all SQL parameterized. 12 net events registered
   in `gtarp_eventguard`. New items added to `ox_inventory_overrides` (replacing the
   earlier generic `cannabis_leaf`/`weed_baggie` draft). SQL: `drugs_plants`,
-  `drugs_recipes`, `drugs_progression`, `drugs_sales` (`sql/0039_drugs.sql`).
+  `drugs_recipes`, `drugs_progression`, `drugs_sales` (`sql/0039_drugs.sql`) +
+  `drugs_processes` (the drying-rack timer, `sql/0040_drugs_drying.sql`).
 - ⏭️ **Deferred to Phase 2/3:** meth/shrooms/coke, NPC customers + hired dealers,
-  the order-dependent reaction table, and drying-rack **Heavenly** quality (needs
-  the `drugs_processes` timer table, out of the MVP schema).
+  the order-dependent reaction table, and rank/XP-gated properties.
 
 **📣 Public:**
 > 🌿 **New hustle incoming — grow, cook, and brand your own product**

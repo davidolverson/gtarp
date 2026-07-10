@@ -145,17 +145,19 @@ Config.JunkEffects = {
 }
 
 -- ---------------------------------------------------------------------------
--- §4 Quality tiers. markup multiplies the price. In the MVP quality is set at
--- GROW time (grow additives / neglect); Heavenly (dried-on-rack) is Phase 2
--- (needs the drugs_processes timer table, deliberately out of the MVP schema).
+-- §4 Quality tiers. markup multiplies the price. Quality is set at GROW time
+-- (grow additives / neglect), then bumped to Heavenly (tier 4) by drying fresh
+-- buds on the DRYING RACK (below) — a wall-clock DB timer in drugs_processes,
+-- resolved on interaction like the grow timers (sql/0040_drugs_drying.sql).
 -- ---------------------------------------------------------------------------
 Config.Quality = {
     [0] = { label = 'Trash',    markup = 0.60 },
     [1] = { label = 'Poor',     markup = 0.80 },
     [2] = { label = 'Standard', markup = 1.00 },
     [3] = { label = 'Premium',  markup = 1.15 },
-    [4] = { label = 'Heavenly', markup = 1.30 },  -- reachable only once drying ships (Phase 2)
+    [4] = { label = 'Heavenly', markup = 1.30 },  -- reached by drying fresh buds on the rack
 }
+Config.HeavenlyTier = 4  -- the tier a dried-on-rack bud is bumped to
 Config.DefaultQuality = 2  -- Standard: a plain grow with no additive
 
 -- Grow additives (separate system — they set quality/yield/speed, NOT mix
@@ -207,6 +209,28 @@ Config.Mix = {
     maxRecipes   = 30,         -- saved named recipes per grower
     -- Tier 3 placeholder (a Grand Senora trailer). VERIFY IN-GAME.
     coords = vector3(1391.2, 3605.5, 38.9),
+}
+
+-- ---------------------------------------------------------------------------
+-- DRY — the drying rack. Load fresh (undried) weed_bud into a rack slot; it
+-- dries over WALL-CLOCK time (a drugs_processes row, kind='dry', epoch seconds,
+-- resolved on interaction exactly like the grow timers — restart-safe, NO
+-- client ticks). On collect the bud is bumped to Heavenly (tier 4) and marked
+-- dried=true; the existing price engine then applies the ×1.30 markup on mix/
+-- sell. One drying run per rack slot; a slot's process is server-owned by its
+-- starter. It needs NO new ox_inventory item — it is a world station.
+-- ---------------------------------------------------------------------------
+Config.Dry = {
+    label          = 'Drying Rack',
+    radius         = 2.0,        -- ox_target sphere radius
+    proximitySlack = 3.0,        -- server proximity = radius + this (anti-jitter)
+    slots          = 4,          -- independent rack slots (each = one station_id)
+    baseDrySeconds = 1800,       -- 30 min wall-clock to fully dry a loaded stack
+    loadSeconds    = 4,          -- client progress bar to hang buds
+    collectSeconds = 4,          -- client progress bar to take them down
+    xp             = 12,         -- drugs_progression XP per dried batch
+    -- Tier 3 placeholder (a rack beside the Grand Senora mixing trailer). VERIFY IN-GAME.
+    coords = vector3(1388.5, 3608.2, 38.9),
 }
 
 -- ---------------------------------------------------------------------------
