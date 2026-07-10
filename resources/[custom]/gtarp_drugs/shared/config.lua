@@ -419,6 +419,36 @@ Config.Sell = {
 }
 
 -- ---------------------------------------------------------------------------
+-- §8 NPC DEALER — a passive, HARD-CAPPED dirty-cash faucet (Phase 2). Hire an
+-- NPC corner dealer (paid in dirty black_money — a criminal front, no bank
+-- call), stock him weed_product, and he moves units over WALL-CLOCK time. Sales
+-- resolve LAZILY on interaction (exactly like the grow/dry timers — NO server
+-- tick thread, restart- AND offline-safe): each elapsed tick sells up to
+-- unitsPerTick units, the SERVER recomputes each unit's price from the stored
+-- base/quality/effects (never client input), the player accrues playerCut of it
+-- as OWED dirty cash (dealer keeps the rest as a sink), and collecting pays it
+-- out as black_money when the owner is online + can carry it. Bounded by a
+-- per-character DAILY faucet cap so it can never outpace real-player dealing.
+-- ---------------------------------------------------------------------------
+Config.Dealer = {
+    label          = 'Corner Dealer',
+    pedModel       = 'g_m_y_ballaeast_01',
+    pedHeading     = 90.0,
+    radius         = 2.0,
+    proximitySlack = 3.0,           -- server proximity = radius + this (anti-jitter)
+    hireCost       = 5000,          -- one-time hire fee, paid in dirty black_money
+    maxStash       = 60,            -- max product units the dealer can hold at once
+    tickSeconds    = 300,           -- one sell batch per 5 min of wall-clock
+    unitsPerTick   = 3,             -- units sold per elapsed tick (bounded throughput)
+    maxTicksPerResolve = 24,        -- cap catch-up after a long absence (≤2h of ticks)
+    playerCut      = 0.80,          -- player gets 80% dirty; dealer keeps 20% (sink)
+    dailyDirtyCap  = 30000,         -- per-character dealer-faucet ceiling per calendar day
+    xpPerCollect   = 10,            -- gtarp_drugs_progression XP per collect (dealer-deal)
+    -- Tier 3 placeholder (a Davis corner, South LS). VERIFY IN-GAME.
+    coords         = vector3(106.4, -1922.6, 21.3),
+}
+
+-- ---------------------------------------------------------------------------
 -- Progression (gtarp_drugs_progression). rank = min(maxRank, floor(xp / xpPerRank)).
 -- Gates which strains can be planted (Config.Drugs.unlock_rank).
 -- ---------------------------------------------------------------------------

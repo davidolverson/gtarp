@@ -1171,6 +1171,299 @@ AddEventHandler('playerDropped', function()
     -- can't be shed by reconnecting mid-spree.
 end)
 
+-- ---------------------------------------------------------------------------
+-- §8 NPC DEALER — passive, HARD-CAPPED dirty-cash faucet. Sales resolve LAZILY
+-- on interaction over wall-clock time (like the grow/dry timers): no thread, no
+-- client tick, offline- and restart-safe. Every unit is priced SERVER-SIDE from
+-- its stored base/quality/effects (never client input); the player accrues
+-- playerCut as owed black_money, collected only when online + able to carry it,
+-- all bounded by a per-character daily faucet cap.
+-- ---------------------------------------------------------------------------
+local function dealerDayKey() return os.date('!%Y-%m-%d') end
+
+local function stashUnits(stash)
+    local n = 0
+    for _, lot in ipairs(stash or {}) do n = n + (tonumber(lot.u) or 0) end
+    return n
+end
+
+-- Load one dealer row with stash decoded, or nil.
+local function loadDealer(cid)
+    local row
+    pcall(function()
+        row = MySQL.single.await('SELECT * FROM gtarp_drugs_dealers WHERE owner_cid = ?', { cid })
+    end)
+    if not row then return nil end
+    local okS, stash = pcall(function() return json.decode(row.stash_json or '[]') end)
+    row.stash            = (okS and type(stash) == 'table') and stash or {}
+    row.dirty_owed       = tonumber(row.dirty_owed) or 0
+    row.day_dirty        = tonumber(row.day_dirty) or 0
+    row.dirty_earned_total = tonumber(row.dirty_earned_total) or 0
+    row.last_tick_at     = tonumber(row.last_tick_at) or now()
+    return row
+end
+
+-- Returns true only if the row actually persisted — callers that mutate money
+-- gate the payout/consumption on a durable write (see dealerStock/dealerCollect).
+local function saveDealer(row)
+    local ok = pcall(function()
+        MySQL.update.await(
+            'UPDATE gtarp_drugs_dealers SET stash_json = ?, dirty_owed = ?, dirty_earned_total = ?, \z
+             last_tick_at = ?, day_key = ?, day_dirty = ? WHERE owner_cid = ?',
+            { json.encode(row.stash or {}), row.dirty_owed, row.dirty_earned_total,
+              row.last_tick_at, row.day_key or dealerDayKey(), row.day_dirty, row.owner_cid })
+    end)
+    return ok
+end
+
+-- Resolve elapsed wall-clock into sales. Sells up to unitsPerTick per elapsed
+-- tick, each unit priced SERVER-SIDE from its stored lot, accruing playerCut as
+-- owed dirty and charging the per-character daily faucet cap. Mutates + persists
+-- the row. Idempotent per instant (a second call in the same second is a no-op).
+local function resolveDealer(row)
+    local t = now()
+    local elapsed = t - row.last_tick_at
+    if elapsed < Config.Dealer.tickSeconds then return 0 end
+    local rawTicks = math.floor(elapsed / Config.Dealer.tickSeconds)
+    local ticks    = math.min(rawTicks, Config.Dealer.maxTicksPerResolve)
+
+    local dayKey = dealerDayKey()
+    if row.day_key ~= dayKey then row.day_key = dayKey; row.day_dirty = 0 end
+    local dailyRemaining = math.max(0, Config.Dealer.dailyDirtyCap - row.day_dirty)
+
+    local toSell  = ticks * Config.Dealer.unitsPerTick
+    local accrued = 0
+    for _, lot in ipairs(row.stash) do
+        if toSell <= 0 or dailyRemaining <= 0 then break end
+        lot.u = tonumber(lot.u) or 0
+        local meta = { base = lot.b, quality = lot.q, effects = lot.e, brand = lot.brand }
+        local unit = priceOfSlot(Config.Items.product, meta)
+        if not unit then
+            lot.u = 0  -- config drifted under this lot — drop it, don't wedge the queue
+        else
+            local playerUnit = math.floor(unit * Config.Dealer.playerCut)
+            if playerUnit < 1 then playerUnit = 1 end
+            while lot.u > 0 and toSell > 0 and dailyRemaining >= playerUnit do
+                lot.u          = lot.u - 1
+                toSell         = toSell - 1
+                accrued        = accrued + playerUnit
+                dailyRemaining = dailyRemaining - playerUnit
+            end
+        end
+    end
+
+    -- compact: drop emptied lots
+    local kept = {}
+    for _, lot in ipairs(row.stash) do
+        if (tonumber(lot.u) or 0) > 0 then kept[#kept + 1] = lot end
+    end
+    row.stash = kept
+
+    row.dirty_owed = row.dirty_owed + accrued
+    row.day_dirty  = row.day_dirty + accrued
+    -- Advance the clock. Normal resolve: keep the sub-tick remainder so frequent
+    -- checks still accumulate. Long absence past the catch-up cap: reset to now,
+    -- so idle time can never bank into a burst.
+    if rawTicks > Config.Dealer.maxTicksPerResolve then
+        row.last_tick_at = t
+    else
+        row.last_tick_at = row.last_tick_at + ticks * Config.Dealer.tickSeconds
+    end
+    saveDealer(row)
+    return accrued
+end
+
+local function dealerProx(src)
+    return near(src, Config.Dealer.coords, Config.Dealer.radius + Config.Dealer.proximitySlack)
+end
+
+RegisterNetEvent('gtarp_drugs:dealerMenu', function()
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not dealerProx(src) then
+        Bridge.Notify(src, Config.Dealer.label, 'The dealer is not here.', 'error'); return
+    end
+    local row = loadDealer(cid)
+    if row then resolveDealer(row) end
+    local held = {}
+    for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.product)) do
+        local unit, _, quality, brand = priceOfSlot(Config.Items.product, s.metadata)
+        if unit then
+            held[#held + 1] = { slot = s.slot, count = s.count, unit = unit,
+                label = brand or 'Product', quality = quality }
+        end
+    end
+    TriggerClientEvent('gtarp_drugs:dealerMenuData', src, {
+        hired          = row ~= nil,
+        stashUnits     = row and stashUnits(row.stash) or 0,
+        maxStash       = Config.Dealer.maxStash,
+        owed           = row and row.dirty_owed or 0,
+        hireCost       = Config.Dealer.hireCost,
+        held           = held,
+        dailyRemaining = row and math.max(0, Config.Dealer.dailyDirtyCap - row.day_dirty) or Config.Dealer.dailyDirtyCap,
+    })
+end)
+
+RegisterNetEvent('gtarp_drugs:dealerHire', function()
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not cooldownOk(src, 'dealer', 2) then return end
+    if not dealerProx(src) then
+        Bridge.Notify(src, Config.Dealer.label, 'The dealer is not here.', 'error'); return
+    end
+    if loadDealer(cid) then
+        Bridge.Notify(src, Config.Dealer.label, 'You already run a dealer.', 'error'); return
+    end
+    -- Hire fee paid in DIRTY money (a criminal front — no bank call).
+    if not Bridge.RemoveItem(src, Config.Items.dirty, Config.Dealer.hireCost) then
+        Bridge.Notify(src, Config.Dealer.label, ('You need $%d dirty on hand to hire.'):format(Config.Dealer.hireCost), 'error'); return
+    end
+    local t = now()
+    local ok = pcall(function()
+        MySQL.insert.await(
+            'INSERT INTO gtarp_drugs_dealers (owner_cid, hired_at, last_tick_at, stash_json, day_key) \z
+             VALUES (?, ?, ?, ?, ?)',
+            { cid, t, t, '[]', dealerDayKey() })
+    end)
+    if not ok then
+        Bridge.GiveItem(src, Config.Items.dirty, Config.Dealer.hireCost)  -- refund on failure
+        Bridge.Notify(src, Config.Dealer.label, 'Could not hire right now — your money was returned.', 'error'); return
+    end
+    Bridge.Notify(src, Config.Dealer.label, 'Dealer hired. Stock him product and he moves it over time.', 'success')
+end)
+
+RegisterNetEvent('gtarp_drugs:dealerStock', function(slot, units)
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not cooldownOk(src, 'dealer', 1) then return end
+    if not dealerProx(src) then
+        Bridge.Notify(src, Config.Dealer.label, 'The dealer is not here.', 'error'); return
+    end
+    local row = loadDealer(cid)
+    if not row then Bridge.Notify(src, Config.Dealer.label, 'Hire a dealer first.', 'error'); return end
+    resolveDealer(row)
+
+    slot = tonumber(slot)
+    if not slot then return end
+    local s = Bridge.GetSlot(src, Config.Items.product, slot)
+    if not s then Bridge.Notify(src, Config.Dealer.label, 'You are not holding that.', 'error'); return end
+    local unit, base, quality, brand = priceOfSlot(Config.Items.product, s.metadata)
+    if not unit then Bridge.Notify(src, Config.Dealer.label, 'The dealer will not push that.', 'error'); return end
+
+    local headroom = Config.Dealer.maxStash - stashUnits(row.stash)
+    if headroom <= 0 then Bridge.Notify(src, Config.Dealer.label, 'The dealer is fully stocked.', 'error'); return end
+    units = math.floor(tonumber(units) or 0)
+    if units ~= units or units < 1 then units = s.count end   -- default whole stack (NaN-safe)
+    units = math.min(units, s.count, headroom)
+    if units < 1 then return end
+
+    -- Consume before store — nothing enters the stash we didn't actually take.
+    if not Bridge.RemoveItemFromSlot(src, Config.Items.product, units, slot) then
+        Bridge.Notify(src, Config.Dealer.label, 'Could not hand over the product.', 'error'); return
+    end
+    row.stash[#row.stash + 1] = {
+        b = base, q = quality, brand = brand,
+        e = cloneEffects(s.metadata and s.metadata.effects), u = units,
+    }
+    if not saveDealer(row) then
+        -- Persist failed after we already took the product — hand it straight
+        -- back (with its metadata) so nothing is lost.
+        Bridge.GiveItem(src, Config.Items.product, units, s.metadata)
+        Bridge.Notify(src, Config.Dealer.label, 'Could not stock the dealer — your product was returned.', 'error'); return
+    end
+    Bridge.Notify(src, Config.Dealer.label,
+        ('Stocked %d unit(s). He now holds %d/%d.'):format(units, stashUnits(row.stash), Config.Dealer.maxStash), 'success')
+end)
+
+RegisterNetEvent('gtarp_drugs:dealerCollect', function()
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not cooldownOk(src, 'dealer', 2) then return end
+    if not dealerProx(src) then
+        Bridge.Notify(src, Config.Dealer.label, 'The dealer is not here.', 'error'); return
+    end
+    local row = loadDealer(cid)
+    if not row then Bridge.Notify(src, Config.Dealer.label, 'You have no dealer.', 'error'); return end
+    resolveDealer(row)
+    local owed = row.dirty_owed
+    if owed < 1 then Bridge.Notify(src, Config.Dealer.label, 'Nothing to collect yet.', 'inform'); return end
+    if not Bridge.CanCarry(src, Config.Items.dirty, owed) then
+        Bridge.Notify(src, Config.Dealer.label, 'Make room — that is a lot of cash to carry.', 'error'); return
+    end
+    -- Debit owed and PERSIST IT DURABLY before granting: if the write fails we
+    -- abort without paying, so the same owed cash can never be collected twice
+    -- (a best-effort save + a successful grant would otherwise leave the debt in
+    -- the DB). Restore + best-effort re-save on grant failure so money is never
+    -- created or destroyed.
+    row.dirty_owed = 0
+    row.dirty_earned_total = row.dirty_earned_total + owed
+    if not saveDealer(row) then
+        row.dirty_owed = owed
+        row.dirty_earned_total = row.dirty_earned_total - owed
+        Bridge.Notify(src, Config.Dealer.label, 'The books are busy — try again in a moment.', 'error'); return
+    end
+    if not Bridge.GiveItem(src, Config.Items.dirty, owed) then
+        row.dirty_owed = owed
+        row.dirty_earned_total = row.dirty_earned_total - owed
+        saveDealer(row)
+        Bridge.Notify(src, Config.Dealer.label, 'Could not hand over the cash — try again.', 'error'); return
+    end
+    addXp(cid, Config.Dealer.xpPerCollect)
+    local logged = pcall(function()
+        MySQL.insert.await(
+            'INSERT INTO gtarp_drugs_sales \z
+             (citizenid, channel, brand, base, quality, units, gross, cut_paid, net_dirty, region, flagged, evidence_case_id) \z
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            { cid, 'dealer', 'street', 'mixed', 0, 0, owed, 0, owed, 'Davis', 0, nil })
+    end)
+    if not logged then
+        print(('^3[gtarp_drugs] WARN: dealer-collect ledger INSERT failed for %s ($%d) — economy under-count^0'):format(cid, owed))
+    end
+    Bridge.Notify(src, Config.Dealer.label, ('Collected $%d dirty from the dealer.'):format(owed), 'success')
+end)
+
+RegisterNetEvent('gtarp_drugs:dealerFire', function()
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not cooldownOk(src, 'dealer', 2) then return end
+    if not dealerProx(src) then
+        Bridge.Notify(src, Config.Dealer.label, 'The dealer is not here.', 'error'); return
+    end
+    local row = loadDealer(cid)
+    if not row then return end
+    resolveDealer(row)
+    -- Hand back unsold product + owed dirty (best-effort) before deleting, so
+    -- nothing is destroyed. Anything that can't fit keeps the dealer alive.
+    local returned = 0
+    for _, lot in ipairs(row.stash) do
+        local u = tonumber(lot.u) or 0
+        if u > 0 then
+            local meta = { base = lot.b, quality = lot.q, effects = lot.e, brand = lot.brand }
+            if Bridge.CanCarry(src, Config.Items.product, u) and Bridge.GiveItem(src, Config.Items.product, u, meta) then
+                returned = returned + u
+                lot.u = 0
+            end
+        end
+    end
+    if row.dirty_owed > 0 and Bridge.CanCarry(src, Config.Items.dirty, row.dirty_owed)
+        and Bridge.GiveItem(src, Config.Items.dirty, row.dirty_owed) then
+        row.dirty_owed = 0
+    end
+    if stashUnits(row.stash) > 0 or row.dirty_owed > 0 then
+        saveDealer(row)   -- couldn't return everything — keep him so nothing is lost
+        Bridge.Notify(src, Config.Dealer.label, 'Make room to reclaim your product/cash, then fire him again.', 'error')
+        return
+    end
+    pcall(function() MySQL.update.await('DELETE FROM gtarp_drugs_dealers WHERE owner_cid = ?', { cid }) end)
+    Bridge.Notify(src, Config.Dealer.label,
+        ('Dealer fired.%s'):format(returned > 0 and (' Reclaimed %d unit(s).'):format(returned) or ''), 'inform')
+end)
+
 AddEventHandler('onResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
 

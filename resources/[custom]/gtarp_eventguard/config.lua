@@ -83,6 +83,16 @@ Config.Events = {
     ['gtarp_drugs:dryStart']   = { calls = 15, window_seconds = 60 },
     ['gtarp_drugs:dryCollect'] = { calls = 20, window_seconds = 60 },
 
+    -- gtarp_drugs NPC dealer (Phase 2) — a passive dirty-cash faucet. `dealerMenu`
+    -- is a read-only snapshot (fans a DB read + lazy sale resolve); hire/stock/
+    -- collect/fire each touch money or the stash. Load-order: ensure
+    -- gtarp_eventguard before gtarp_drugs so these register first.
+    ['gtarp_drugs:dealerMenu']    = { calls = 20, window_seconds = 30 },
+    ['gtarp_drugs:dealerHire']    = { calls = 5,  window_seconds = 60 },
+    ['gtarp_drugs:dealerStock']   = { calls = 20, window_seconds = 60 },
+    ['gtarp_drugs:dealerCollect'] = { calls = 15, window_seconds = 60 },
+    ['gtarp_drugs:dealerFire']    = { calls = 5,  window_seconds = 60 },
+
     -- gtarp_gangs — player-run gang management + shared CASH vault + rep. The
     -- money-touching events are `deposit`/`withdraw` (vault, re-validated +
     -- atomic server-side) and `create` (charges the founder's bank); the

@@ -12,8 +12,9 @@
 -- REQUEST an action; progress bars are cosmetic.
 -- ============================================================================
 
-local handles = {}   -- interaction handles (grow plots, station, buyer)
+local handles = {}   -- interaction handles (grow plots, station, buyer, dealer)
 local buyerPed = nil
+local dealerPed = nil
 
 local function effectsText(effects)
     if type(effects) ~= 'table' or #effects == 0 then return 'No effects' end
@@ -309,6 +310,75 @@ RegisterNetEvent('gtarp_drugs:dryMenuData', function(d)
 end)
 
 -- ---------------------------------------------------------------------------
+-- DEALER — the NPC corner dealer (passive faucet; all state from the server)
+-- ---------------------------------------------------------------------------
+RegisterNetEvent('gtarp_drugs:dealerMenuData', function(d)
+    if not d then return end
+
+    if not d.hired then
+        Game.OpenMenu('gtarp_drugs_dealer', Config.Dealer.label, {
+            {
+                title = ('Hire a dealer — $%d dirty'):format(d.hireCost or 0),
+                description = ('He moves stocked product over time for a %d%% cut'):format(
+                    math.floor((Config.Dealer.playerCut or 0.8) * 100)),
+                icon = 'fas fa-user-plus',
+                onSelect = function() TriggerServerEvent('gtarp_drugs:dealerHire') end,
+            },
+        })
+        return
+    end
+
+    local options = {
+        {
+            title = ('Holding %d / %d units'):format(d.stashUnits or 0, d.maxStash or 0),
+            description = ('Owed: $%d dirty · buys up to $%d more today'):format(d.owed or 0, d.dailyRemaining or 0),
+            icon = 'fas fa-briefcase',
+            disabled = true,
+        },
+    }
+    if (d.owed or 0) > 0 then
+        options[#options + 1] = {
+            title = ('Collect $%d dirty'):format(d.owed),
+            description = 'Take your accumulated cut',
+            icon = 'fas fa-sack-dollar',
+            onSelect = function() TriggerServerEvent('gtarp_drugs:dealerCollect') end,
+        }
+    end
+    options[#options + 1] = {
+        title = 'Stock product',
+        description = 'Hand him weed product to push',
+        icon = 'fas fa-box',
+        onSelect = function()
+            local sub = {}
+            for _, h in ipairs(d.held or {}) do
+                sub[#sub + 1] = {
+                    title = ('%s [%s] x%d'):format(h.label, Config.QualityLabel(h.quality), h.count),
+                    description = ('~$%d each — hand over the whole stack'):format(h.unit),
+                    icon = 'fas fa-box',
+                    onSelect = function() TriggerServerEvent('gtarp_drugs:dealerStock', h.slot, h.count) end,
+                }
+            end
+            if #sub == 0 then
+                sub[#sub + 1] = {
+                    title = 'No product on you',
+                    description = 'Mix some weed product at the station first',
+                    icon = 'fas fa-ban',
+                    disabled = true,
+                }
+            end
+            Game.OpenMenu('gtarp_drugs_dealer_stock', 'Stock the dealer', sub, 'gtarp_drugs_dealer')
+        end,
+    }
+    options[#options + 1] = {
+        title = 'Fire the dealer',
+        description = 'Reclaim unsold product + owed cash',
+        icon = 'fas fa-user-minus',
+        onSelect = function() TriggerServerEvent('gtarp_drugs:dealerFire') end,
+    }
+    Game.OpenMenu('gtarp_drugs_dealer', Config.Dealer.label, options)
+end)
+
+-- ---------------------------------------------------------------------------
 -- Fallback point dispatch (used only when qbx_police is absent)
 -- ---------------------------------------------------------------------------
 RegisterNetEvent('gtarp_drugs:dispatch', function(d)
@@ -346,10 +416,18 @@ CreateThread(function()
         'buyer', Config.Sell.coords, Config.Sell.radius, ('Sell to %s'):format(Config.Sell.label),
         'fas fa-user-secret',
         function() TriggerServerEvent('gtarp_drugs:sellMenu') end)
+
+    -- NPC corner dealer (passive faucet)
+    dealerPed = Game.SpawnPed(Config.Dealer.pedModel, Config.Dealer.coords, Config.Dealer.pedHeading)
+    handles[#handles + 1] = Game.CreateInteraction(
+        'dealer', Config.Dealer.coords, Config.Dealer.radius, Config.Dealer.label,
+        'fas fa-user-tie',
+        function() TriggerServerEvent('gtarp_drugs:dealerMenu') end)
 end)
 
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     for _, h in ipairs(handles) do Game.RemoveInteraction(h) end
     if buyerPed then Game.DeletePed(buyerPed) end
+    if dealerPed then Game.DeletePed(dealerPed) end
 end)
