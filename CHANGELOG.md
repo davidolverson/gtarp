@@ -45,15 +45,48 @@ the other 12 audited resources came back clean.**
 > mechanics now ask for your approval before charging you. Plus we moved a bunch of
 > racket locations to their real spots around the city. Cleaner, fairer hustle. 💰
 
-## 2026-07-10 — 🌿 New: `gtarp_drugs` (Schedule I-style) — _in progress_
+## 2026-07-10 — 🌿 New: `gtarp_drugs` (Schedule I-style) — MVP Phase 1 built
 
-Building the missing drug supply chain — a faithful adaptation of **Schedule I**:
-grow → **mix base drugs with additives to create branded products with stacking
-effects + quality tiers** → sell → build a customer base → hire dealers → launder →
-dodge heat → rank up. Design locked in `docs/DRUGS-SPEC.md`; MVP (weed grow → mix →
-sell → dirty cash → laundering + heat) building now.
+The missing drug supply chain — a faithful adaptation of **Schedule I**. Design
+locked in `docs/DRUGS-SPEC.md`; **MVP (weed only) built**: grow → mix a custom
+branded product with stacking effects + quality → sell → dirty cash → laundering
++ heat/evidence. Not yet wired into `custom.cfg` (operator step).
 
-**📣 Public:** _drafting for launch — big one coming._
+**Tracking (internal):**
+- 🌱 **Grow loop** — buy `weed_seed` + `soil` (+ optional grow additive), plant at
+  an ox_target grow plot, water over **wall-clock DB timers resolved on
+  interaction** (restart-safe, no client ticks), harvest `weed_bud` with
+  `{strain,quality,effects,dried}` metadata. Neglect (water → 0%) drops quality/yield.
+- 🧪 **Mixing station** — pick a base stack + one additive; the **server** resolves
+  effects (append-if-absent, 8-cap, order kept), recomputes quality + unit price
+  via the spec §5 formula, sanitizes a player brand, mints one `weed_product`
+  (`{brand,base,effects[],quality,unit_value,batch_id,producer}`). Bad-mix roll can
+  inflict a junk effect. Named recipes saved to `drugs_recipes` for one-click repeat.
+- 💵 **Selling** — real players via ox_inventory trade, plus one **rate-limited NPC
+  street-buyer** paying DIRTY `black_money` priced from the item's real metadata,
+  bounded by a **per-character daily faucet cap**. Logged to `drugs_sales`.
+- 🚔 **Heat/evidence (basic)** — sales warm a per-dealer heat model; a hot dealer or
+  witness roll (and the odd big harvest) trips a native police alert +
+  `gtarp_evidence` case. Every unit carries `batch_id`+`producer` for audit.
+- 🧱 **Full §1–5 config** — 4 weed strains, 16 additives→effects, all 34 effect
+  multipliers, 5 quality tiers, and the server-authoritative `Config.Price` helper.
+- 🛡️ **Server-authoritative** — never trusts client price/effects/quality/amount;
+  recomputes from config + metadata; consumes inputs before granting outputs;
+  proximity re-derived server-side; all SQL parameterized. 9 net events registered
+  in `gtarp_eventguard`. New items added to `ox_inventory_overrides` (replacing the
+  earlier generic `cannabis_leaf`/`weed_baggie` draft). SQL: `drugs_plants`,
+  `drugs_recipes`, `drugs_progression`, `drugs_sales` (`sql/0039_drugs.sql`).
+- ⏭️ **Deferred to Phase 2/3:** meth/shrooms/coke, NPC customers + hired dealers,
+  the order-dependent reaction table, and drying-rack **Heavenly** quality (needs
+  the `drugs_processes` timer table, out of the MVP schema).
+
+**📣 Public:**
+> 🌿 **New hustle incoming — grow, cook, and brand your own product**
+> Plant strains, keep them watered, then take your buds to the mixing bench and
+> cut them with additives to build custom effects and quality — then slap your own
+> brand on it. Better product, better payout. Sell to other players or move it fast
+> to a street buyer for dirty cash you'll need to launder. Bring heat if you get
+> greedy. 💨
 
 <!-- Template:
 ## YYYY-MM-DD — <title>

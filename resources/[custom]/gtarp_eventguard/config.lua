@@ -52,6 +52,25 @@ Config.Events = {
     ['gtarp_turf:complete']    = { calls = 10, window_seconds = 60 },
     ['gtarp_turf:cancel']      = { calls = 10, window_seconds = 60 },
 
+    -- gtarp_drugs — Schedule I supply chain. The money/item-touching events
+    -- are `plant`/`harvest` (grant items), `mix`/`mixRecipe` (mint product),
+    -- and `sell` (dirty-cash payout); `plotMenu`/`mixMenu`/`sellMenu` are
+    -- read-only snapshots that fan a DB read + inventory scan per call, so they
+    -- get a blunt call-count budget as defense-in-depth (same reasoning as
+    -- ox_inventory:openInventory below). Each event has its own per-player
+    -- server-side cooldown too. ensure order in custom.cfg MUST put
+    -- gtarp_eventguard before gtarp_drugs so these guards register first in the
+    -- handler chain (same requirement as gtarp_robbery/turf above).
+    ['gtarp_drugs:plotMenu']  = { calls = 30, window_seconds = 30 },
+    ['gtarp_drugs:plant']     = { calls = 15, window_seconds = 60 },
+    ['gtarp_drugs:water']     = { calls = 30, window_seconds = 60 },
+    ['gtarp_drugs:harvest']   = { calls = 20, window_seconds = 60 },
+    ['gtarp_drugs:mixMenu']   = { calls = 20, window_seconds = 30 },
+    ['gtarp_drugs:mix']       = { calls = 15, window_seconds = 60 },
+    ['gtarp_drugs:mixRecipe'] = { calls = 15, window_seconds = 60 },
+    ['gtarp_drugs:sellMenu']  = { calls = 20, window_seconds = 30 },
+    ['gtarp_drugs:sell']      = { calls = 20, window_seconds = 60 },
+
     -- ox_inventory shop purchase fan-out — recipe-shipped net event.
     -- ox_inventory does its own per-event data validation (Utils.LogExploit);
     -- this blunt call-count budget is defense-in-depth on top.
