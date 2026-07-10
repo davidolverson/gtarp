@@ -14,6 +14,13 @@
 
 local lastAction = {}   -- [src] = { [key] = ts } per-source rate limits
 
+-- Forward-declared: defined further down but called by cmdMdt/cmdCase above
+-- their definitions. Declaring the locals here (before those callers) lets the
+-- callers capture them as upvalues; the bare `function X` defs below assign
+-- into these locals. Without this they resolved to nil globals and /mdt +
+-- /mdtcase (on an identified suspect) errored on every call.
+local activeWarrantCount, activeWarrantsFor, calls24h
+
 -- Resolved GetMDT() contract (qbx_police_overrides when running, else
 -- Config.MDTDefaults). Resolved once at boot — the override resource
 -- starts before us in custom.cfg.
@@ -270,7 +277,7 @@ end
 -- that citizen's active warrants.
 -- ---------------------------------------------------------------------------
 
-local function activeWarrantCount()
+function activeWarrantCount()
     local n = 0
     pcall(function()
         local r = MySQL.single.await(
@@ -289,7 +296,7 @@ local function bookingCount()
     return n
 end
 
-local function activeWarrantsFor(citizenid)
+function activeWarrantsFor(citizenid)
     local rows = {}
     pcall(function()
         rows = MySQL.query.await(
@@ -581,7 +588,7 @@ end
 
 local lastCallBySrc = {}   -- [src or 0] = ts, flood guard on the recorder
 
-local function calls24h()
+function calls24h()
     local n = 0
     pcall(function()
         local r = MySQL.single.await(
