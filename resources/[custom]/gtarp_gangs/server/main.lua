@@ -165,9 +165,19 @@ end
 -- leave so money is never voided.
 local function destroyGang(g, leaderCid, actorSrc)
     local remainder = captureVault(g.id)
+    local paidOut = 0
     if remainder > 0 then
         if Bridge.CreditBankByCitizenId(leaderCid, remainder, 'gang-disband-payout') then
             logVault(g.id, leaderCid, 'disband_payout', remainder, 0)
+            paidOut = remainder
+        else
+            -- Bank credit failed (both online + offline paths). captureVault has
+            -- already zeroed the vault, so do NOT silently void the money: write a
+            -- reconcilable ledger row (no FK cascade — it survives the gang delete
+            -- below) and warn loudly so staff can reimburse leaderCid.
+            logVault(g.id, leaderCid, 'disband_payout_failed', remainder, 0)
+            print(('^1[gtarp_gangs] disband payout FAILED — %s is owed $%d from gang %d (reconcile manually)^0')
+                :format(leaderCid, remainder, g.id))
         end
     end
     for _, m in ipairs(gangMembers(g.id)) do
@@ -181,7 +191,7 @@ local function destroyGang(g, leaderCid, actorSrc)
         MySQL.update.await('DELETE FROM gtarp_gang_members WHERE gang_id = ?', { g.id })
         MySQL.update.await('DELETE FROM gtarp_gangs WHERE id = ?', { g.id })
     end)
-    return remainder
+    return paidOut
 end
 
 -- ---------------------------------------------------------------------------
@@ -470,7 +480,7 @@ RegisterNetEvent('gtarp_gangs:deposit', function(amount)
     local cid = Bridge.GetCitizenId(src)
     if not cid then return end
     amount = math.floor(tonumber(amount) or 0)
-    if amount < Config.VaultMinAmount or amount > Config.VaultMaxPerAction then
+    if amount ~= amount or amount < Config.VaultMinAmount or amount > Config.VaultMaxPerAction then
         Bridge.Notify(src, 'Vault', 'Enter a valid amount.', 'error'); return
     end
     local mr = memberRow(cid)
@@ -502,7 +512,7 @@ RegisterNetEvent('gtarp_gangs:withdraw', function(amount)
     local cid = Bridge.GetCitizenId(src)
     if not cid then return end
     amount = math.floor(tonumber(amount) or 0)
-    if amount < Config.VaultMinAmount or amount > Config.VaultMaxPerAction then
+    if amount ~= amount or amount < Config.VaultMinAmount or amount > Config.VaultMaxPerAction then
         Bridge.Notify(src, 'Vault', 'Enter a valid amount.', 'error'); return
     end
     local mr = memberRow(cid)

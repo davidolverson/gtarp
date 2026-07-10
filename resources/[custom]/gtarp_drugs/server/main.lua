@@ -887,7 +887,11 @@ RegisterNetEvent('gtarp_drugs:sell', function(slot, item)
     end
 
     local m = s.metadata or {}
-    pcall(function()
+    -- The daily dirty-money faucet cap is enforced by SUMming this table, so a
+    -- silently-dropped INSERT would let the cap drift upward over time. Payout
+    -- already happened (no dupe), but log a warning on failure so the miss is
+    -- reconcilable rather than invisible.
+    local logged = pcall(function()
         MySQL.insert.await(
             'INSERT INTO gtarp_drugs_sales \z
              (citizenid, channel, brand, base, quality, units, gross, cut_paid, net_dirty, region, flagged, evidence_case_id) \z
@@ -895,6 +899,10 @@ RegisterNetEvent('gtarp_drugs:sell', function(slot, item)
             { cid, 'npc', brand or m.strain or 'buds', base, quality, units, total, 0, total,
               Config.Sell.region, flagged and 1 or 0, caseId })
     end)
+    if not logged then
+        print(('^3[gtarp_drugs] WARN: sale ledger INSERT failed for %s ($%d dirty, %d units) — daily cap accounting may under-count^0')
+            :format(cid, total, units))
+    end
 
     local msg = ('Sold %dx for $%d dirty.'):format(units, total)
     if units < s.count then
@@ -1197,11 +1205,14 @@ AddEventHandler('onResourceStart', function(resource)
         MySQL.query.await("DELETE FROM gtarp_drugs_plants WHERE stage = 'harvested'")
     end)
 
-    -- A crash mid-collect can strand a dry process at 'collecting' (its buds
-    -- were consumed at load time but never handed back); revert to 'running'
-    -- so the owner can collect their Heavenly buds again — never delete these.
+    -- A crash mid-collect can strand a dry process at 'collecting'. The output
+    -- Heavenly buds may or may not have been handed back before the crash, and
+    -- the row state alone can't tell us — reverting to 'running' would let a
+    -- player who already received their buds collect a SECOND free Heavenly
+    -- stack (a high-value dirty-money dupe). Err toward loss instead of dupe:
+    -- delete the stranded rows, exactly as the harvest recovery above does.
     pcall(function()
-        MySQL.query.await("UPDATE gtarp_drugs_processes SET status = 'running' WHERE status = 'collecting'")
+        MySQL.query.await("DELETE FROM gtarp_drugs_processes WHERE status = 'collecting'")
     end)
 
     booted = true
