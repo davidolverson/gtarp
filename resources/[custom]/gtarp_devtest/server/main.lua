@@ -380,6 +380,18 @@ local function testShapes()
         fail('smuggling — resource not started')
     end
 
+    if resourceUp('gtarp_drugs') then
+        try('drugs.GetSummary', function()
+            local s = exports.gtarp_drugs:GetSummary()
+            check(type(s) == 'table' and type(s.totalSales) == 'number'
+                and type(s.totalDirtyEarned) == 'number' and type(s.flaggedSales) == 'number'
+                and type(s.activePlants) == 'number',
+                'drugs.GetSummary returns {totalSales, totalDirtyEarned, flaggedSales, activePlants}')
+        end)
+    else
+        fail('drugs — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -488,6 +500,7 @@ local REQUIRED_TABLES = {
     gtarp_loanshark   = { 'gtarp_loanshark_loans' },
     gtarp_seizure     = { 'gtarp_seizure_forfeitures' },
     gtarp_smuggling   = { 'gtarp_smuggling_runs' },
+    gtarp_drugs       = { 'drugs_plants', 'drugs_recipes', 'drugs_progression', 'drugs_sales' },
     gtarp_citations   = { 'gtarp_citations' },
     gtarp_insurance   = { 'gtarp_insurance_policies', 'gtarp_insurance_claims' },
     gtarp_legal       = { 'gtarp_legal_petitions' },

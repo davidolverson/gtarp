@@ -59,6 +59,13 @@ local function tally()
             n(sm.delivered), money(sm.dirtyPaid), n(sm.active))
     else L[#L + 1] = 'smuggling:   offline' end
 
+    local dr = Bridge.Summary('gtarp_drugs')
+    if dr then
+        minted = minted + n(dr.totalDirtyEarned)
+        L[#L + 1] = ('drugs:       %d sales, %s earned (dirty), %d flagged, %d growing'):format(
+            n(dr.totalSales), money(dr.totalDirtyEarned), n(dr.flaggedSales), n(dr.activePlants))
+    else L[#L + 1] = 'drugs:       offline' end
+
     L[#L + 1] = ('-- dirty minted ~%s | removed (laundered+forfeited) ~%s | net in play ~%s'):format(
         money(minted), money(removed), money(minted - removed))
     L[#L + 1] = '   (net excludes recipe bank-robbery minting + black-market spend)'
