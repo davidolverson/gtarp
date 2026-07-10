@@ -83,6 +83,29 @@ Config.Events = {
     ['gtarp_drugs:dryStart']   = { calls = 15, window_seconds = 60 },
     ['gtarp_drugs:dryCollect'] = { calls = 20, window_seconds = 60 },
 
+    -- gtarp_gangs — player-run gang management + shared CASH vault + rep. The
+    -- money-touching events are `deposit`/`withdraw` (vault, re-validated +
+    -- atomic server-side) and `create` (charges the founder's bank); the
+    -- membership events (`invite`/`acceptInvite`/`declineInvite`/`leave`/`kick`/
+    -- `promote`/`demote`/`disband`) all re-check rank server-side. `requestMenu`
+    -- is read-only but fans a full DB-backed roster snapshot per call, so it
+    -- gets a blunt call-count budget as defense-in-depth (same reasoning as
+    -- ox_inventory:openInventory below). ensure order in custom.cfg MUST put
+    -- gtarp_eventguard before gtarp_gangs so these guards register first in the
+    -- handler chain (same requirement as gtarp_robbery/turf/drugs above).
+    ['gtarp_gangs:requestMenu']    = { calls = 20, window_seconds = 30 },
+    ['gtarp_gangs:create']         = { calls = 5,  window_seconds = 60 },
+    ['gtarp_gangs:disband']        = { calls = 5,  window_seconds = 60 },
+    ['gtarp_gangs:invite']         = { calls = 15, window_seconds = 60 },
+    ['gtarp_gangs:acceptInvite']   = { calls = 10, window_seconds = 60 },
+    ['gtarp_gangs:declineInvite']  = { calls = 10, window_seconds = 60 },
+    ['gtarp_gangs:leave']          = { calls = 5,  window_seconds = 60 },
+    ['gtarp_gangs:kick']           = { calls = 15, window_seconds = 60 },
+    ['gtarp_gangs:promote']        = { calls = 15, window_seconds = 60 },
+    ['gtarp_gangs:demote']         = { calls = 15, window_seconds = 60 },
+    ['gtarp_gangs:deposit']        = { calls = 20, window_seconds = 60 },
+    ['gtarp_gangs:withdraw']       = { calls = 20, window_seconds = 60 },
+
     -- ox_inventory shop purchase fan-out — recipe-shipped net event.
     -- ox_inventory does its own per-event data validation (Utils.LogExploit);
     -- this blunt call-count budget is defense-in-depth on top.

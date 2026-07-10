@@ -66,6 +66,15 @@ local function tally()
             n(dr.totalSales), money(dr.totalDirtyEarned), n(dr.flaggedSales), n(dr.activePlants))
     else L[#L + 1] = 'drugs:       offline' end
 
+    -- gtarp_gangs is not a dirty-cash source or sink (its vault holds CLEAN
+    -- cash), so it doesn't feed minted/removed — it's an informational line
+    -- on the player-run gang layer for the operator's-eye view.
+    local ga = Bridge.Summary('gtarp_gangs')
+    if ga then
+        L[#L + 1] = ('gangs:       %d gang(s), %d member(s), %s in vaults, top rep %d'):format(
+            n(ga.gangs), n(ga.members), money(ga.totalVault), n(ga.topRep))
+    else L[#L + 1] = 'gangs:       offline' end
+
     L[#L + 1] = ('-- dirty minted ~%s | removed (laundered+forfeited) ~%s | net in play ~%s'):format(
         money(minted), money(removed), money(minted - removed))
     L[#L + 1] = '   (net excludes recipe bank-robbery minting + black-market spend)'

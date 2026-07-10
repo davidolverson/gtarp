@@ -392,6 +392,26 @@ local function testShapes()
         fail('drugs — resource not started')
     end
 
+    if resourceUp('gtarp_gangs') then
+        try('gangs.GetSummary', function()
+            local s = exports.gtarp_gangs:GetSummary()
+            check(type(s) == 'table' and type(s.gangs) == 'number'
+                and type(s.members) == 'number' and type(s.totalVault) == 'number'
+                and type(s.topRep) == 'number',
+                'gangs.GetSummary returns {gangs, members, totalVault, topRep}')
+        end)
+        try('gangs.GetGang / IsSameGang / AddRep reject unknowns', function()
+            check(exports.gtarp_gangs:GetGang('devtest_no_such_citizen') == nil,
+                'gangs.GetGang returns nil for unknown citizen')
+            check(exports.gtarp_gangs:IsSameGang('devtest_a', 'devtest_b') == false,
+                'gangs.IsSameGang returns false for gangless citizens')
+            check(exports.gtarp_gangs:AddRep(999999999, 5, 'devtest') == nil,
+                'gangs.AddRep returns nil for unknown gang')
+        end)
+    else
+        fail('gangs — resource not started')
+    end
+
     if resourceUp('gtarp_perf') then
         try('perf.GetSummary', function()
             local s = exports.gtarp_perf:GetSummary()
@@ -491,6 +511,7 @@ local REQUIRED_TABLES = {
     gtarp_evidence    = { 'gtarp_evidence', 'gtarp_evidence_cases', 'gtarp_evidence_suspects' },
     gtarp_flashdrop   = { 'gtarp_flashdrop_drops', 'gtarp_flashdrop_serials',
                           'gtarp_flashdrop_provenance', 'gtarp_flashdrop_listings' },
+    gtarp_gangs       = { 'gtarp_gangs', 'gtarp_gang_members', 'gtarp_gang_vault_log' },
     gtarp_grind       = { 'grind_skill' },
     gtarp_gunrunning  = { 'gtarp_gunrunning_sales' },
     gtarp_chopshop    = { 'gtarp_chopshop_stolen', 'gtarp_chopshop_sales' },

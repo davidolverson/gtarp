@@ -917,3 +917,55 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       sell an item you don't hold → rejected. All amounts server-recomputed.
 - [ ] Not loaded unless `ensure gtarp_drugs` is in `custom.cfg` (it is, after
       `gtarp_laundering`); `sql/0039_drugs.sql` applied.
+
+## 43. Player-run gangs — `gtarp_gangs`
+
+Player-created gang management + shared CASH vault + reputation — the layer
+Qbox does NOT ship (qbx_core owns only the STATIC gang registry; this adds
+player-created gangs, membership, vaults, and rep, like qb-gangs/ps-gangs do
+for QBCore). Server-authoritative throughout; nothing trusts the client for
+gang id / rank / amount / membership.
+
+- [ ] Boot: `gangs.GetSummary` shape PASSes in devtest ({gangs, members,
+      totalVault, topRep}); the 3 tables (`gtarp_gangs`, `gtarp_gang_members`,
+      `gtarp_gang_vault_log`) are present; `GetGang`/`IsSameGang`/`AddRep`
+      reject-unknown probes PASS. `sql/0041_gangs.sql` applied.
+- [ ] **Create:** `/gang` with no gang → "Create a gang" → enter name + tag.
+      Name is sanitised to letters/digits/spaces (3-24), tag upper-cased
+      (2-5); a blocklisted word or a duplicate name/tag is rejected. Founder is
+      charged `Config.CreationCost` from **bank** (default $50k) and becomes
+      Leader. Row in `gtarp_gangs`; leader row in `gtarp_gang_members`.
+- [ ] **One gang per player:** a player already in a gang cannot create or
+      accept an invite (PK on `gtarp_gang_members.citizenid` is the hard guard).
+- [ ] **Invite/accept:** stand next to a gangless player, officer+ → "Invite
+      nearby player" (server picks the CLOSEST eligible player within
+      `InviteRadius`; client never names the target). Target gets an accept/
+      decline prompt; accept → they join as Member. Invite expires after
+      `InviteExpirySec`; accepting a full/expired/gone gang is rejected.
+- [ ] **Ranks:** leader promotes Member→Officer and demotes Officer→Member
+      (promote never grants Leader). Officer+ can kick STRICTLY-lower ranks;
+      a member/officer cannot kick a peer or up. All re-checked server-side —
+      spoofing a target citizenid for someone in another gang is rejected.
+- [ ] **Vault (atomic, auditable):** any member deposits CASH (consume-before-
+      credit; a failed vault write refunds the cash). Officer+ withdraws
+      (atomic guarded decrement — two same-tick withdraws can't both pass, no
+      overdraft; a failed payout puts it back). Every move logs a
+      `gtarp_gang_vault_log` row with the balance snapshot.
+- [ ] **Leave/disband:** a member leaves freely. A leader with members must
+      disband (or promote+leave); a sole leader leaving disbands. Disband pays
+      the vault remainder back to the leader's bank (logged `disband_payout`),
+      notifies online members, and deletes the gang + all member rows.
+- [ ] **Reputation:** `exports.gtarp_gangs:AddRep(gangId, amount, reason)`
+      (server-only) moves a gang's rep (floors at 0); other resources
+      (turf/protection/drugs) can call it to reward gang activity.
+- [ ] **Economy:** `/economy` staff scoreboard shows a `gangs:` line (count,
+      members, total vault, top rep) — informational, NOT in the dirty
+      minted/removed math (vault holds clean cash).
+- [ ] **Anti-exploit:** spam the events (rate-limited by `gtarp_eventguard`
+      budgets); `gtarp_eventguard` ensures BEFORE `gtarp_gangs` in `custom.cfg`.
+- [ ] **Qbox integration:** does NOT duplicate qbx_core's static gang model;
+      reads it read-only via the bridge. `Config.MirrorToQbxGang` (default OFF)
+      best-effort mirrors membership into `PlayerData.gang` (only sticks if the
+      gang is also registered in qbx_core's static registry — pcall-guarded).
+- [ ] Not loaded unless `ensure gtarp_gangs` is in `custom.cfg` (add after
+      `qbx_core` / near the other crime resources, and AFTER `gtarp_eventguard`).

@@ -9,6 +9,46 @@ Format: newest first. Dates are EDT.
 
 ---
 
+## 2026-07-10 — Player-run gangs (`gtarp_gangs`)
+
+New custom resource: the **player-created gang layer Qbox does not ship**.
+qbx_core owns only the STATIC gang registry (predefined gangs + grades,
+`PlayerData.gang`, `/setgang`); this adds what qb-gangs/ps-gangs add to QBCore —
+gangs players create and run themselves, membership + ranks, a shared cash
+vault, and reputation. The static qbx model is **not** duplicated; it's read
+read-only through the bridge, with an opt-in (default-off) mirror seam.
+
+**Tracking (internal):**
+- 🆕 **gtarp_gangs** — `/gang` menu. Create (unique name+tag, sanitised/length-
+  limited/profanity-filtered, bank-charged founding cost) / disband (leader).
+  Membership + ranks (Leader/Officer/Member): invite the closest eligible nearby
+  player (server-chosen, never client-named), accept, leave, kick (officer+,
+  lower ranks only), promote/demote (leader). **One gang per player** enforced by
+  a PK on `citizenid`.
+- 💰 **Shared CASH vault** — rank-gated deposit (any member) / withdraw
+  (officer+). Deposits are consume-before-credit; withdraws use an **atomic
+  guarded decrement** (no double-withdraw race, no overdraft) with rollback on a
+  failed payout. Every move logged to `gtarp_gang_vault_log` with a balance
+  snapshot. Disband pays the vault remainder back to the leader's bank.
+- 📈 **Reputation** — per-gang `rep` + a server-only `AddRep(gangId, amount,
+  reason)` export (floors at 0) so turf/protection/drugs can reward gang activity
+  later. Exports: `GetGang`, `IsSameGang`, `AddRep`, `GetSummary`.
+- 🔒 Server-authoritative throughout (rank/membership/amounts re-checked
+  server-side; parameterised SQL; bridge-isolated per GTA6-readiness).
+- 🔧 Wiring: `sql/0041_gangs.sql` (3 indexed, restart-safe tables); rate-limit
+  budgets in `gtarp_eventguard`; devtest shape + table-map assertions; a `gangs:`
+  line on the `/economy` scoreboard; `docs/TESTING.md` §43. (custom.cfg ensure
+  line left for the operator — after qbx_core, near the crime resources, after
+  `gtarp_eventguard`.)
+
+**📣 Public:** Start your own **crew**. Found a gang with a name and a tag, run
+your roster with officer and member ranks, invite people, and pool your money in
+a **shared gang vault** only your officers can pull from. Gangs also build a
+**reputation** as you run the streets — the foundation for turf and crime payouts
+to come. Type `/gang` to get started.
+
+---
+
 ## 2026-07-10 — Economy anti-exploit hardening + coord retune
 
 A server-wide adversarial audit of the money-handling systems (find →
