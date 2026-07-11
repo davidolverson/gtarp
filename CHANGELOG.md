@@ -9,6 +9,65 @@ Format: newest first. Dates are EDT.
 
 ---
 
+## 2026-07-11 - Meth cook lab (`gtarp_drugs` §9)
+
+The Schedule I supply chain gets its second drug: **meth**, via a new cook
+station. Meth is not a strain (it can never be planted); the cook lab is its
+only source. It reuses the same restart-safe, wall-clock, resolve-on-interaction
+timer as the drying rack, so there are no client ticks and nothing to dupe on
+relog.
+
+**Tracking (internal):**
+- 🆕 **Cook station** (3 burners). Load a pseudo stack (its grade sets the
+  quality floor) plus acid and red phosphorus; the batch cooks over wall-clock
+  time in `gtarp_drugs_processes` (`kind='cook'`, reusing the drying table) and
+  mints `meth_raw` crystal on collect.
+- 🎲 **Outcome rolled AND stored at start**, never at collect: success (scales
+  with rank, capped at 0.9), quality (grade floor, one tier lower on a failed
+  cook), yield (config range plus a per-4-ranks bonus, one less on failure), and
+  a possible junk effect on a bad batch. Re-collecting can never re-roll a
+  better result.
+- 🔒 Money/dupe-safe, mirroring grow and dry: precursors consumed before the row
+  is written (full refund ladder on any failure), an atomic `running` to
+  `collecting` claim so a double-fire can't collect twice, crystal reverted if
+  your hands are full, and a per-character concurrent-cook cap. A stranded
+  `collecting` row is deleted at boot (err toward loss, never a dupe).
+- 🚔 **Cooking is loud**: it warms dealer heat faster than a street sale and has
+  a high flat chance to ping police and open a `gtarp_evidence` case the moment
+  the burner lights.
+- 💊 `meth_raw` and `meth_product` flow through the existing mix, sell and price
+  engine automatically (base-agnostic refactor: the base id is `meta.base or
+  meta.strain`). Also fixed a latent bug where the street buyer offered meth but
+  the sell handler still hardcoded weed items and rejected the sale.
+- 🔧 Wiring: 5 ox_inventory items (`pseudo`, `acid`, `red_phosphorus`,
+  `meth_raw`, `meth_product`); `gtarp_eventguard` budgets for the 3 cook events;
+  a soft boot gate that leaves the lab dark (weed unaffected) until all five
+  items are registered. **No new SQL migration** (reuses `gtarp_drugs_processes`).
+  Cook coords are a placeholder to verify in-game; item PNGs are still needed
+  (David) before icons render.
+
+**📣 Public:** The city has a new product. Set up in the **meth lab**: load your
+pseudo, acid and red phosphorus into a burner and let it cook. Higher-grade
+pseudo and more experience mean purer crystal and bigger yields, but a sloppy
+cook comes out dirty, and cooking is **loud**, so expect the heat. Rank up
+through weed to unlock it.
+
+---
+
+## 2026-07-11 - Gang rename (`gtarp_gangs`)
+
+**Tracking (internal):**
+- ➕ `/gang` gains a leader-only **Rename** action: change your gang's name and
+  tag for a bank-charged fee (refunded if the change fails). The server
+  re-derives leadership from the DB, sanitises and uniqueness-checks the new
+  name and tag (excluding your own gang), rejects a no-op before charging, and
+  re-mirrors every online member's gang label on success.
+
+**📣 Public:** Gang leaders can now **rename** their crew (name and tag) from the
+`/gang` menu for a fee.
+
+---
+
 ## 2026-07-10 — Player-run gangs (`gtarp_gangs`)
 
 New custom resource: the **player-created gang layer Qbox does not ship**.

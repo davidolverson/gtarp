@@ -85,6 +85,19 @@ ExtraItems = {
     weed_bud            = { label = 'Cannabis Buds',   weight = 40,   stack = true  },
     weed_product        = { label = 'Weed Product',    weight = 30,   stack = true  },
 
+    -- Meth cook chain (gtarp_drugs §9). pseudo/acid/red_phosphorus are the cook
+    -- precursors; meth_raw is the raw crystal (same metadata shape as weed_bud,
+    -- base='meth'), meth_product the finished branded product (like weed_product).
+    -- gtarp_drugs stays disabled for meth until all five are registered here.
+    -- pseudo       metadata: { grade }                       (1-2; sets quality floor)
+    -- meth_raw     metadata: { base, quality, effects[], dried }
+    -- meth_product metadata: { brand, base, effects[], quality, unit_value, batch_id, producer }
+    pseudo              = { label = 'Pseudoephedrine',  weight = 30,   stack = true  },
+    acid                = { label = 'Hydrochloric Acid',weight = 200,  stack = true  },
+    red_phosphorus      = { label = 'Red Phosphorus',   weight = 150,  stack = true  },
+    meth_raw            = { label = 'Meth (Raw)',       weight = 30,   stack = true  },
+    meth_product        = { label = 'Meth',             weight = 20,   stack = true  },
+
     -- Mix additives (gtarp_drugs §2). Each appends one base effect at the
     -- mixing station. `energy_drink` (Athletic) is already registered above
     -- under civilian items and is reused — it is intentionally NOT re-declared

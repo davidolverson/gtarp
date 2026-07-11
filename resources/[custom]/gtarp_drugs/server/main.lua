@@ -127,6 +127,16 @@ local function effectsLine(effects)
     return table.concat(effects, ', ')
 end
 
+-- Base-family lookup sets, built once from the config generalization maps so
+-- the mix/sell/dealer scans stay base-agnostic (weed AND meth). `plantable` is
+-- the weed-only strain set (StrainOrder) — meth is a Config.Drugs key but is
+-- deliberately NOT plantable, so the plant handler must reject it here even
+-- though a modified client could name it.
+local plantable, rawSet, productSet, sellableSet = {}, {}, {}, {}
+for _, id in ipairs(Config.StrainOrder) do plantable[id] = true end
+for _, it in ipairs(Config.RawItems) do rawSet[it] = true; sellableSet[it] = true end
+for _, it in ipairs(Config.ProductItems) do productSet[it] = true; sellableSet[it] = true end
+
 -- ---------------------------------------------------------------------------
 -- Progression (gtarp_drugs_progression)
 -- ---------------------------------------------------------------------------
@@ -297,6 +307,7 @@ RegisterNetEvent('gtarp_drugs:plant', function(plotIndex, strain, additive)
 
     local drug = Config.Drugs[strain]
     if not drug then return end
+    if not plantable[strain] then return end  -- meth (a cook base) is never plantable
     if drug.unlock_rank > rankOf(cid) then
         Bridge.Notify(src, 'Grow', 'You are not experienced enough to grow that strain yet.', 'error')
         return
@@ -511,15 +522,13 @@ local function sanitizeBrand(s)
     return s
 end
 
--- Read a base slot's real metadata into { baseId, effects, quality }. Works for
--- a raw bud (base = strain) or an existing product (base = meta.base).
-local function readBase(itemName, meta)
+-- Read a base slot's real metadata into { baseId, effects, quality }. Base-
+-- agnostic: a raw bud carries meta.strain (a weed strain key), crystal /
+-- products carry meta.base ('meth' or a weed strain) — both valid Config.Drugs
+-- keys, so `meta.base or meta.strain` unifies them.
+local function readBase(_, meta)
     meta = meta or {}
-    if itemName == Config.Items.bud then
-        return meta.strain, cloneEffects(meta.effects), normQuality(meta.quality)
-    else
-        return meta.base, cloneEffects(meta.effects), normQuality(meta.quality)
-    end
+    return meta.base or meta.strain, cloneEffects(meta.effects), normQuality(meta.quality)
 end
 
 local function loadRecipes(cid)
@@ -560,12 +569,19 @@ local function doMix(src, cid, baseSlot, additiveItem, brand)
         return
     end
 
-    -- Locate the base stack (a bud or a product) at the requested slot.
-    local baseItem = Config.Items.bud
-    local slot = Bridge.GetSlot(src, Config.Items.bud, baseSlot)
+    -- Locate the base stack (a raw output or a product) at the requested slot.
+    -- Scan the raw items first (loose buds, crystal) then the products; only one
+    -- item type can occupy a given slot, so the first hit is the base.
+    local baseItem, slot
+    for _, it in ipairs(Config.RawItems) do
+        slot = Bridge.GetSlot(src, it, baseSlot)
+        if slot then baseItem = it break end
+    end
     if not slot then
-        baseItem = Config.Items.product
-        slot = Bridge.GetSlot(src, Config.Items.product, baseSlot)
+        for _, it in ipairs(Config.ProductItems) do
+            slot = Bridge.GetSlot(src, it, baseSlot)
+            if slot then baseItem = it break end
+        end
     end
     if not slot then
         Bridge.Notify(src, 'Mixing', 'Pick a base product you actually have.', 'error')
@@ -614,6 +630,7 @@ local function doMix(src, cid, baseSlot, additiveItem, brand)
 
     local unit = Config.Price(drug.base_value, effects, quality)
     local count = slot.count
+    local productItem = Config.ProductOf[baseItem] or Config.Items.product
 
     -- Consume inputs FIRST (the whole base stack + one additive), then mint.
     if not Bridge.RemoveItemFromSlot(src, baseItem, count, baseSlot) then
@@ -636,9 +653,9 @@ local function doMix(src, cid, baseSlot, additiveItem, brand)
         producer = cid,
         label = ('%s [%s]'):format(brand, Config.QualityLabel(quality)),
         description = ('%s • %s • %s • ~$%d/u'):format(
-            drug.label or 'Weed', Config.QualityLabel(quality), effectsLine(effects), unit),
+            drug.label or 'Product', Config.QualityLabel(quality), effectsLine(effects), unit),
     }
-    if not Bridge.GiveItem(src, Config.Items.product, count, meta) then
+    if not Bridge.GiveItem(src, productItem, count, meta) then
         -- No room for the product — hand the inputs back.
         Bridge.GiveItem(src, baseItem, count, origMeta)
         Bridge.GiveItem(src, additiveItem, 1)
@@ -670,15 +687,14 @@ RegisterNetEvent('gtarp_drugs:mixMenu', function()
 
     local function viewBase(itemName, s)
         local m = s.metadata or {}
-        if itemName == Config.Items.bud then
-            local d = Config.Drugs[m.strain] or {}
+        local d = Config.Drugs[m.base or m.strain] or {}
+        if rawSet[itemName] then
             return {
                 slot = s.slot, item = itemName, count = s.count,
                 label = d.label or 'Buds', quality = normQuality(m.quality),
                 effects = cloneEffects(m.effects), kind = 'bud',
             }
         else
-            local d = Config.Drugs[m.base] or {}
             return {
                 slot = s.slot, item = itemName, count = s.count,
                 label = m.brand or d.label or 'Product', quality = normQuality(m.quality),
@@ -688,11 +704,15 @@ RegisterNetEvent('gtarp_drugs:mixMenu', function()
     end
 
     local bases = {}
-    for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.bud)) do
-        bases[#bases + 1] = viewBase(Config.Items.bud, s)
+    for _, it in ipairs(Config.RawItems) do
+        for _, s in ipairs(Bridge.ListItemSlots(src, it)) do
+            bases[#bases + 1] = viewBase(it, s)
+        end
     end
-    for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.product)) do
-        bases[#bases + 1] = viewBase(Config.Items.product, s)
+    for _, it in ipairs(Config.ProductItems) do
+        for _, s in ipairs(Bridge.ListItemSlots(src, it)) do
+            bases[#bases + 1] = viewBase(it, s)
+        end
     end
 
     local additives = {}
@@ -762,22 +782,18 @@ end)
 -- ===========================================================================
 
 -- Recompute the per-unit dirty price of a slot from config + its REAL metadata.
--- Returns price, base id, quality, brand — or nil if the buyer won't touch it.
-local function priceOfSlot(itemName, meta)
+-- Base-agnostic (weed AND meth): the base id is `meta.base or meta.strain`, the
+-- brand is meta.brand (nil for raw buds/crystal). Returns price, base id,
+-- quality, brand — or nil if the buyer won't touch it. itemName is unused (kept
+-- for call-site symmetry); the price only ever comes from the real metadata.
+local function priceOfSlot(_, meta)
     meta = meta or {}
-    local baseId, effects, quality, brand
-    if itemName == Config.Items.bud then
-        baseId = meta.strain
-        brand = nil
-    else
-        baseId = meta.base
-        brand = meta.brand
-    end
+    local baseId = meta.base or meta.strain
     local drug = Config.Drugs[baseId]
     if not drug then return nil end
-    effects = cloneEffects(meta.effects)
-    quality = normQuality(meta.quality)
-    return Config.Price(drug.base_value, effects, quality), baseId, quality, brand
+    local effects = cloneEffects(meta.effects)
+    local quality = normQuality(meta.quality)
+    return Config.Price(drug.base_value, effects, quality), baseId, quality, meta.brand
 end
 
 -- Dirty dollars this character has already sold to the NPC faucet today.
@@ -804,20 +820,20 @@ RegisterNetEvent('gtarp_drugs:sellMenu', function()
     local offers = {}
     local function addOffers(itemName)
         for _, s in ipairs(Bridge.ListItemSlots(src, itemName)) do
-            local unit, _, quality, brand = priceOfSlot(itemName, s.metadata)
+            local unit, baseId, quality, brand = priceOfSlot(itemName, s.metadata)
             if unit then
-                local m = s.metadata or {}
+                local d = Config.Drugs[baseId]
                 offers[#offers + 1] = {
                     slot = s.slot, item = itemName, count = s.count,
                     unit = unit, total = unit * s.count,
-                    label = brand or (m.strain and (Config.Drugs[m.strain] and Config.Drugs[m.strain].label) or 'Loose buds'),
+                    label = brand or (d and d.label) or 'Loose product',
                     quality = quality,
                 }
             end
         end
     end
-    addOffers(Config.Items.product)
-    addOffers(Config.Items.bud)
+    for _, it in ipairs(Config.ProductItems) do addOffers(it) end
+    for _, it in ipairs(Config.RawItems) do addOffers(it) end
 
     TriggerClientEvent('gtarp_drugs:sellMenuData', src, {
         offers = offers,
@@ -840,7 +856,10 @@ RegisterNetEvent('gtarp_drugs:sell', function(slot, item)
 
     slot = tonumber(slot)
     if not slot then return end
-    if item ~= Config.Items.product and item ~= Config.Items.bud then return end
+    -- Base-agnostic gate: any sellable raw output (buds, crystal) or finished
+    -- product (weed_product, meth_product). Was hardcoded to product/bud, which
+    -- silently rejected meth even though sellMenu offers it (§9 refactor).
+    if not sellableSet[item] then return end
 
     local s = Bridge.GetSlot(src, item, slot)
     if not s then
@@ -1144,6 +1163,332 @@ RegisterNetEvent('gtarp_drugs:dryCollect', function(stationId)
     Bridge.Notify(src, Config.Dry.label,
         ('Collected %dx %s buds — %s.'):format(count, drug.label or strain, Config.QualityLabel(quality)), 'success')
     dbg(('%s collected %dx dried %s (q%d) from rack slot %d'):format(cid, count, strain, quality, stationId))
+end)
+
+-- ===========================================================================
+-- COOK (the meth lab) — §9
+-- ===========================================================================
+-- Load precursors (pseudo[grade] + acid + red_phosphorus) into one of the
+-- burners; the cook runs over WALL-CLOCK time (a gtarp_drugs_processes row,
+-- kind='cook', epoch seconds) exactly like the drying rack, resolved on
+-- interaction (restart-safe, NO client ticks, offline-safe). Unlike dry (which
+-- just bumps quality on collect), the OUTCOME (success / quality / yield / a
+-- junk effect on a bad cook) is ROLLED and STORED in input_json AT START, so
+-- re-collecting can never re-roll it; collect is an atomic running->collecting
+-- claim so a double-fire can't collect twice. Cooking is LOUD — a far higher
+-- flat police-alert chance than a street sale. Disabled unless
+-- Config.Cook.enabled (flipped true at boot iff all five meth items exist).
+
+-- Validate a client burner index (fails CLOSED on a bad index).
+local function validCookSlot(stationId)
+    stationId = tonumber(stationId)
+    if not stationId then return nil end
+    if stationId < 1 or stationId > Config.Cook.slots then return nil end
+    return math.floor(stationId)
+end
+
+-- The live cook process at a burner (running/collecting), or nil. Namespaced by
+-- kind, so cook burners 1..3 coexist with dry racks 1..N via UNIQUE(kind,station_id).
+local function cookAtSlot(stationId)
+    local row
+    pcall(function()
+        row = MySQL.single.await(
+            "SELECT * FROM gtarp_drugs_processes \z
+             WHERE kind = 'cook' AND station_id = ? AND status IN ('running','collecting') LIMIT 1",
+            { stationId })
+    end)
+    return row
+end
+
+-- How many live cooks THIS character is running (the per-char concurrency gate).
+local function liveCooksFor(cid)
+    local n = 0
+    pcall(function()
+        local r = MySQL.single.await(
+            "SELECT COUNT(*) AS c FROM gtarp_drugs_processes \z
+             WHERE kind = 'cook' AND owner_cid = ? AND status IN ('running','collecting')", { cid })
+        n = r and tonumber(r.c) or 0
+    end)
+    return n
+end
+
+-- Normalize a pseudo grade to a gradeFloor key (1..2); default grade 1.
+local function normGrade(g)
+    g = math.floor(tonumber(g) or 1)
+    if g < 1 then return 1 end
+    if g > 2 then return 2 end
+    return g
+end
+
+-- Warm cook heat and decide whether THIS cook trips police. Flat CookAlertChance
+-- (loud) plus the same accumulated-heat escalation as sales; heat is added
+-- regardless of the roll (mirrors assessSaleHeat).
+local function assessCookHeat(cid)
+    dealerHeat[cid] = (dealerHeat[cid] or 0.0) + Config.Heat.PerCook
+    if math.random() < Config.Heat.CookAlertChance then return true end
+    if dealerHeat[cid] >= Config.Heat.AlertThreshold then
+        local over = dealerHeat[cid] - Config.Heat.AlertThreshold
+        local chance = math.min(Config.Heat.AlertChanceMax,
+            (over / Config.Heat.AlertThreshold) * Config.Heat.AlertChanceMax)
+        if math.random() < chance then return true end
+    end
+    return false
+end
+
+-- Burner snapshot for the client menu (server truth).
+RegisterNetEvent('gtarp_drugs:cookMenu', function()
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not Config.Cook.enabled then
+        Bridge.Notify(src, Config.Cook.label, 'The lab is not operational.', 'error'); return
+    end
+    if not near(src, Config.Cook.coords, Config.Cook.radius + Config.Cook.proximitySlack) then
+        Bridge.Notify(src, Config.Cook.label, 'You are not at the cook station.', 'error'); return
+    end
+
+    local t = now()
+    local slots = {}
+    for i = 1, Config.Cook.slots do
+        local row = cookAtSlot(i)
+        if not row then
+            slots[i] = { index = i, state = 'empty' }
+        else
+            local ready = t >= (tonumber(row.finish_at) or 0)
+            slots[i] = {
+                index = i,
+                state = ready and 'ready' or 'cooking',
+                owner = (row.owner_cid == cid),
+                secondsLeft = ready and 0 or math.max(0, (tonumber(row.finish_at) or 0) - t),
+            }
+        end
+    end
+
+    -- Pseudo stacks (per graded slot) the player can load, plus the flat precursors.
+    local pseudo = {}
+    for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.pseudo)) do
+        local m = s.metadata or {}
+        pseudo[#pseudo + 1] = { slot = s.slot, count = s.count, grade = normGrade(m.grade) }
+    end
+
+    local meth = Config.Drugs.meth
+    TriggerClientEvent('gtarp_drugs:cookMenuData', src, {
+        slots       = slots,
+        rankOk      = rankOf(cid) >= (meth and meth.unlock_rank or 0),
+        liveCooks   = liveCooksFor(cid),
+        maxCooks    = Config.Cook.maxConcurrentPerChar,
+        pseudo      = pseudo,
+        acid        = Bridge.CountItem(src, Config.Items.acid),
+        redP        = Bridge.CountItem(src, Config.Items.red_phosphorus),
+        cookMinutes = math.max(1, math.floor(Config.Cook.baseCookSeconds / 60)),
+    })
+end)
+
+RegisterNetEvent('gtarp_drugs:cookStart', function(stationId, pseudoSlot)
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not Config.Cook.enabled then return end
+    if not cooldownOk(src, 'cook', 2) then return end
+    if not near(src, Config.Cook.coords, Config.Cook.radius + Config.Cook.proximitySlack) then
+        Bridge.Notify(src, Config.Cook.label, 'You are not at the cook station.', 'error'); return
+    end
+
+    stationId = validCookSlot(stationId)
+    if not stationId then return end
+
+    local meth = Config.Drugs.meth
+    if not meth then return end
+    if rankOf(cid) < (meth.unlock_rank or 0) then
+        Bridge.Notify(src, Config.Cook.label, 'You do not know how to cook yet.', 'error'); return
+    end
+    -- Soft cap: this read is not atomic with the INSERT below, so under heavy DB
+    -- lag two starts >2s apart (past the cooldown) could both read the same
+    -- pre-INSERT count and exceed the cap. Bounded and harmless — total live
+    -- cooks are already hard-capped at Config.Cook.slots (3) by the burner
+    -- UNIQUE(kind,station_id), and every cook costs real precursors (no dupe).
+    if liveCooksFor(cid) >= Config.Cook.maxConcurrentPerChar then
+        Bridge.Notify(src, Config.Cook.label, 'You already have too many cooks going.', 'error'); return
+    end
+    if cookAtSlot(stationId) then
+        Bridge.Notify(src, Config.Cook.label, 'That burner is already in use.', 'error'); return
+    end
+
+    -- Resolve the pseudo slot: honour a valid client-picked slot, else auto-pick
+    -- the LOWEST-grade pseudo the player holds (don't waste a grade-2 stack).
+    local pslot, grade
+    pseudoSlot = tonumber(pseudoSlot)
+    if pseudoSlot then
+        local s = Bridge.GetSlot(src, Config.Items.pseudo, pseudoSlot)
+        if s then pslot = pseudoSlot; grade = normGrade((s.metadata or {}).grade) end
+    end
+    if not pslot then
+        for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.pseudo)) do
+            local g = normGrade((s.metadata or {}).grade)
+            if not grade or g < grade then pslot = s.slot; grade = g end
+        end
+    end
+    if not pslot then
+        Bridge.Notify(src, Config.Cook.label, 'You need pseudo to cook.', 'error'); return
+    end
+
+    local needPseudo = Config.Cook.precursors.pseudo or 1
+    local needAcid   = Config.Cook.precursors.acid or 1
+    local needRedP   = Config.Cook.precursors.red_phosphorus or 1
+
+    -- Everything present before consuming anything.
+    if not Bridge.HasItem(src, Config.Items.pseudo, needPseudo)
+        or not Bridge.HasItem(src, Config.Items.acid, needAcid)
+        or not Bridge.HasItem(src, Config.Items.red_phosphorus, needRedP) then
+        Bridge.Notify(src, Config.Cook.label,
+            'You are missing precursors (pseudo, acid, red phosphorus).', 'error'); return
+    end
+
+    -- Consume precursors FIRST, with a full refund ladder if any removal fails so
+    -- a cook is never a partial loss (mirrors the plant/dry consume-then-mint order).
+    if not Bridge.RemoveItemFromSlot(src, Config.Items.pseudo, needPseudo, pslot) then
+        Bridge.Notify(src, Config.Cook.label, 'Could not load the burner — try again.', 'error'); return
+    end
+    if not Bridge.RemoveItem(src, Config.Items.acid, needAcid) then
+        Bridge.GiveItem(src, Config.Items.pseudo, needPseudo, { grade = grade })
+        Bridge.Notify(src, Config.Cook.label, 'Could not load the burner — try again.', 'error'); return
+    end
+    if not Bridge.RemoveItem(src, Config.Items.red_phosphorus, needRedP) then
+        Bridge.GiveItem(src, Config.Items.pseudo, needPseudo, { grade = grade })
+        Bridge.GiveItem(src, Config.Items.acid, needAcid)
+        Bridge.Notify(src, Config.Cook.label, 'Could not load the burner — try again.', 'error'); return
+    end
+
+    -- Roll + STORE the outcome NOW (never re-rolled on collect). Server-only:
+    -- success scales with rank (clamped), quality floors on the pseudo grade, a
+    -- failed cook drops a tier and may pick up a junk effect; yield ranges with a
+    -- per-4-ranks bonus and a failed cook loses one unit.
+    local rank = rankOf(cid)
+    local success = math.random() < math.min(0.9, Config.Cook.successChance + rank * Config.Cook.successRankBonus)
+    local floorQ  = Config.Cook.gradeFloor[grade] or Config.DefaultQuality
+    local quality, effects
+    if success then
+        quality = normQuality(floorQ)
+        effects = {}
+    else
+        quality = normQuality(math.max(0, floorQ - 1))
+        effects = {}
+        if math.random() < Config.Cook.badChance then
+            effects[1] = Config.JunkEffects[math.random(#Config.JunkEffects)]
+        end
+    end
+    local yieldN = math.random(Config.Cook.yieldMin, Config.Cook.yieldMax)
+        + math.floor(rank / 4) * Config.Cook.rankYieldBonus
+    if not success then yieldN = math.max(1, yieldN - 1) end
+
+    local t = now()
+    local finish = t + math.floor(Config.Cook.baseCookSeconds)
+    local ok = pcall(function()
+        MySQL.insert.await(
+            'INSERT INTO gtarp_drugs_processes \z
+             (owner_cid, station_id, kind, input_json, started_at, finish_at, status) \z
+             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            { cid, stationId, 'cook',
+              json.encode({ base = 'meth', grade = grade, success = success,
+                            quality = quality, effects = effects, yield = yieldN }),
+              t, finish, 'running' })
+    end)
+    if not ok then
+        -- Burner taken in a race (UNIQUE(kind,station_id)) or DB down — refund all.
+        Bridge.GiveItem(src, Config.Items.pseudo, needPseudo, { grade = grade })
+        Bridge.GiveItem(src, Config.Items.acid, needAcid)
+        Bridge.GiveItem(src, Config.Items.red_phosphorus, needRedP)
+        Bridge.Notify(src, Config.Cook.label, 'That burner would not light — try again.', 'error'); return
+    end
+
+    -- Cooking is loud: warm heat and maybe trip police AT START (not just on sale).
+    if assessCookHeat(cid) then
+        Bridge.PoliceAlert(src, 'Possible clandestine drug lab reported')
+        fileEvidence(cid, 'cook', { grade = grade })
+    end
+
+    Bridge.Notify(src, Config.Cook.label,
+        ('Cooking started — crystal in ~%d min. Keep an eye out.'):format(
+            math.max(1, math.floor((finish - t) / 60))), 'success')
+    dbg(('%s started a cook (grade %d) at burner %d'):format(cid, grade, stationId))
+end)
+
+RegisterNetEvent('gtarp_drugs:cookCollect', function(stationId)
+    local src = source
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not Config.Cook.enabled then return end
+    if not cooldownOk(src, 'cookCollect', 3) then return end
+    if not near(src, Config.Cook.coords, Config.Cook.radius + Config.Cook.proximitySlack) then
+        Bridge.Notify(src, Config.Cook.label, 'You are not at the cook station.', 'error'); return
+    end
+
+    stationId = validCookSlot(stationId)
+    if not stationId then return end
+
+    local row = cookAtSlot(stationId)
+    if not row then
+        Bridge.Notify(src, Config.Cook.label, 'Nothing is cooking here.', 'error'); return
+    end
+    if row.owner_cid ~= cid then
+        Bridge.Notify(src, Config.Cook.label, 'This is not your cook.', 'error'); return
+    end
+
+    local t = now()
+    if t < (tonumber(row.finish_at) or 0) then
+        Bridge.Notify(src, Config.Cook.label,
+            ('Not done yet — about %d min to go.'):format(
+                math.max(1, math.ceil(((tonumber(row.finish_at) or t) - t) / 60))), 'error'); return
+    end
+
+    -- Atomic claim: running -> collecting so a double-fire can't collect twice.
+    local claimed = 0
+    pcall(function()
+        claimed = MySQL.update.await(
+            "UPDATE gtarp_drugs_processes SET status = 'collecting' WHERE id = ? AND status = 'running'",
+            { row.id }) or 0
+    end)
+    if claimed == 0 then return end
+
+    local okI, input = pcall(function() return json.decode(row.input_json or '{}') end)
+    if not okI or type(input) ~= 'table' then input = {} end
+    local quality = normQuality(input.quality)
+    local effects = cloneEffects(input.effects)
+    local yieldN  = math.max(1, math.floor(tonumber(input.yield) or 1))
+    local meth = Config.Drugs.meth
+    if not meth then
+        -- Config drifted out from under a stored cook — free the burner, no grant.
+        pcall(function() MySQL.query.await('DELETE FROM gtarp_drugs_processes WHERE id = ?', { row.id }) end)
+        Bridge.Notify(src, Config.Cook.label, 'The lab could not resolve that batch.', 'error'); return
+    end
+
+    -- Crystal carries meta.base='meth' (weed_bud carries meta.strain); the mix/
+    -- sell/dealer loops price it via `meta.base or meta.strain`. Not "dried".
+    local meta = {
+        base = 'meth',
+        quality = quality,
+        effects = effects,
+        dried = false,
+        label = ('%s [%s]'):format(meth.label or 'Meth', Config.QualityLabel(quality)),
+        description = ('%s • %s • %s'):format(
+            meth.label or 'Meth', Config.QualityLabel(quality), effectsLine(effects)),
+    }
+
+    if not Bridge.CanCarry(src, Config.Items.meth_raw, yieldN) or not Bridge.GiveItem(src, Config.Items.meth_raw, yieldN, meta) then
+        -- No room — put the process back so nothing is lost.
+        pcall(function()
+            MySQL.update.await("UPDATE gtarp_drugs_processes SET status = 'running' WHERE id = ?", { row.id })
+        end)
+        Bridge.Notify(src, Config.Cook.label, 'Your hands are full — collect again with room.', 'error'); return
+    end
+
+    pcall(function() MySQL.query.await('DELETE FROM gtarp_drugs_processes WHERE id = ?', { row.id }) end)
+    addXp(cid, Config.Cook.xp)
+
+    Bridge.Notify(src, Config.Cook.label,
+        ('Collected %dx crystal (%s)%s.'):format(
+            yieldN, Config.QualityLabel(quality), (#effects > 0) and ' — came out dirty' or ''), 'success')
+    dbg(('%s collected %dx meth (q%d) from burner %d'):format(cid, yieldN, quality, stationId))
 end)
 
 -- ===========================================================================
@@ -1481,6 +1826,25 @@ AddEventHandler('onResourceStart', function(resource)
         end
     end
 
+    -- §9 Meth cook chain: a SOFT gate. Weed keeps running if the meth items are
+    -- not registered; the cook station just stays dark (Config.Cook.enabled)
+    -- until all five exist, so cookMenu/Start/Collect refuse cleanly.
+    local methItems = {
+        Config.Items.pseudo, Config.Items.acid, Config.Items.red_phosphorus,
+        Config.Items.meth_raw, Config.Items.meth_product,
+    }
+    local methMissing = {}
+    for _, item in ipairs(methItems) do
+        if not Bridge.ItemExists(item) then methMissing[#methMissing + 1] = item end
+    end
+    if #methMissing == 0 then
+        Config.Cook.enabled = true
+    else
+        table.sort(methMissing)
+        print(('^3[gtarp_drugs] NOTE: meth cook chain disabled — %d meth item(s) not registered: %s^0')
+            :format(#methMissing, table.concat(methMissing, ', ')))
+    end
+
     -- Additives are needed for the mixing station; warn (don't disable) per any
     -- that are missing so the operator can patch them in.
     local missing = {}
@@ -1516,14 +1880,15 @@ AddEventHandler('onResourceStart', function(resource)
         sales = r and tonumber(r.c) or 0
         dirty = r and tonumber(r.s) or 0
     end)
-    print(('[gtarp_drugs] supply chain online — %d grow plots, %d strains, %d additives; '
+    print(('[gtarp_drugs] supply chain online — %d grow plots, %d strains, %d additives, cook %s; '
         .. '$%d dirty earned all-time across %d NPC sale(s)'):format(
-        #Config.Grow.plots, #Config.StrainOrder, #Config.AdditiveOrder, dirty, sales))
+        #Config.Grow.plots, #Config.StrainOrder, #Config.AdditiveOrder,
+        Config.Cook.enabled and 'ON' or 'off', dirty, sales))
 end)
 
 --- Totals for devtest and future consumers.
 exports('GetSummary', function()
-    local out = { totalSales = 0, totalDirtyEarned = 0, flaggedSales = 0, activePlants = 0, activeDries = 0 }
+    local out = { totalSales = 0, totalDirtyEarned = 0, flaggedSales = 0, activePlants = 0, activeDries = 0, activeCooks = 0 }
     pcall(function()
         local r = MySQL.single.await(
             'SELECT COUNT(*) AS c, COALESCE(SUM(net_dirty),0) AS s, COALESCE(SUM(flagged),0) AS f FROM gtarp_drugs_sales')
@@ -1537,6 +1902,9 @@ exports('GetSummary', function()
         local dr = MySQL.single.await(
             "SELECT COUNT(*) AS c FROM gtarp_drugs_processes WHERE kind = 'dry' AND status IN ('running','collecting')")
         out.activeDries = dr and tonumber(dr.c) or 0
+        local ck = MySQL.single.await(
+            "SELECT COUNT(*) AS c FROM gtarp_drugs_processes WHERE kind = 'cook' AND status IN ('running','collecting')")
+        out.activeCooks = ck and tonumber(ck.c) or 0
     end)
     return out
 end)

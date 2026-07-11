@@ -310,6 +310,97 @@ RegisterNetEvent('gtarp_drugs:dryMenuData', function(d)
 end)
 
 -- ---------------------------------------------------------------------------
+-- COOK — the meth lab (§9). 3 burners; all state comes from the server. The
+-- player picks a pseudo stack (its grade sets the quality floor); acid + red
+-- phosphorus are auto-consumed server-side. Cooking is loud (server heat).
+-- ---------------------------------------------------------------------------
+RegisterNetEvent('gtarp_drugs:cookMenuData', function(d)
+    if not d then return end
+
+    local haveAcid = (d.acid or 0) > 0
+    local haveRedP = (d.redP or 0) > 0
+    local canLoad  = d.rankOk and (d.liveCooks or 0) < (d.maxCooks or 2)
+
+    local options = {
+        {
+            title = Config.Cook.label,
+            description = ('Crystal in ~%d min · Acid %d · Red P %d · cooks %d/%d'):format(
+                d.cookMinutes or 20, d.acid or 0, d.redP or 0, d.liveCooks or 0, d.maxCooks or 2),
+            icon = 'fas fa-fire',
+            disabled = true,
+        },
+    }
+
+    for _, slot in ipairs(d.slots or {}) do
+        if slot.state == 'empty' then
+            options[#options + 1] = {
+                title = ('Burner %d — idle'):format(slot.index),
+                description = canLoad and 'Load pseudo + acid + red phosphorus to cook'
+                    or (not d.rankOk and 'You are not experienced enough to cook'
+                        or 'You already have too many cooks going'),
+                icon = 'fas fa-plus',
+                disabled = not canLoad,
+                onSelect = canLoad and function()
+                    local sub = {}
+                    for _, p in ipairs(d.pseudo or {}) do
+                        sub[#sub + 1] = {
+                            title = ('Pseudo (grade %d) x%d'):format(p.grade or 1, p.count),
+                            description = (haveAcid and haveRedP)
+                                and 'Start a cook with this pseudo' or 'You are missing acid or red phosphorus',
+                            icon = 'fas fa-flask',
+                            disabled = not (haveAcid and haveRedP),
+                            onSelect = function()
+                                if Game.ProgressBar('Loading the burner…', (Config.Cook.loadSeconds or 5) * 1000) then
+                                    TriggerServerEvent('gtarp_drugs:cookStart', slot.index, p.slot)
+                                end
+                            end,
+                        }
+                    end
+                    if #sub == 0 then
+                        sub[#sub + 1] = {
+                            title = 'No pseudo on you',
+                            description = 'Get pseudoephedrine (plus acid + red phosphorus) first',
+                            icon = 'fas fa-ban',
+                            disabled = true,
+                        }
+                    end
+                    Game.OpenMenu('gtarp_drugs_cook_load', ('Burner %d — load'):format(slot.index), sub, 'gtarp_drugs_cook')
+                end or nil,
+            }
+        elseif slot.state == 'cooking' then
+            options[#options + 1] = {
+                title = ('Burner %d — cooking'):format(slot.index),
+                description = ('Ready in ~%d min'):format(math.max(1, math.floor((slot.secondsLeft or 0) / 60))),
+                icon = 'fas fa-hourglass-half',
+                disabled = true,
+            }
+        elseif slot.state == 'ready' then
+            if slot.owner then
+                options[#options + 1] = {
+                    title = ('Burner %d — batch ready!'):format(slot.index),
+                    description = 'Bag the crystal',
+                    icon = 'fas fa-vial',
+                    onSelect = function()
+                        if Game.ProgressBar('Bagging the crystal…', (Config.Cook.collectSeconds or 5) * 1000) then
+                            TriggerServerEvent('gtarp_drugs:cookCollect', slot.index)
+                        end
+                    end,
+                }
+            else
+                options[#options + 1] = {
+                    title = ('Burner %d — in use'):format(slot.index),
+                    description = 'Only the cook can bag this batch',
+                    icon = 'fas fa-ban',
+                    disabled = true,
+                }
+            end
+        end
+    end
+
+    Game.OpenMenu('gtarp_drugs_cook', Config.Cook.label, options)
+end)
+
+-- ---------------------------------------------------------------------------
 -- DEALER — the NPC corner dealer (passive faucet; all state from the server)
 -- ---------------------------------------------------------------------------
 RegisterNetEvent('gtarp_drugs:dealerMenuData', function(d)
@@ -409,6 +500,11 @@ CreateThread(function()
     handles[#handles + 1] = Game.CreateInteraction(
         'dry', Config.Dry.coords, Config.Dry.radius, Config.Dry.label, 'fas fa-wind',
         function() TriggerServerEvent('gtarp_drugs:dryMenu') end)
+
+    -- Meth cook station (§9) — fixed object, no ped, so teardown just removes it
+    handles[#handles + 1] = Game.CreateInteraction(
+        'cook', Config.Cook.coords, Config.Cook.radius, Config.Cook.label, 'fas fa-fire',
+        function() TriggerServerEvent('gtarp_drugs:cookMenu') end)
 
     -- NPC street-buyer
     buyerPed = Game.SpawnPed(Config.Sell.pedModel, Config.Sell.coords, Config.Sell.pedHeading)

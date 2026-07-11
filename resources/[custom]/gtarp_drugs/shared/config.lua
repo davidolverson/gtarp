@@ -46,6 +46,14 @@ Config.Items = {
     bud         = 'weed_bud',       -- raw harvest (metadata: strain/quality/effects/dried)
     product     = 'weed_product',   -- finished branded product (metadata, see §6)
     dirty       = 'black_money',    -- dirty payout (launderable via gtarp_laundering)
+    -- Meth cook chain (§9). pseudo carries metadata.grade (1-2). meth_raw is the
+    -- raw cook output (metadata: base/quality/effects/dried), meth_product the
+    -- finished branded product (same metadata shape as weed_product).
+    pseudo         = 'pseudo',          -- precursor (metadata: grade)
+    acid           = 'acid',            -- precursor, consumed per cook
+    red_phosphorus = 'red_phosphorus',  -- precursor, consumed per cook
+    meth_raw       = 'meth_raw',        -- raw cook output (metadata: base/quality/effects/dried)
+    meth_product   = 'meth_product',    -- finished branded product (metadata, see §6)
 }
 
 -- ---------------------------------------------------------------------------
@@ -58,10 +66,32 @@ Config.Drugs = {
     weed_sourdiesel = { label = 'Sour Diesel',       base_value = 40, default_effect = 'Refreshing', unlock_rank = 0 },
     weed_greencrack = { label = 'Green Crack',       base_value = 43, default_effect = 'Energizing', unlock_rank = 1 },
     weed_gdp        = { label = 'Granddaddy Purple', base_value = 44, default_effect = 'Sedating',   unlock_rank = 1 },
+    -- Meth is a COOK base, not a strain: it never appears in Config.StrainOrder
+    -- (so it can never be planted at a grow plot), only ever minted by the cook
+    -- lab (§9). Higher value / lower volume; no default effect (spec §1).
+    meth            = { label = 'Meth',              base_value = 70, default_effect = nil,          unlock_rank = 4 },
 }
 
--- Deterministic strain iteration order (pairs() is unordered) for menus.
+-- Deterministic strain iteration order (pairs() is unordered) for menus. Weed
+-- strains ONLY — this is the plantable set; meth is deliberately excluded.
 Config.StrainOrder = { 'weed_ogkush', 'weed_sourdiesel', 'weed_greencrack', 'weed_gdp' }
+
+-- ---------------------------------------------------------------------------
+-- Generalization maps so the MIX / SELL / DEALER loops are base-agnostic
+-- (weed AND meth) instead of hardcoding the two weed item names. RawItems are
+-- the sellable/mixable raw outputs (loose buds, crystal); ProductItems the
+-- finished branded products; ProductOf maps a mix base item to the product it
+-- mints. The base id is unified as `meta.base or meta.strain` (weed_bud carries
+-- meta.strain, meth_raw carries meta.base — both valid Config.Drugs keys).
+-- ---------------------------------------------------------------------------
+Config.RawItems     = { Config.Items.bud, Config.Items.meth_raw }
+Config.ProductItems = { Config.Items.product, Config.Items.meth_product }
+Config.ProductOf    = {
+    [Config.Items.bud]          = Config.Items.product,
+    [Config.Items.product]      = Config.Items.product,
+    [Config.Items.meth_raw]     = Config.Items.meth_product,
+    [Config.Items.meth_product] = Config.Items.meth_product,
+}
 
 -- ---------------------------------------------------------------------------
 -- §2 Additives → base effect (the mix system). key = ox_inventory item name.
@@ -401,6 +431,40 @@ Config.Dry = {
 }
 
 -- ---------------------------------------------------------------------------
+-- §9 COOK — the meth lab. Load precursors (pseudo[grade] + acid +
+-- red_phosphorus) into a burner; they cook over WALL-CLOCK time (a
+-- gtarp_drugs_cooks row, epoch seconds, resolved on interaction exactly like
+-- the grow/dry timers — restart-safe, NO client ticks, offline-safe). The
+-- outcome (success / quality / yield / a junk effect on a bad cook) is ROLLED +
+-- STORED at start so re-collecting can't re-roll; collect is an atomic claim so
+-- a double-fire can't collect twice. Cooking is LOUD → a far higher police
+-- alert chance than a sale. `enabled` is flipped true at boot only if all five
+-- meth items are registered (a soft gate — weed keeps running if they are not).
+-- ---------------------------------------------------------------------------
+Config.Cook = {
+    label             = 'Cook Station',
+    radius            = 2.0,        -- ox_target sphere radius
+    proximitySlack    = 3.0,        -- server proximity = radius + this (anti-jitter)
+    slots             = 3,          -- independent burners (each = one station_id, 1..3)
+    baseCookSeconds   = 1200,       -- 20 min wall-clock per cook (longer than a grow)
+    loadSeconds       = 5,          -- client progress bar to start a cook
+    collectSeconds    = 5,          -- client progress bar to bag the crystal
+    xp                = 25,         -- gtarp_drugs_progression XP per cook
+    yieldMin          = 2,          -- crystal per cook (before rank bonus)
+    yieldMax          = 4,
+    rankYieldBonus    = 1,          -- +1 unit per 4 ranks
+    maxConcurrentPerChar = 2,       -- live cooks a character may run at once
+    successChance     = 0.55,       -- base chance of a good cook (rolled server-side)
+    successRankBonus  = 0.03,       -- +chance per rank (capped by the 0.9 clamp)
+    badChance         = 0.15,       -- chance a FAILED cook picks up a junk effect
+    precursors        = { pseudo = 1, acid = 1, red_phosphorus = 1 },  -- consumed per cook
+    gradeFloor        = { [1] = Config.DefaultQuality, [2] = 3 },      -- grade 1 → Standard, 2 → Premium floor
+    enabled           = false,      -- set true at boot iff all 5 meth items are registered
+    -- Tier 3 placeholder (a Tier-3 RV / clandestine lab). VERIFY IN-GAME.
+    coords = vector3(1391.2, 3608.5, 38.9),
+}
+
+-- ---------------------------------------------------------------------------
 -- SELL — the NPC street-buyer (the rate-limited faucet). Real-player sales use
 -- ox_inventory hand-to-hand trade and are not brokered here.
 -- ---------------------------------------------------------------------------
@@ -466,11 +530,13 @@ Config.Progression = {
 -- ---------------------------------------------------------------------------
 Config.Heat = {
     PerSale           = 6.0,
+    PerCook           = 12.0,   -- a cook warms cid heat faster than a sale (loud)
     DecayPerMin       = 4.0,
     AlertThreshold    = 50.0,
     AlertChanceMax    = 0.50,
     WitnessBaseChance = 0.03,   -- flat chance any sale is called in
     HarvestAlertChance = 0.05,  -- flat chance a harvest is spotted
+    CookAlertChance   = 0.18,   -- flat chance a cook is called in (cooking is LOUD)
     SweepSec          = 30,
 }
 

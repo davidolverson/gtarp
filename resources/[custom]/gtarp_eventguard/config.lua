@@ -83,6 +83,14 @@ Config.Events = {
     ['gtarp_drugs:dryStart']   = { calls = 15, window_seconds = 60 },
     ['gtarp_drugs:dryCollect'] = { calls = 20, window_seconds = 60 },
 
+    -- gtarp_drugs meth cook lab (§9). `cookStart` consumes the precursor stack
+    -- into a gtarp_drugs_processes (kind='cook') wall-clock timer; `cookCollect`
+    -- mints the crystal. Same shape/limits as the drying rack (load gtarp_eventguard
+    -- before gtarp_drugs so these register first).
+    ['gtarp_drugs:cookMenu']    = { calls = 20, window_seconds = 30 },
+    ['gtarp_drugs:cookStart']   = { calls = 15, window_seconds = 60 },
+    ['gtarp_drugs:cookCollect'] = { calls = 20, window_seconds = 60 },
+
     -- gtarp_drugs NPC dealer (Phase 2) — a passive dirty-cash faucet. `dealerMenu`
     -- is a read-only snapshot (fans a DB read + lazy sale resolve); hire/stock/
     -- collect/fire each touch money or the stash. Load-order: ensure

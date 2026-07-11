@@ -9,7 +9,9 @@
 -- at load time and stored in input_json; they are handed back (bumped to
 -- Heavenly, dried=true) on collect. status is 'running' (or briefly
 -- 'collecting' during the atomic collect claim; a crash-stranded 'collecting'
--- row is reverted to 'running' at boot so the owner never loses their buds).
+-- row is DELETED at boot — err toward loss, never a dupe: the row state alone
+-- can't prove whether the output was already handed back, and reverting to
+-- 'running' would let a player who already collected do so a second time).
 --
 -- UNIQUE(kind, station_id) enforces one live run per rack slot: a race to load
 -- the same slot fails the second INSERT (which the server refunds), so the slot
