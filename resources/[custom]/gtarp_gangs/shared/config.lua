@@ -23,6 +23,18 @@ Config.Debug = false
 Config.Command = 'gang'
 
 -- ---------------------------------------------------------------------------
+-- Web-manage link (/gangweb). A LEADER mints a single-use token that lets them
+-- set their gang's logo/blurb/accent on the Palm6 site (images can't be
+-- uploaded in-game). The site claims the token (see sql/0044_gang_web_tokens).
+-- ---------------------------------------------------------------------------
+Config.WebCommand = 'gangweb'
+-- Base URL of the Palm6 website. PLACEHOLDER domain (see project notes — the
+-- real domain is not yet confirmed); update before launch. No trailing slash.
+Config.WebBaseUrl = 'https://palm6roleplay.com'
+Config.WebTokenTtl = 900   -- seconds a /gangweb link stays valid (then expires)
+Config.WebCooldown = 30    -- seconds between /gangweb uses per player (anti-spam)
+
+-- ---------------------------------------------------------------------------
 -- Creation
 -- ---------------------------------------------------------------------------
 -- Cost to found a gang, charged from the founder's BANK (server re-validates

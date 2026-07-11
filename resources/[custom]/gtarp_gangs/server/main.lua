@@ -20,6 +20,19 @@ local pendingInvites = {}   -- [targetCid] = { gangId, gangName, gangTag, invite
 local function now() return os.time() end
 local function dbg(m) if Config.Debug then print('[gtarp_gangs] ' .. m) end end
 
+-- /gangweb single-use token minting (see sql/0044_gang_web_tokens.sql).
+local webCooldown = {}   -- [src] = ts of last /gangweb (anti-spam)
+local WEB_TOKEN_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz'
+local function makeWebToken()
+    math.randomseed(os.time() + os.clock() * 1000)
+    local out = {}
+    for i = 1, 32 do
+        local k = math.random(#WEB_TOKEN_CHARS)
+        out[i] = WEB_TOKEN_CHARS:sub(k, k)
+    end
+    return table.concat(out)
+end
+
 -- ---------------------------------------------------------------------------
 -- DB read helpers (all pcall-guarded; nil/empty on error)
 -- ---------------------------------------------------------------------------
@@ -635,6 +648,58 @@ end)
 AddEventHandler('onResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     Bridge.RegisterCommand(Config.Command, function(source) pushMenu(source) end)
+
+    -- /gangweb — a LEADER mints a single-use, time-limited link to the Palm6
+    -- site's gang-admin page. Leadership is re-derived from the DB (never the
+    -- client); the token is claimed once by POST /api/gang/branding.
+    Bridge.RegisterCommand(Config.WebCommand, function(source)
+        local src = source
+        local cid = Bridge.GetCitizenId(src)
+        if not cid then return end
+
+        local t = now()
+        if t - (webCooldown[src] or 0) < (Config.WebCooldown or 30) then
+            Bridge.Notify(src, 'Gangs', 'Give it a moment before requesting another link.', 'error'); return
+        end
+        webCooldown[src] = t
+
+        local mr = memberRow(cid)
+        if not mr then Bridge.Notify(src, 'Gangs', 'You are not in a gang.', 'error'); return end
+        if mr.rank < Config.Rank.Leader then
+            Bridge.Notify(src, 'Gangs', 'Only the leader can get a web-manage link.', 'error'); return
+        end
+        local g = gangRow(mr.gang_id)
+        if not g then return end
+        if g.leader_cid ~= cid then
+            Bridge.Notify(src, 'Gangs', 'Only the leader can get a web-manage link.', 'error'); return
+        end
+
+        local token = makeWebToken()
+        local expires = t + (Config.WebTokenTtl or 900)
+        local ok = pcall(function()
+            -- One live link per gang: drop any prior UNUSED tokens before minting.
+            MySQL.update.await(
+                'DELETE FROM gtarp_gang_web_tokens WHERE gang_id = ? AND used_at IS NULL', { mr.gang_id })
+            MySQL.insert.await(
+                'INSERT INTO gtarp_gang_web_tokens (token, gang_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+                { token, mr.gang_id, t, expires })
+        end)
+        if not ok then
+            Bridge.Notify(src, 'Gangs', 'Could not mint a link right now — try again.', 'error'); return
+        end
+
+        local mins = math.max(1, math.floor((Config.WebTokenTtl or 900) / 60))
+        local url = ('%s/gang/%s/manage?t=%s'):format(Config.WebBaseUrl, g.tag, token)
+        Bridge.Notify(src, 'Gangs',
+            ('Web-manage link posted to your chat (one use, %d min).'):format(mins), 'success')
+        -- Chat so the leader can copy the full URL (Notify would truncate it).
+        TriggerClientEvent('chat:addMessage', src, {
+            color = { 255, 180, 60 }, multiline = true,
+            args = { 'Palm6', ('Manage [%s] %s (one-time, %d min): %s'):format(g.tag, g.name, mins, url) },
+        })
+        dbg(('%s minted a web token for gang %d'):format(cid, mr.gang_id))
+    end)
+
     local gangs, members = 0, 0
     pcall(function()
         local r = MySQL.single.await('SELECT COUNT(*) AS c FROM gtarp_gangs')
