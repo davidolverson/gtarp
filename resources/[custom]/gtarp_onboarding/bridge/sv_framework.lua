@@ -55,3 +55,31 @@ end
 function Bridge.ResourceStarted(name)
     return GetResourceState(name) == 'started'
 end
+
+-- Grant a one-time owned starter vehicle to `citizenid`, parked in `garage`.
+-- Goes through qbx_vehicles:CreatePlayerVehicle (the supported owned-vehicle
+-- API) rather than a raw player_vehicles INSERT, so it survives qbx schema
+-- changes. Returns true only if the vehicle row was actually created. Any
+-- missing resource / error is swallowed — onboarding must never crash over a
+-- car, and the once-per-citizen INSERT guard in server/main.lua means this can
+-- only be reached once anyway.
+function Bridge.GiveStarterVehicle(citizenid, model, garage)
+    if not citizenid or not model then return false end
+    if not Bridge.ResourceStarted('qbx_vehicles') then return false end
+    local ok, vehicleId = pcall(function()
+        return exports.qbx_vehicles:CreatePlayerVehicle({
+            model = model,
+            citizenid = citizenid,
+            garage = garage,
+        })
+    end)
+    -- CreatePlayerVehicle returns a numeric vehicleId on success, or nil+err.
+    return ok and vehicleId ~= nil
+end
+
+-- Placeholder for a future one-time starter outfit. Deferred (Config.StarterOutfit
+-- is OFF by default) because illenium's saved-outfit format is version-specific.
+-- Kept as a Bridge seam so server/main.lua stays framework-agnostic when it lands.
+function Bridge.SetStarterOutfit(_src, _citizenid)
+    return false
+end

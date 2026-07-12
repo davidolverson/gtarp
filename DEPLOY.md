@@ -20,8 +20,18 @@ The pipeline is the GitHub Actions workflow
    run warns loudly; run the script manually against the server's resources
    dir in that case (`ox_inventory_overrides` prints FATAL boot lines naming
    each unregistered item either way).
-4. **Restarts** the FXServer via the Pterodactyl power API.
-5. **Flags pending SQL migrations**: diffs `sql/*.sql` against the commit of
+4. **Patches Palm6 vehicle prices** into the deployed
+   `resources/[qbx]/qbx_core/shared/vehicles.lua`: downloads the live file, runs
+   `tools/patch-vehicle-prices.sh` (rewrites ONLY the `price` field for
+   `gtarp_dealership` catalog models to their tier price; idempotent; never
+   touches coords, categories, hashes, or non-catalog models), syntax-checks it
+   with `lua5.4` (backticks flattened for the check), and uploads it back.
+   `qbx_vehicleshop` reads prices from this file, so without this step the
+   dealership shows stock prices. If any part fails (e.g. the `[qbx]/qbx_core`
+   path differs), the live file is left untouched and the run warns loudly; run
+   the script manually against the server's resources dir in that case.
+5. **Restarts** the FXServer via the Pterodactyl power API.
+6. **Flags pending SQL migrations**: diffs `sql/*.sql` against the commit of
    the last *successful* deploy run and, if anything is new or changed, puts a
    warning + checklist in the run summary. **CI never touches the production
    DB** — apply migrations manually on the game host. Because the diff basis

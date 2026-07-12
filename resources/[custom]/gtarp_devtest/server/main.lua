@@ -281,11 +281,28 @@ local function testShapes()
     if resourceUp('gtarp_onboarding') then
         try('onboarding.GetSummary', function()
             local s = exports.gtarp_onboarding:GetSummary()
-            check(type(s) == 'table' and type(s.totalAccepted) == 'number',
-                'onboarding.GetSummary returns {totalAccepted}')
+            check(type(s) == 'table' and type(s.totalAccepted) == 'number'
+                and type(s.starterVehicles) == 'number' and type(s.starterOutfits) == 'number',
+                'onboarding.GetSummary returns {totalAccepted, starterVehicles, starterOutfits}')
         end)
     else
         fail('onboarding — resource not started')
+    end
+
+    if resourceUp('gtarp_dealership') then
+        try('dealership.GetSummary', function()
+            local s = exports.gtarp_dealership:GetSummary()
+            check(type(s) == 'table' and type(s.total) == 'number' and s.total > 0
+                and type(s.byShop) == 'table' and type(s.byTier) == 'table',
+                'dealership.GetSummary returns {total>0, byShop, byTier}')
+        end)
+        try('dealership.GetPriceMap', function()
+            local m = exports.gtarp_dealership:GetPriceMap()
+            check(type(m) == 'table' and type(m.blista) == 'number' and m.blista > 0,
+                'dealership.GetPriceMap returns model→price (blista priced)')
+        end)
+    else
+        fail('dealership — resource not started')
     end
 
     if resourceUp('gtarp_gunrunning') then

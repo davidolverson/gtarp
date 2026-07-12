@@ -44,3 +44,30 @@ Config.StarterCash = {
     account = 'bank',
     reason = 'onboarding-starter-cash',
 }
+
+-- One-time starter vehicle, granted on first-ever onboarding right after the
+-- starter cash. Uses qbx_vehicles' CreatePlayerVehicle export (owned vehicle,
+-- stored in a garage) — NOT a raw player_vehicles INSERT, so it stays correct
+-- across qbx schema changes. If qbx_vehicles is absent, the grant silently
+-- no-ops and cash still lands (see bridge/sv_framework.lua).
+--
+-- `model`  — a cheap, base-game, legal economy car. Keep it modest: this is a
+--            get-you-moving car, not a reward. `blista` is a reliable compact.
+-- `garage` — the public garage the car is parked in. MUST match a real garage
+--            name in the deployed qbx_garages config; confirm in-game before
+--            enabling in prod. `motelgarage` is the common Qbox central public
+--            garage; override if Palm6 renamed it.
+Config.StarterVehicle = {
+    enabled = true,
+    model = 'blista',
+    garage = 'motelgarage',
+    reason = 'onboarding-starter-vehicle',
+}
+
+-- One-time starter outfit. OFF by default: illenium-appearance's saved-outfit
+-- format is version-specific, so forcing/saving a default outfit is deferred
+-- until validated in-game. New characters already run illenium's first-spawn
+-- appearance creator, so they pick clothes regardless of this flag.
+Config.StarterOutfit = {
+    enabled = false,
+}
