@@ -79,8 +79,8 @@ Deploys are serialized with a `concurrency` group, so overlapping runs don't col
 
 | What | Local (repo) | Remote (server, SFTP-relative) |
 | --- | --- | --- |
-| Custom layer | `resources/[custom]/` | `txData/QboxLeanPack_0DF2F5.base/resources/[custom]/` |
-| Server config | `custom.cfg` | `txData/QboxLeanPack_0DF2F5.base/custom.cfg` |
+| Custom layer | `resources/[custom]/` | `resources/[custom]/` |
+| Server config | `custom.cfg` | `custom.cfg` |
 
 The SFTP root is the server container root, so remote paths are relative to it.
 The `[custom]` / `[config_overrides]` folders contain literal square brackets; the
@@ -130,15 +130,16 @@ to override a default (e.g. if the recipe base folder is redeployed under a new 
 
 | Name | Value |
 | --- | --- |
-| `SFTP_HOST` | `fx-dtx-12.apollopanel.com` |
+| `SFTP_HOST` | `fx-dtx-10.apollopanel.com` |
 | `SFTP_PORT` | `2022` |
-| `SFTP_USERNAME` | `w8bh16e6.221eea0c` |
+| `SFTP_USERNAME` | `w8bh16e6.9524616c` |
 | `PANEL_URL` | `https://control.rocketnode.com` |
-| `SERVER_ID` | `221eea0c` |
-| `REMOTE_BASE` | `txData/QboxLeanPack_0DF2F5.base` |
+| `SERVER_ID` | `9524616c` |
+| `REMOTE_BASE` | `.` |
 
-> `REMOTE_BASE` changes if the Qbox lean recipe base folder is ever redeployed under a
-> new name — update this variable if that happens.
+> `REMOTE_BASE` is `.` because the SFTP account is rooted at the server's base
+> folder, so uploads land directly under it. Set a `REMOTE_BASE` repo Variable only
+> if that ever stops being true (e.g. the SFTP root changes).
 
 The SFTP host / port / username can also be read off the panel **File Manager →
 Launch SFTP** link.
