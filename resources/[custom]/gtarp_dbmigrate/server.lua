@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS `gtarp_gang_web_tokens` (
     created_at_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )]] },
     { name = '0044 idx_gtarp_gang_web_tokens_gang', sql = [[CREATE INDEX IF NOT EXISTS `idx_gtarp_gang_web_tokens_gang` ON `gtarp_gang_web_tokens` (`gang_id`)]] },
+    { name = '0045 gtarp_onboarding starter-grant flags', sql = [[
+ALTER TABLE `gtarp_onboarding`
+    ADD COLUMN IF NOT EXISTS starter_vehicle_granted TINYINT(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS starter_outfit_granted  TINYINT(1) NOT NULL DEFAULT 0
+]] },
 }
 
 CreateThread(function()
