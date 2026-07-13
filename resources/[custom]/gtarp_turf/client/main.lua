@@ -23,8 +23,21 @@ local function refreshBlips()
     end
 end
 
-Game.OnPlayerLoaded(requestSync)
-CreateThread(requestSync)  -- covers resource restarts while already in-game
+-- Request the sync a beat after load. Firing it during the join/connect race
+-- (the instant OnPlayerLoaded fires, or immediately on client resource start)
+-- reaches the server before the client is marked net-safe, so the server drops
+-- it as "gtarp_turf:requestSync was not safe for net" and the blips do not sync.
+-- The short wait lets the session settle. Covers both a fresh join (OnPlayerLoaded)
+-- and a resource restart while already in-game (the standalone thread).
+local function requestSyncSoon()
+    CreateThread(function()
+        Wait(2000)
+        requestSync()
+    end)
+end
+
+Game.OnPlayerLoaded(requestSyncSoon)
+requestSyncSoon()  -- covers resource restarts while already in-game
 
 RegisterNetEvent('gtarp_turf:syncZones', function(data)
     zones = data or {}

@@ -9,8 +9,16 @@
 -- and reacts to whatever the server tells it to show.
 -- ============================================================================
 
+-- The mandatory rules prompt is driven server-side by Bridge.OnPlayerLoaded, so
+-- this client call is only the belt-and-suspenders restart path. Fire it a beat
+-- after load: during the join/connect race the server drops it as
+-- "gtarp_onboarding:checkStatus was not safe for net". The wait lets the session
+-- settle; the fresh-join prompt is unaffected (it comes from the server hook).
 Game.OnPlayerLoaded(function()
-    TriggerServerEvent('gtarp_onboarding:checkStatus')
+    CreateThread(function()
+        Wait(2000)
+        TriggerServerEvent('gtarp_onboarding:checkStatus')
+    end)
 end)
 
 -- Server decided this citizen has never accepted the rules. No decline
