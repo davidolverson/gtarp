@@ -1,29 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Los Santos Roleplay</title>
-    <link rel="stylesheet" href="loading.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palm6</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; width: 100%; overflow: hidden; background: #05080F; }
+
+  /* A 16:9 stage that always covers the viewport and stays centered, so the art
+     and the progress bar live in the SAME coordinate space on any screen aspect.
+     The band was measured from the art: center 50% x, 72.2% y, 32%-68% wide. */
+  .stage {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: max(100vw, calc(100vh * 16 / 9));
+    height: max(100vh, calc(100vw * 9 / 16));
+    background: url("palm6_screen.jpg") center center / cover no-repeat;
+  }
+
+  /* live progress bar, seated inside the art's reserved box */
+  .pbar {
+    position: absolute; left: 34%; width: 32%;
+    top: 72.2%; transform: translateY(-50%);
+    height: 7px; border-radius: 7px;
+    background: rgba(8, 12, 22, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 210, 150, 0.10);
+    overflow: hidden;
+  }
+  .pfill {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    border-radius: 7px;
+    background: linear-gradient(90deg, #FF8A3D 0%, #FFB067 45%, #FF5E7E 100%);
+    box-shadow: 0 0 14px rgba(255, 138, 61, 0.55);
+    width: 0%;
+    transition: width 0.35s ease;
+  }
+  /* indeterminate fallback: a segment sweeps while no real progress is reported */
+  .pfill.indet {
+    width: 34%; transition: none;
+    animation: sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes sweep {
+    0%   { left: -36%; }
+    100% { left: 102%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pfill.indet { animation-duration: 3s; }
+  }
+</style>
 </head>
 <body>
-    <main class="stage">
-        <div class="frame">
-            <p class="eyebrow">Now connecting</p>
-            <h1 class="brand">Los Santos Roleplay</h1>
-            <p class="subtitle">A Qbox roleplay community</p>
+  <div class="stage">
+    <div class="pbar"><div class="pfill indet" id="pfill"></div></div>
+  </div>
 
-            <div class="progress" aria-hidden="true">
-                <div class="progress-bar"></div>
-            </div>
-
-            <p class="tip">
-                <span class="tip-label">Tip</span>
-                <span class="tip-body">Stay in character. Use /me and /do for actions and details.</span>
-            </p>
-        </div>
-
-        <p class="footnote">Allowlist via Discord — see the #rules channel. If the screen hangs for more than a minute, check the Discord for outage notices.</p>
-    </main>
+  <script>
+    // Show real FiveM load progress when the game reports it; otherwise keep the
+    // indeterminate sweep so the bar always looks alive.
+    var fill = document.getElementById("pfill");
+    function setProgress(frac) {
+      frac = Math.max(0, Math.min(1, frac));
+      fill.classList.remove("indet");
+      fill.style.left = "0%";
+      fill.style.width = (frac * 100).toFixed(1) + "%";
+    }
+    window.addEventListener("message", function (e) {
+      var d = e.data || {};
+      // FiveM loading-screen NUI events
+      if (d.eventName === "loadProgress" && typeof d.loadFraction === "number") {
+        setProgress(d.loadFraction);
+      } else if (d.eventName === "startInitFunctionOrder" || d.eventName === "onLogLine") {
+        // activity without a fraction: nudge the bar so it never looks stuck
+        if (fill.classList.contains("indet")) return;
+      }
+    });
+  </script>
 </body>
 </html>
