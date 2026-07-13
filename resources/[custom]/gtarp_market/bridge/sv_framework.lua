@@ -46,6 +46,23 @@ function Bridge.RemoveItem(src, item, count)
     return ok and removed and true or false
 end
 
+-- Grant `count` of `item` to the player. Returns true if fully added. Used by
+-- the refining tier (grant refined AFTER the raws are consumed).
+function Bridge.AddItem(src, item, count)
+    local ok, added = pcall(function()
+        return exports.ox_inventory:AddItem(src, item, count or 1)
+    end)
+    return ok and added and true or false
+end
+
+-- Is `item` a registered ox_inventory item def? Boot presence-check so the
+-- refinery self-disables loudly if a refined item was never added to
+-- ox_inventory_overrides/data/items.lua (mirrors gtarp_drugs).
+function Bridge.HasItemDef(item)
+    local ok, defs = pcall(function() return exports.ox_inventory:Items() end)
+    return ok and defs and defs[item] ~= nil or false
+end
+
 -- Pay the player `amount` in cash. Returns true if applied.
 function Bridge.AddCash(src, amount, reason)
     local p = getPlayer(src)

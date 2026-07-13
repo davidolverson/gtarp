@@ -30,6 +30,42 @@ Config.InteractRadius = 2.5
 -- Seconds between sells per player (server-enforced, atomic).
 Config.SellCooldown = 3
 
+-- Seconds between refines per player (server-enforced, atomic). Mirrors
+-- SellCooldown. Conversion is INSTANT — the real throttle is the dynamic SELL
+-- side (gather cooldown + marginal price crash on the refined commodity), not
+-- the refine, so this is a light anti-spam guard, not the economic brake.
+Config.RefineCooldown = 5
+
+-- ---------------------------------------------------------------------------
+-- Refining tier (v2). A value-add SINK: convert stacks of raw goods into a
+-- higher-value refined good, then sell the refined good through the SAME
+-- dynamic exchange curve below. Conversion is instant and lossless-by-ratio
+-- (integer batches only). Refined goods are added to Config.Commodities so
+-- they sell through the identical marginal-crash sell handler with no special
+-- casing. There is no buy-back, so no round-trip arbitrage; the only edge is
+-- refine->sell grossing the labour premium over raw->sell, which is bounded by
+-- (1) the unchanged gather cooldown, (2) the refined sell curve crashing
+-- faster than it recovers under heavy dumping, and (3) no cheap re-acquisition.
+--
+-- ratio is raws-consumed-per-1-refined (research: 2:1..3:1). Refined `base`
+-- (in Config.Commodities) is raw_base * ratio * ~1.4 (a 30-60% labour premium).
+-- ---------------------------------------------------------------------------
+Config.RefineStation = {
+    label = 'Palm6 Refinery',
+    -- Tier-3 placeholder near the Ore Buyer / industrial zone — VERIFY IN-GAME
+    -- and reposition freely (same discipline as the exchange coords).
+    coords = vector3(1075.00, -2005.00, 32.00),
+    blip   = { sprite = 402, colour = 47, scale = 0.85 },
+    ped    = { model = `s_m_y_construct_01`, heading = 270.0 },
+}
+
+Config.Refine = {
+    { raw = 'raw_ore',     refined = 'refined_metal', ratio = 3 },
+    { raw = 'animal_pelt', refined = 'cured_leather', ratio = 2 },
+    { raw = 'raw_fish',    refined = 'fillet',        ratio = 2 },
+    { raw = 'raw_meat',    refined = 'cured_meat',    ratio = 2 },
+}
+
 -- ---------------------------------------------------------------------------
 -- Price model (server-authoritative, wall-clock, computed lazily on read):
 --   * price recovers toward `base` at RecoverPctPerMin of base per minute
@@ -57,6 +93,15 @@ Config.Commodities = {
     { item = 'raw_ore',     label = 'Raw Ore',     base = 95, floorPct = 0.40, grindFloor = 70 },
     { item = 'raw_meat',    label = 'Raw Meat',    base = 72, floorPct = 0.40, grindFloor = 55 },
     { item = 'animal_pelt', label = 'Animal Pelt', base = 90, floorPct = 0.45, grindFloor = nil },
+
+    -- Refined goods (v2). Sold ONLY here (no grind buyer). `base` = raw_base *
+    -- ratio * ~1.4 (labour premium), rounded. They ride the identical marginal
+    -- crash + recovery curve, so heavy refining crashes the refined price
+    -- faster than it recovers — the intended self-limiting value tier.
+    { item = 'refined_metal', label = 'Refined Metal', base = 400, floorPct = 0.40, grindFloor = nil },  -- 95*3*1.40 = 399
+    { item = 'cured_leather', label = 'Cured Leather', base = 270, floorPct = 0.45, grindFloor = nil },  -- 90*2*1.50 = 270
+    { item = 'fillet',        label = 'Fish Fillet',   base = 170, floorPct = 0.40, grindFloor = nil },  -- 60*2*1.42 = 170
+    { item = 'cured_meat',    label = 'Cured Meat',    base = 210, floorPct = 0.40, grindFloor = nil },  -- 72*2*1.45 = 209
 }
 
 -- gtarp_ui panel styling for the /market price board (money green).

@@ -60,6 +60,54 @@ ALTER TABLE `gtarp_onboarding`
     ADD COLUMN IF NOT EXISTS starter_vehicle_granted TINYINT(1) NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS starter_outfit_granted  TINYINT(1) NOT NULL DEFAULT 0
 ]] },
+    { name = '0046 gtarp_market_state', sql = [[
+CREATE TABLE IF NOT EXISTS `gtarp_market_state` (
+    commodity VARCHAR(64) NOT NULL PRIMARY KEY,
+    price     DOUBLE      NOT NULL,
+    last_ts   BIGINT      NOT NULL
+)]] },
+    { name = '0046 gtarp_market_trades', sql = [[
+CREATE TABLE IF NOT EXISTS `gtarp_market_trades` (
+    id        INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    citizenid VARCHAR(64) NOT NULL,
+    commodity VARCHAR(64) NOT NULL,
+    qty       INT NOT NULL,
+    total     INT NOT NULL,
+    ts        BIGINT NOT NULL,
+    INDEX idx_gtarp_market_trades_cid (citizenid),
+    INDEX idx_gtarp_market_trades_commodity (commodity)
+)]] },
+    { name = '0047 gtarp_yard_sentence', sql = [[
+CREATE TABLE IF NOT EXISTS `gtarp_yard_sentence` (
+    citizenid        VARCHAR(64) NOT NULL PRIMARY KEY,
+    baseline_minutes INT         NOT NULL DEFAULT 0,
+    shaved_minutes   INT         NOT NULL DEFAULT 0,
+    updated_at       BIGINT      NOT NULL DEFAULT 0
+)]] },
+    { name = '0047 gtarp_yard_labor', sql = [[
+CREATE TABLE IF NOT EXISTS `gtarp_yard_labor` (
+    citizenid       VARCHAR(64) NOT NULL PRIMARY KEY,
+    last_task_at    BIGINT      NOT NULL DEFAULT 0,
+    tasks_completed INT         NOT NULL DEFAULT 0
+)]] },
+    { name = '0047 gtarp_yard_commissary_log', sql = [[
+CREATE TABLE IF NOT EXISTS `gtarp_yard_commissary_log` (
+    citizenid VARCHAR(64) NOT NULL,
+    item      VARCHAR(64) NOT NULL,
+    ymd       INT         NOT NULL,
+    qty       INT         NOT NULL DEFAULT 0,
+    PRIMARY KEY (citizenid, item, ymd)
+)]] },
+    { name = '0047 gtarp_yard_bail', sql = [[
+CREATE TABLE IF NOT EXISTS `gtarp_yard_bail` (
+    id               INT         NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    citizenid        VARCHAR(64) NOT NULL,
+    amount           INT         NOT NULL,
+    released_minutes INT         NOT NULL,
+    rearrest_until   BIGINT      NOT NULL DEFAULT 0,
+    created_at       BIGINT      NOT NULL DEFAULT 0,
+    INDEX idx_gtarp_yard_bail_cid (citizenid)
+)]] },
 }
 
 CreateThread(function()

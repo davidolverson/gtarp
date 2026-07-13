@@ -9,6 +9,78 @@ Format: newest first. Dates are EDT.
 
 ---
 
+## 2026-07-13 - Prison economy (`gtarp_yard`)
+
+Jail stops being dead time. Inside Bolingbroke you can now **work to shave your
+sentence** and earn commissary cash, buy from a **commissary**, or **post bail**
+to walk early (with a catch).
+
+**Tracking (internal):**
+- 🆕 **`gtarp_yard`** — three server-authoritative loops on top of the existing
+  xt-prison jail: **labor** (`E` at the yard: a task pays a small trickle and
+  shaves your sentence), **commissary** (buy-only cash shop), **bail** (pay to
+  release early).
+- ⛏️ **Labor**: pay ~$75 per ~35s task (deliberately below street earning), each
+  task shaves 1 min but the **total shave is capped at 50% of the sentence** so
+  jail always costs something. The shave is computed server-side from the
+  sentence baseline (never the client) and bound to the live clock, and a
+  **persisted** per-character cooldown means relogging can't reset it.
+- 🏪 **Commissary**: server-owned prices, a **daily per-item cap** (kills the
+  buy-low/resell-high loop), consume-before-grant with a refund ladder.
+- ⚖️ **Bail**: superlinear price (short sentences are cheap to skip, long ones
+  hurt) with a floor above typical crime payout so it stays a deterrent. Money
+  is taken **before** release; if release fails it refunds. Bail is **not a
+  clean slate** — it re-issues an `gtarp_mdt` warrant (so `gtarp_bounty`
+  auto-posts a contract on the skipper) and stamps a re-arrest cooldown.
+- 🔒 Server-authoritative sentence: stored/persisted via xt-prison's own Qbox
+  `injail` metadata, keyed to citizenid; disconnect/death/restart never clears
+  it; only timer expiry, paid bail, or admin release does. Never trusts a client
+  "I'm free" or a client shave/price/amount.
+- 🔧 Wiring: `sql/0047` (4 gtarp_-prefixed tables); 3 `gtarp_eventguard` budgets;
+  3 ox contraband/commissary items (`yard_pruno`, `yard_commissary_snack`,
+  `yard_soap`); self-disables loudly if xt-prison isn't running or an item is
+  missing. Bridge-pattern native (§6 clean). **Coords are Bolingbroke Tier-3
+  placeholders — VERIFY IN-GAME.** Item PNGs owed (David).
+
+**📣 Public:** Doing time just got real. In prison you can now **work the yard**
+to knock time off your sentence and earn commissary money, hit the **commissary**
+for supplies, or **post bail** to get out early. But skipping court isn't free:
+bail puts a fresh warrant on your head, so bounty hunters and cops get a payday
+for bringing you back in.
+
+---
+
+## 2026-07-13 - Refining tier (`gtarp_market` v2)
+
+The Commodity Exchange gets a value-add tier: turn raw goods into **refined
+goods** worth more, at a new **Refinery**.
+
+**Tracking (internal):**
+- 🆕 **Refinery** — `E` at the refinery converts raw stacks into refined goods:
+  3 `raw_ore` -> `refined_metal`, 2 `animal_pelt` -> `cured_leather`, 2
+  `raw_fish` -> `fillet`, 2 `raw_meat` -> `cured_meat`. Instant, lossless-by-
+  ratio, integer batches.
+- 📈 Refined goods sell **only** at the exchange, priced at ~1.4x
+  (raw_base x ratio), and they ride the **same dynamic marginal-crash + recovery
+  curve** as raws — so flooding the market with refined goods crashes their price
+  faster than it recovers. Self-limiting, no money printer (the exchange is
+  sell-only, so there's no round-trip arbitrage).
+- 🔒 Instant is safe here because the throttle is the dynamic **sell** side
+  (cooldown + marginal crash + per-sale cap), not the conversion: atomic per-
+  player refine cooldown before any yield, server-side proximity, consume-before-
+  grant with a refund ladder, refinery self-disables if a refined item def is
+  missing.
+- 🔧 Wiring: 4 new ox items (`refined_metal`, `cured_leather`, `fillet`,
+  `cured_meat`); `gtarp_market:refine` eventguard budget; no new SQL table.
+  **Refinery coords are a Tier-3 placeholder — VERIFY IN-GAME.** Item PNGs owed.
+
+**📣 Public:** The exchange now has a **Refinery**. Turn your raw ore, pelts,
+fish and meat into refined metal, cured leather, fillets and cured meat, then
+sell the refined goods for a premium. Just don't flood the market with them, or
+the price drops the same way raw goods do.
+
+---
+
 ## 2026-07-13 - Commodity Exchange (`gtarp_market`)
 
 The legal grind gets a real market. A new **Palm6 Commodity Exchange** buys raw

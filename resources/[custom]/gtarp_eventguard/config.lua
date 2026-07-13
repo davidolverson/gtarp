@@ -124,12 +124,25 @@ Config.Events = {
     ['gtarp_gangs:deposit']        = { calls = 20, window_seconds = 60 },
     ['gtarp_gangs:withdraw']       = { calls = 20, window_seconds = 60 },
 
-    -- gtarp_market — the Commodity Exchange. `sell` is the one money-touching
-    -- net event (pays CLEAN cash for raw goods, server-priced + server-proximity
-    -- checked). It already has an atomic per-player cooldown; this budget is
-    -- defense-in-depth against a flood. Load-order: ensure gtarp_eventguard
-    -- before gtarp_market so this guard registers first in the handler chain.
+    -- gtarp_market — the Commodity Exchange. `sell` pays CLEAN cash for raw
+    -- goods; `refine` mints higher-value refined goods (money-touching once
+    -- sold). Both are server-priced + server-proximity checked and already carry
+    -- an atomic per-player cooldown; these budgets are defense-in-depth against a
+    -- flood. `refine`'s server cooldown is 5s (=12/60s), so a 20/60s budget bounds
+    -- a modified-client flood without ever clipping legitimate use. Load-order:
+    -- ensure gtarp_eventguard before gtarp_market so this guard registers first in
+    -- the handler chain.
     ['gtarp_market:sell']          = { calls = 20, window_seconds = 60 },
+    ['gtarp_market:refine']        = { calls = 20, window_seconds = 60 },
+
+    -- gtarp_yard — prison economy. `doLabor`/`buyCommissary` move small cash and
+    -- carry persisted per-char cooldowns; `postBail` moves a large sum + releases,
+    -- so it gets the tightest budget. All three are server-authoritative (shave,
+    -- price, bail all server-computed; client sends no amounts). Load-order:
+    -- ensure gtarp_eventguard before gtarp_yard so these register first.
+    ['gtarp_yard:server:doLabor']       = { calls = 20, window_seconds = 60 },
+    ['gtarp_yard:server:buyCommissary'] = { calls = 20, window_seconds = 60 },
+    ['gtarp_yard:server:postBail']      = { calls = 6,  window_seconds = 60 },
 
     -- ox_inventory shop purchase fan-out — recipe-shipped net event.
     -- ox_inventory does its own per-event data validation (Utils.LogExploit);

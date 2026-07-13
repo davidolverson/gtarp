@@ -2,9 +2,9 @@ fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
 
-author 'ModernGrindTech'
-version '0.2.0'
-description 'Palm6 Commodity Exchange — dynamic supply/demand market for raw goods + refining tier'
+author 'EvThatGuy'
+version '0.1.0'
+description 'gtarp yard — Bolingbroke prison economy: server-authoritative sentence-shaving labor (xt-prison SetJailTime), a buy-only commissary shop, and superlinear bail bonds that re-issue an mdt warrant (bounty auto-posts a state contract)'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -26,4 +26,6 @@ dependencies {
     'ox_lib',
     'oxmysql',
     'qbx_core',
+    'ox_inventory',
+    'xt-prison',
 }

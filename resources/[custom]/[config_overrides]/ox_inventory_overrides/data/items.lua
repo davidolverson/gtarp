@@ -41,6 +41,17 @@ ExtraItems = {
     raw_meat        = { label = 'Raw Meat',        weight = 250,  stack = true },
     animal_pelt     = { label = 'Animal Pelt',     weight = 400,  stack = true },
 
+    -- Refined goods (gtarp_market refining tier v2) — sold only at the exchange.
+    refined_metal   = { label = 'Refined Metal',   weight = 500,  stack = true },
+    cured_leather   = { label = 'Cured Leather',   weight = 350,  stack = true },
+    fillet          = { label = 'Fish Fillet',     weight = 150,  stack = true },
+    cured_meat      = { label = 'Cured Meat',      weight = 200,  stack = true },
+
+    -- Prison commissary / contraband (gtarp_yard).
+    yard_pruno            = { label = 'Pruno',            weight = 200, stack = true, consume = 1 },
+    yard_commissary_snack = { label = 'Commissary Snack', weight = 80,  stack = true, consume = 1 },
+    yard_soap             = { label = 'Bar of Soap',      weight = 90,  stack = true },
+
     -- Serialized sneakers (gtarp_flashdrop). One base item; per-pair identity
     -- (label, serial, uid) rides in metadata. Must match Config.Item in
     -- gtarp_flashdrop/shared/config.lua — that resource presence-checks this

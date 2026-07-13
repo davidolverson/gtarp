@@ -18,8 +18,16 @@ local commodity = {}    -- [item] = Config commodity entry
 local State     = {}     -- [item] = { price = <float>, ts = <epoch seconds> }
 local Stats     = { unitsSold = 0, totalPaid = 0 }  -- since boot (GetSummary)
 
-local lastSell  = {}     -- [src] = ts  (atomic sell cooldown)
-local lastBoard = {}     -- [src] = ts  (/market spam guard)
+local lastSell   = {}    -- [src] = ts  (atomic sell cooldown)
+local lastBoard  = {}    -- [src] = ts  (/market spam guard)
+local lastRefine = {}    -- [src] = ts  (atomic refine cooldown)
+
+-- Soft gate: the refinery only serves once every refined item def exists in the
+-- inventory registry (checked via Bridge.HasItemDef). checkRefine() flips this
+-- false + prints a LOUD error naming the missing item(s) (mirrors gtarp_drugs).
+-- The :refine handler returns early when false, so a missing def never mints
+-- refined goods.
+local refineEnabled = false
 
 local function now() return os.time() end
 
@@ -135,6 +143,67 @@ RegisterNetEvent('gtarp_market:sell', function()
 end)
 
 -- ---------------------------------------------------------------------------
+-- refine — convert raw goods into refined goods at the refinery (instant,
+-- lossless-by-ratio, integer batches). The economic brake is the SELL side
+-- (the refined commodities crash on the same marginal curve), not this
+-- conversion, so it is instant. Money-safety discipline is unchanged from the
+-- sell path: atomic cooldown before any yield, server-side proximity,
+-- consume-before-grant, and a refund ladder if the grant fails.
+-- ---------------------------------------------------------------------------
+RegisterNetEvent('gtarp_market:refine', function()
+    local src = source
+    local t = now()
+
+    -- Refinery disabled (a refined item def is missing) — refuse silently; the
+    -- LOUD reason was already printed at boot.
+    if not refineEnabled then return end
+
+    -- Atomic cooldown set BEFORE any yield: two same-tick fires can't both pass.
+    if (lastRefine[src] or 0) + Config.RefineCooldown > t then return end
+    lastRefine[src] = t
+
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+
+    -- Server-side proximity — never trust the client that it is at the refinery.
+    local coords = Bridge.GetCoords(src)
+    if not coords or Bridge.Distance(coords, Config.RefineStation.coords) > (Config.InteractRadius + 2.0) then
+        Bridge.Notify(src, Config.RefineStation.label, 'You are not at the refinery.', 'error')
+        return
+    end
+
+    local lines, any = {}, false
+    for _, r in ipairs(Config.Refine) do
+        local have    = Bridge.CountItem(src, r.raw) or 0
+        local batches = math.floor(have / r.ratio)   -- integer; have>=0, ratio>=2 -> no NaN/neg
+        if batches > 0 then
+            local consume = batches * r.ratio
+            -- consume BEFORE grant; a completed conversion only ever removes
+            -- exactly what it grants for.
+            if Bridge.RemoveItem(src, r.raw, consume) then
+                if Bridge.AddItem(src, r.refined, batches) then
+                    any = true
+                    lines[#lines + 1] = ('%dx %s -> %dx %s'):format(consume, r.raw, batches, r.refined)
+                else
+                    -- REFUND ladder: grant failed (e.g. inventory full) — give
+                    -- the consumed raws back so nothing is destroyed.
+                    Bridge.AddItem(src, r.raw, consume)
+                end
+            end
+        end
+    end
+
+    if not any then
+        Bridge.Notify(src, Config.RefineStation.label, 'Nothing to refine (need enough raw goods).', 'inform')
+        return
+    end
+
+    Bridge.Notify(src, Config.RefineStation.label,
+        'Refined ' .. table.concat(lines, ', ') .. '.', 'success')
+    dbg(('%s refined %s'):format(cid, table.concat(lines, ', ')))
+end)
+
+-- ---------------------------------------------------------------------------
 -- /market — the live price board (read-only, rate-limited, branded panel)
 -- ---------------------------------------------------------------------------
 local function boardLines()
@@ -198,15 +267,37 @@ local function seedState()
     end
 end
 
+-- Refinery soft gate: enable only if every refined item def exists in the
+-- inventory registry. Missing item(s) -> LOUD error naming them + stays
+-- disabled (mirrors gtarp_drugs' meth cook chain). The exchange keeps running
+-- either way.
+local function checkRefine()
+    local missing = {}
+    for _, r in ipairs(Config.Refine) do
+        if not Bridge.HasItemDef(r.refined) then missing[#missing + 1] = r.refined end
+    end
+    if #missing == 0 then
+        refineEnabled = true
+    else
+        table.sort(missing)
+        print(('^1[gtarp_market] REFINERY DISABLED — %d refined item def(s) missing from the item '
+            .. 'registry: %s. Register them (see README) to enable the refining tier.^0')
+            :format(#missing, table.concat(missing, ', ')))
+    end
+end
+
 AddEventHandler('onResourceStart', function(res)
     if res ~= GetCurrentResourceName() then return end
     seedState()
-    print(('[gtarp_market] commodity exchange online — %d commodities, /%s for live prices'):format(
-        #Config.Commodities, Config.Command))
+    checkRefine()
+    print(('[gtarp_market] commodity exchange online — %d commodities, /%s for live prices%s'):format(
+        #Config.Commodities, Config.Command,
+        refineEnabled and (' | refinery online (%d recipes)'):format(#Config.Refine) or ' | refinery OFF'))
 end)
 
 AddEventHandler('playerDropped', function()
     local src = source
-    lastSell[src]  = nil
-    lastBoard[src] = nil
+    lastSell[src]   = nil
+    lastBoard[src]  = nil
+    lastRefine[src] = nil
 end)

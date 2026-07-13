@@ -43,10 +43,59 @@ grow / dry / cook timers in `gtarp_drugs`.
   neither pays nor moves the market).
 - Trade ledger insert is **best-effort** and never blocks or undoes a sale.
 
+## Refining tier (v2) — the value-add sink
+
+The **Palm6 Refinery** turns stacks of raw goods into higher-value **refined
+goods**, which then sell through the *same* dynamic exchange curve. Gather at
+`gtarp_grind`, refine here, sell refined at the exchange — a reason to hold and
+add labour rather than dump raws flat.
+
+Bring raws to the refinery and press **E**. Conversion is **instant and
+integer-batched** (leftovers below a full batch stay in your pockets):
+
+| Raw | → Refined | Ratio | Refined base |
+|-----|-----------|-------|--------------|
+| `raw_ore` | `refined_metal` | 3 : 1 | $400 |
+| `animal_pelt` | `cured_leather` | 2 : 1 | $270 |
+| `raw_fish` | `fillet` | 2 : 1 | $170 |
+| `raw_meat` | `cured_meat` | 2 : 1 | $210 |
+
+Each refined `base` is `raw_base * ratio * ~1.4` — the ~40% premium is the
+**labour reward**. Refined goods are just more `Config.Commodities`, so they
+ride the identical **marginal-crash + slow-recovery** sell curve.
+
+**Why it is not a money printer.** The only chain is *gather raw
+(`gtarp_grind`, gather cooldown) → refine (instant) → sell refined (crashing
+curve)*. `gtarp_market` is **sell-only** (no buy-back) so there is no
+round-trip arbitrage. Refine→sell grosses the labour premium over raw→sell —
+the intended value tier — bounded by (1) the unchanged gather cooldown capping
+raw supply, (2) the refined sell curve crashing ~2%/unit to a 40-45% floor and
+recovering slowly, so heavy refining drives the refined price *below* the
+equivalent raw value, and (3) no buy-side to re-acquire cheap inputs.
+
+**Money safety (refine path).** Instant conversion is safe here because the
+brake is the sell side, not the conversion — but the refine handler still
+mirrors every sell-path guard: **atomic per-player cooldown before any yield**,
+**server-side proximity** to the refinery, **consume raws before granting
+refined**, and a **refund ladder** (raws restored) if the grant fails. Refined
+goods are **never minted on a client callback** — the client sends no args.
+
+**Self-disable.** Refined items must be registered in `ox_inventory`. At boot
+the resource presence-checks each refined def; any missing one **disables the
+refinery loudly** (a red console line naming the item) while the exchange keeps
+running — the same soft-gate discipline as `gtarp_drugs`' cook chain.
+
+New `ox_inventory` item defs required (add to
+`ox_inventory_overrides/data/items.lua`): `refined_metal`, `cured_leather`,
+`fillet`, `cured_meat`.
+
+The refinery coords in `shared/config.lua` are a **Tier-3 placeholder — VERIFY
+IN-GAME** and reposition freely.
+
 ## Files / wiring
 
-- `sql/0046_market.sql` — `gtarp_market_state` (price state) + `gtarp_market_trades` (ledger).
-- `gtarp_eventguard` budgets `gtarp_market:sell`.
+- `sql/0046_market.sql` — `gtarp_market_state` (price state) + `gtarp_market_trades` (ledger). The refining tier adds **no table** — refined commodities reuse `gtarp_market_state`, defaulted to `base` by `seedState()`.
+- `gtarp_eventguard` budgets `gtarp_market:sell` **and `gtarp_market:refine`**.
 - `gtarp_economy` shows an informational **clean-cash** line via the
   `GetSummary` export (`{ commodities, unitsSold, totalPaid }`).
 - Exchange coords in `shared/config.lua` are a **Tier-3 placeholder — VERIFY
@@ -59,9 +108,7 @@ cash, coords, panel reply) and `bridge/cl_game.lua` (blip, prompt, interact).
 `server/main.lua` and `client/main.lua` call only `Bridge.*` / `Game.*`, so a
 port rewrites the two bridge files. See `docs/GTA6-READINESS.md` §3.
 
-## Deferred (v2)
+## Deferred (v3)
 
-- **Refining tier:** `raw_ore -> refined_metal`, `animal_pelt -> cured_leather`,
-  etc. — a value-add sink and a reason to hold rather than dump. Needs new
-  `ox_inventory` item defs (+ PNGs) and their own market curves.
+- **Refining tier** — shipped in v2 (see above).
 - **Scarcity premium:** let a long-untouched commodity drift *above* base.

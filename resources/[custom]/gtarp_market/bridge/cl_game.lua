@@ -44,3 +44,22 @@ function Game.CreateBlip(coords, sprite, colour, scale, label)
     EndTextCommandSetBlipName(b)
     return b
 end
+
+-- Spawn a static, frozen, invincible attendant ped at a coord (the refinery
+-- worker). Model may be a hash (backtick literal) or a name string. Returns the
+-- ped handle, or nil if the model never loaded.
+function Game.CreatePed(model, coords, heading)
+    RequestModel(model)
+    local tries = 0
+    while not HasModelLoaded(model) and tries < 100 do
+        tries = tries + 1
+        Wait(10)
+    end
+    if not HasModelLoaded(model) then return nil end
+    local ped = CreatePed(4, model, coords.x, coords.y, coords.z - 1.0, heading or 0.0, false, true)
+    FreezeEntityPosition(ped, true)
+    SetEntityInvincible(ped, true)
+    SetBlockingOfNonTemporaryEvents(ped, true)
+    SetModelAsNoLongerNeeded(model)
+    return ped
+end
