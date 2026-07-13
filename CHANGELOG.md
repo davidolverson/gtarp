@@ -124,6 +124,72 @@ price. Check the board any time with **/market**.
 
 ---
 
+## 2026-07-13 - Branded UI: NUI panel + loading screen (`gtarp_ui`, `server_identity`)
+
+The server got its look. Command output moved out of the raw chat feed into a
+branded panel, and the first thing every player sees is now a Palm6 loading
+screen.
+
+**Tracking (internal):**
+- 🆕 **`gtarp_ui`** — a shared `ox_lib` panel renderer. Nine server-only commands
+  (help, gangs, economy, city stats, wanted, and more) route their multi-line
+  output through one branded panel instead of dumping lines into chat; a
+  one-liner falls back to a non-blocking toast so it never freezes the player.
+- 🎛️ **Branded NUI panel (Phase 2)** — a self-contained dark glassmorphism panel
+  with a per-command accent colour, section styling, scroll, and ESC-to-close.
+  XSS-safe (game text is rendered as text, never HTML), releases focus on close.
+- 🖥️ **`server_identity`** — a Palm6-branded loading screen with a live progress
+  bar, the first impression for every join.
+
+**📣 Public:** Palm6 has a fresh look. Commands now open in a clean branded panel
+instead of spamming chat, and there's a new Palm6 loading screen when you join.
+
+---
+
+## 2026-07-12 - Nine civic + info systems shipped to live
+
+A batch of quality-of-life and civic systems went live together, filling in the
+city's public-facing layer.
+
+**Tracking (internal):**
+- 🆕 Shipped nine self-contained resources: **`gtarp_help`** (in-game command
+  directory), **`gtarp_citystats`** (live city economy stats), **`gtarp_ems`**
+  (EMS billing + dispatch reader), **`gtarp_lottery`** (scheduled civic lottery),
+  **`gtarp_blotter`** / **`gtarp_wanted`** (public crime + wanted boards),
+  **`gtarp_rapsheet`** (criminal history), **`gtarp_ganginfo`** (public gang
+  directory), **`gtarp_season`** (season framework).
+- 🎨 Shipped a branded **`palm6_props`** prop set into the live custom layer.
+- 🔧 Fixed EMS/lottery commands registering behind a boot delay instead of at
+  boot, and granted the correct staff ACEs.
+
+**📣 Public:** Type `/help` in-game to see everything you can do. New civic
+systems are live: city stats, EMS billing, a lottery, public wanted + crime
+boards, rap sheets, and a gang directory.
+
+---
+
+## 2026-07-11 - Palm6 dealership + new-arrival starter kit
+
+**Tracking (internal):**
+- 🚗 Branded **Palm6 dealership catalog** of purchasable vehicles.
+- 🎁 New-arrival **starter kit** (a car + clothes) so fresh players aren't
+  dropped into the city with nothing.
+
+**📣 Public:** New in town? You start with a car and a fresh outfit, and the
+Palm6 dealership is open for your next upgrade.
+
+---
+
+## 2026-07-11 - The server is now Palm6
+
+**Tracking (internal):**
+- 🌴 Rebranded the entire custom layer from "Horizon" to **Palm6** — every
+  banner, label and reference across all custom resources.
+
+**📣 Public:** Welcome to **Palm6**. New name, same city we've been building.
+
+---
+
 ## 2026-07-11 - Meth cook lab (`gtarp_drugs` §9)
 
 The Schedule I supply chain gets its second drug: **meth**, via a new cook
