@@ -1,20 +1,20 @@
 -- ============================================================================
--- 0026_legal.sql — gtarp_legal expungement petitions + the additive
--- sealed_at column on gtarp_mdt_bookings it operates on.
+-- 0026_legal.sql — palm6_legal expungement petitions + the additive
+-- sealed_at column on palm6_mdt_bookings it operates on.
 --
--- `gtarp_`-prefixed per the defensive convention. No FK constraints
+-- `palm6_`-prefixed per the defensive convention. No FK constraints
 -- (house style). ADD COLUMN IF NOT EXISTS is MariaDB-safe and additive —
 -- no existing column is altered (evidence-v2 precedent).
 --
 -- A sealed booking stays in the table (desk stats still count it) but
--- leaves the rap-sheet surface (gtarp_mdt GetBookingsFor). Petitions
+-- leaves the rap-sheet surface (palm6_mdt GetBookingsFor). Petitions
 -- charge the FILER at filing; the fee is court costs, kept on denial.
 -- ============================================================================
 
-ALTER TABLE `gtarp_mdt_bookings`
+ALTER TABLE `palm6_mdt_bookings`
     ADD COLUMN IF NOT EXISTS sealed_at TIMESTAMP NULL DEFAULT NULL;
 
-CREATE TABLE IF NOT EXISTS `gtarp_legal_petitions` (
+CREATE TABLE IF NOT EXISTS `palm6_legal_petitions` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     booking_id INT UNSIGNED NOT NULL,
     citizenid VARCHAR(64) NOT NULL,          -- the subject of the booking
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS `gtarp_legal_petitions` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     due_at TIMESTAMP NOT NULL,
     resolved_at TIMESTAMP NULL DEFAULT NULL,
-    INDEX idx_gtarp_legal_petitions_status_due (status, due_at),
-    INDEX idx_gtarp_legal_petitions_booking (booking_id),
-    INDEX idx_gtarp_legal_petitions_citizen (citizenid)
+    INDEX idx_palm6_legal_petitions_status_due (status, due_at),
+    INDEX idx_palm6_legal_petitions_booking (booking_id),
+    INDEX idx_palm6_legal_petitions_citizen (citizenid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

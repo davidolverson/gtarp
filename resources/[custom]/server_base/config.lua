@@ -1,5 +1,5 @@
 -- ============================================================================
--- server_base/config.lua — shared config for the gtarp base resource.
+-- server_base/config.lua — shared config for the palm6 base resource.
 --
 -- Edit the values below for your server. Keep secrets OUT of this file.
 -- ============================================================================

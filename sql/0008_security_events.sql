@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0008_security_events.sql — event_violations table for gtarp_eventguard
+-- 0008_security_events.sql — event_violations table for palm6_eventguard
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `event_violations` (

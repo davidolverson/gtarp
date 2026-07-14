@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'EvThatGuy'
 version '0.1.0'
-description 'gtarp economy overrides — paychecks, currency symbol, money source-of-truth'
+description 'palm6 economy overrides — paychecks, currency symbol, money source-of-truth'
 
 shared_scripts {
     '@ox_lib/init.lua',

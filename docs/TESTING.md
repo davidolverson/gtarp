@@ -1,8 +1,8 @@
-# TESTING — smoke-test runbook for the gtarp custom layer
+# TESTING — smoke-test runbook for the palm6 custom layer
 
 Run this after a boot to confirm every custom resource works and that the
 GTA VI bridge refactor left behaviour unchanged. It complements
-`docs/SETUP.md` (fresh box) and `gtarp-server/LOCAL-SETUP.md` (local solo
+`docs/SETUP.md` (fresh box) and `palm6-server/LOCAL-SETUP.md` (local solo
 box). Nothing here needs GTA VI — it validates the live GTA V server.
 
 The custom layer is **bridge-clean**: every resource under
@@ -15,24 +15,24 @@ bug is almost always in that resource's `bridge/` adapter, not its logic.
 
 ## 0. Before you can join — allowlist
 
-`gtarp_allowlist` ships secure-by-default: `Config.FailOpen = false` and
+`palm6_allowlist` ships secure-by-default: `Config.FailOpen = false` and
 `Config.AllowedRoles = {}` (empty). **With those defaults nobody can join** —
 every connect is denied unless the player is allowlisted. Pick one for a
 tester:
 
-- **Local solo box:** already handled — `gtarp-server/staging/custom.cfg`
-  comments out `ensure gtarp_allowlist`, so the gate is off. Re-enable before
+- **Local solo box:** already handled — `palm6-server/staging/custom.cfg`
+  comments out `ensure palm6_allowlist`, so the gate is off. Re-enable before
   going public.
 - **DB allowlist (recommended for staging):** add your license identifier:
   ```sql
   INSERT INTO allowlist (identifier, enabled) VALUES ('license:XXXXXXXX', 1);
   ```
   Find your license in the console: connect once (you'll be denied), then read
-  the `gtarp_allowlist` deny line in `audit_log` / console, or run `/coords`
+  the `palm6_allowlist` deny line in `audit_log` / console, or run `/coords`
   from console after adding a temporary row.
-- **Discord role:** set `gtarp:discord_bot_token` + `gtarp:discord_guild_id`
+- **Discord role:** set `palm6:discord_bot_token` + `palm6:discord_guild_id`
   convars and add your role id to `Config.AllowedRoles` in
-  `resources/[custom]/gtarp_allowlist/config.lua`.
+  `resources/[custom]/palm6_allowlist/config.lua`.
 
 ---
 
@@ -46,18 +46,18 @@ tester:
       each of these is listed and green:
       `qbx_core_overrides, qbx_economy_overrides, qbx_police_overrides,
       qbx_ambulance_overrides, qbx_civilian_jobs_overrides,
-      ox_inventory_overrides, qbx_density_overrides, gtarp_whitelist_jobs,
-      gtarp_staff, gtarp_eventguard, gtarp_allowlist (if enabled),
-      gtarp_courier, gtarp_perf, server_identity, server_base`.
+      ox_inventory_overrides, qbx_density_overrides, palm6_whitelist_jobs,
+      palm6_staff, palm6_eventguard, palm6_allowlist (if enabled),
+      palm6_courier, palm6_perf, server_identity, server_base`.
 - [ ] `/serverinfo` typed in the **server console** prints the identity line.
 - [ ] **Contract self-tests** (dev boots only): enable with
-      `set gtarp:devtest 1` in a cfg (txAdmin does NOT forward `+set` from
+      `set palm6:devtest 1` in a cfg (txAdmin does NOT forward `+set` from
       the FXServer command line to the inner server) and confirm the console
-      prints `[gtarp_devtest] ✔ N passed, 0 failed, 3 skipped` (32/0/3 as of
+      prints `[palm6_devtest] ✔ N passed, 0 failed, 3 skipped` (32/0/3 as of
       the items+tables groups). Any FAIL line means a cross-resource
       contract broke — evidence v2 API, staff log sink, export shapes,
       an ExtraItems name missing from ox_inventory's runtime table (run
-      `tools/patch-ox-items.sh`), or a gtarp table missing from the DB
+      `tools/patch-ox-items.sh`), or a palm6 table missing from the DB
       (apply the matching `sql/` migration) — do not ship. Production
       leaves the convar unset; the resource then prints one "disabled"
       line and does nothing.
@@ -90,17 +90,17 @@ tester:
 - [ ] `/serverinfo` in chat replies with the identity line
       (`Bridge.ChatToPlayer`).
 
-## 4. Allowlist gate — `gtarp_allowlist` (only if ensured)
+## 4. Allowlist gate — `palm6_allowlist` (only if ensured)
 
 - [ ] A non-allowlisted player is denied with a friendly message
       (`DenyNoRole` / `DenyNoLink` / `DenyTimeout`).
 - [ ] An allowlisted player (DB row or Discord role) joins normally.
 - [ ] Each deny writes an `allowlist_deny` row to `audit_log`
-      (via the `gtarp_staff` export).
+      (via the `palm6_staff` export).
 - [ ] Behaviour parity: the "Checking allowlist…" progress text still shows
       during connect (`Bridge.OnConnecting` → `gate.update`).
 
-## 5. Signature feature — `gtarp_courier`
+## 5. Signature feature — `palm6_courier`
 
 - [ ] Set a map waypoint, then `/courierpost <bounty> <label>` → escrow is
       debited from your **bank** by the bounty (affordability pre-check
@@ -108,28 +108,28 @@ tester:
 - [ ] A routed delivery blip + GPS route appears to the accepting player
       (`Game.CreateRouteBlip`).
 - [ ] Driving within the delivery radius (~8 m) auto-completes the run and
-      pays the courier (`gtarp_courier:complete`).
+      pays the courier (`palm6_courier:complete`).
 - [ ] Rows land in `courier_postings`; a cancelled/expired posting refunds
       the poster (online = live credit, offline = DB `players.money` write via
       the bridge).
 
-## 6. Staff toolkit — `gtarp_staff` (audit sink) + recipe commands
+## 6. Staff toolkit — `palm6_staff` (audit sink) + recipe commands
 
-gtarp_staff registers NO commands (its duplicates of recipe commands were
+palm6_staff registers NO commands (its duplicates of recipe commands were
 removed 2026-07-03) — the commands below are the recipe's own, extended to
 mods by the ACE matrix in `custom.cfg`.
 
 - [ ] `/tp`, `/tpm` (qbx_core), `/revive`, `/heal` (qbx_medical) work for
       `group.admin` AND `group.mod`; goto/bring work via qbx_adminmenu's
       `/admin` menu; a `group.trial` principal is limited to `/coords`.
-- [ ] Boot log shows `[gtarp_staff] audit-log sink online`.
-- [ ] Actions logged via `exports.gtarp_staff:Log` (e.g. an allowlist deny,
+- [ ] Boot log shows `[palm6_staff] audit-log sink online`.
+- [ ] Actions logged via `exports.palm6_staff:Log` (e.g. an allowlist deny,
       an eventguard violation) write an `audit_log` row.
-- [ ] If `gtarp:staff_webhook` is set, logged actions post to the Discord
+- [ ] If `palm6:staff_webhook` is set, logged actions post to the Discord
       webhook.
 - [ ] Non-staff cannot run the recipe staff commands (ACE denies).
 
-## 7. Job whitelist — `gtarp_whitelist_jobs`
+## 7. Job whitelist — `palm6_whitelist_jobs`
 
 - [ ] A staff/EUP principal can `/setjob` a player into a whitelisted
       emergency-services job (police/ambulance).
@@ -137,20 +137,20 @@ mods by the ACE matrix in `custom.cfg`.
       (`Bridge.Notify`).
 - [ ] The job actually applies (grade/duty) via `Bridge.SetJob`.
 
-## 8. Anti-abuse — `gtarp_eventguard`
+## 8. Anti-abuse — `palm6_eventguard`
 
 - [ ] Triggering a guarded money/inventory event from an untrusted client
       path is rejected and logged to `event_violations`.
 - [ ] Legitimate framework money updates still work (paychecks, courier
       payout, banking).
 
-## 9. Performance sampler — `gtarp_perf`
+## 9. Performance sampler — `palm6_perf`
 
-- [ ] `gtarp_perf` runs without error; p95/p99 frame/tick numbers are
+- [ ] `palm6_perf` runs without error; p95/p99 frame/tick numbers are
       sampled (`Bridge` wraps `GetGameTimer`).
 - [ ] If a report webhook/convar is configured, a perf report posts on the
       configured cadence.
-- [ ] `/diag` from the txAdmin console prints three `[gtarp_perf]` lines
+- [ ] `/diag` from the txAdmin console prints three `[palm6_perf]` lines
       (resource states / perf summary / eventguard violations). In-game as
       admin or mod it prints the same three lines to chat; a citizen
       without `command.diag` gets the standard access-denied response.
@@ -169,12 +169,12 @@ mods by the ACE matrix in `custom.cfg`.
 
 ## 11. Housing — removed, use `qbx_properties` (recipe)
 
-`gtarp_housing` was reverted before merge — it duplicated the recipe's own
+`palm6_housing` was reverted before merge — it duplicated the recipe's own
 `qbx_properties` (buy/rent/keyholders/stash/enter-exit, plus furniture
 decorating and a realtor `/createproperty` flow it didn't have). Test housing
 via `qbx_properties` directly; there is nothing custom to verify here.
 
-## 12. Grind jobs — `gtarp_grind`
+## 12. Grind jobs — `palm6_grind`
 
 - [ ] Buy a Fishing Rod / Pickaxe / Hunting Knife at the Hardware Store
       (Sandy Shores / Paleto).
@@ -185,7 +185,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] XP persists across relog (`grind_skill` table).
 - [ ] All three loops (fishing / mining / hunting) complete solo.
 
-## 13. Robbery — `gtarp_robbery` (ATM only)
+## 13. Robbery — `palm6_robbery` (ATM only)
 
 - [ ] With `Config.MinPolice = 0`, draw a weapon at an ATM → `[E]` starts the
       hold-up; unarmed is refused.
@@ -198,9 +198,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Store-register robbery is the recipe's own `qbx_storerobbery` — test
       that separately, it's not part of this resource.
 
-## 14. Mechanic — `gtarp_mechanic`
+## 14. Mechanic — `palm6_mechanic`
 
-- [ ] `/setjob mechanic` (or via `gtarp_whitelist_jobs`/admin) + go on duty at
+- [ ] `/setjob mechanic` (or via `palm6_whitelist_jobs`/admin) + go on duty at
       Benny's.
 - [ ] Damage a vehicle's engine/body (crash it or `/giveitem` a weapon and
       shoot it) — a repair prompt appears when a mechanic is nearby, with a
@@ -217,9 +217,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] A non-mechanic (or off-duty mechanic) gets "You need to be on duty..."
       and no repair happens.
 
-## 15. Evidence — `gtarp_evidence`
+## 15. Evidence — `palm6_evidence`
 
-- [ ] On boot the console prints `[gtarp_evidence] evidence locker
+- [ ] On boot the console prints `[palm6_evidence] evidence locker
       registered`.
 - [ ] `/setjob police` + go on duty, then `/logevidence Found a weapon at
       the docks` → "Logged." — works from anywhere, no proximity needed.
@@ -230,9 +230,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Off duty (or not police), `/logevidence`, `/evidence`, and the
       locker prompt all refuse with "You need to be on duty...".
 
-## 16. Turf — `gtarp_turf`
+## 16. Turf — `palm6_turf`
 
-- [ ] On boot the console prints `[gtarp_turf] loaded 6 turf zone(s)`.
+- [ ] On boot the console prints `[palm6_turf] loaded 6 turf zone(s)`.
 - [ ] All six zones show a blip (white/unclaimed by default on a fresh DB).
 - [ ] `/setgang <name>` into a gang, walk to a zone → `[E]` starts tagging;
       completing it flips the zone's `owner_gang` and blip colour/label.
@@ -249,9 +249,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 
 ---
 
-## 17. Pumpcoin exchange — `gtarp_pumpcoin`
+## 17. Pumpcoin exchange — `palm6_pumpcoin`
 
-- [ ] Boot banner: `[gtarp_pumpcoin] exchange online — N coin(s) on the board`.
+- [ ] Boot banner: `[palm6_pumpcoin] exchange online — N coin(s) on the board`.
 - [ ] `[E]` at an exchange laptop opens the NUI; minting a coin costs $5,000
       and the board lists it as `anon-XXX`, never the creator's name.
 - [ ] Buying moves the price UP along the curve; selling moves it DOWN; a
@@ -266,9 +266,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       than they put in (2% fee per fill; buys round up, payouts down).
 - [ ] Boot warning fires if config makes the premine worth ≥ MintCost.
 
-## 18. Replay black-box — `gtarp_replay`
+## 18. Replay black-box — `palm6_replay`
 
-- [ ] Boot banner: `[gtarp_replay] black-box online — 4 Hz ring, 90s
+- [ ] Boot banner: `[palm6_replay] black-box online — 4 Hz ring, 90s
       window, 7d retention`.
 - [ ] Gunshot damage between two players fires an incident; nearby clients
       upload (console shows accepted uploads); uninvited/duplicate/late
@@ -282,9 +282,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] `/record`, `/clip`, `/editor` (qbx_smallresources) still work —
       zero interaction with the Rockstar Editor.
 
-## 19. Streamer clout — `gtarp_clout`
+## 19. Streamer clout — `palm6_clout`
 
-- [ ] Boot banner: `[gtarp_clout] on air — 5 milestones, donations capped
+- [ ] Boot banner: `[palm6_clout] on air — 5 milestones, donations capped
       at $3000/hr`.
 - [ ] `/golive` without a `streamer_phone` is refused; with one, LIVE head
       tag appears (visible to OTHER players) + overlay opens.
@@ -297,9 +297,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       lands in the evidence log; out-of-range or off-duty is refused.
 - [ ] `/clout` and `/streamers` render without errors.
 
-## 20. Flash drops — `gtarp_flashdrop`
+## 20. Flash drops — `palm6_flashdrop`
 
-- [ ] Boot banner: `[gtarp_flashdrop] ready — 5 catalog entries, 6
+- [ ] Boot banner: `[palm6_flashdrop] ready — 5 catalog entries, 6
       locations, scheduler ON`.
 - [ ] `/flashdrop arm` (admin ACE): riddle broadcast → T-5 map blip →
       claim table spawns; per-player 8s checkout; **one pair per citizen**
@@ -315,13 +315,13 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       disables loudly at boot instead of half-working (re-run
       `tools/patch-ox-items.sh` to restore).
 
-## 21. NPC witnesses — `gtarp_witnesses`
+## 21. NPC witnesses — `palm6_witnesses`
 
-- [ ] Boot banner: `[gtarp_witnesses] ready — ... alerts off (default)`.
+- [ ] Boot banner: `[palm6_witnesses] ready — ... alerts off (default)`.
 - [ ] Fire a gun near ambient peds → suspect gets the "someone saw that"
       notification; in the desert (no peds in 40m) no witnesses spawn.
 - [ ] On-duty police see witness markers; `[E]` canvass writes the
-      statement into a `gtarp_evidence` case file (facts match the
+      statement into a `palm6_evidence` case file (facts match the
       suspect's REAL top colour / mask / vehicle / 3-char partial plate).
 - [ ] Suspect (only) sees their own witnesses; holding a weapon on one
       ~5s corrupts future canvass facts; $750 payoff silences entirely.
@@ -334,7 +334,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       gunfire produces exactly one bystander alert per suspect per 120s.
 - [ ] Markers survive a resource restart (~30 min persistence).
 
-## 22. Counterfeit cash — `gtarp_counterfeit`
+## 22. Counterfeit cash — `palm6_counterfeit`
 
 - [ ] Boot banners: `restored N placed printer(s)` and `ready — items OK,
       evidence bags OK, 6 districts, 3 sinks, 2 fences`.
@@ -359,10 +359,10 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 
 ---
 
-## 23. Discord announcer — `gtarp_discord`
+## 23. Discord announcer — `palm6_discord`
 
 - [ ] Boot banner lists live vs off feeds and matches the
-      `gtarp:discord_*` convars actually set in `custom.cfg`.
+      `palm6:discord_*` convars actually set in `custom.cfg`.
 - [ ] With no convars set: banner says `live: (none)`, gameplay in every
       producer (flashdrop, pumpcoin, clout, evidence, counterfeit) is
       unaffected, and no HTTP traffic leaves the server.
@@ -377,22 +377,22 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       then "RUG REVEALED" embed with the name only after the in-city
       reveal fires.
 - [ ] Flood clamp: >10 posts to one feed inside a minute drops the excess
-      with a `[gtarp_discord]` console line; other feeds keep delivering.
+      with a `[palm6_discord]` console line; other feeds keep delivering.
 - [ ] Bad webhook URL: console shows `delivery failed (HTTP 4xx)` lines,
       queue keeps draining, server stays healthy.
-- [ ] devtest boot (`set gtarp:devtest 1`): GetStats/Announce contract
+- [ ] devtest boot (`set palm6:devtest 1`): GetStats/Announce contract
       PASSes; with a configured feed, exactly one `[devtest] contract
       probe` embed lands.
 
-## 24. Insurance — `gtarp_insurance`
+## 24. Insurance — `palm6_insurance`
 
 - [ ] Boot banner: `Mors Mutual open — N active policy(ies), N claim(s)
       processing; replay forensics ONLINE` (says `offline` if
-      `gtarp_replay` is stopped — the no-scene fraud signal must disable,
+      `palm6_replay` is stopped — the no-scene fraud signal must disable,
       not fire).
 - [ ] `/insure [plate]` away from the Little Seoul desk → "insurance
       desk" error. At the desk, on a vehicle you own → premium charged
-      from bank, policy row in `gtarp_insurance_policies`, second
+      from bank, policy row in `palm6_insurance_policies`, second
       `/insure` on the same plate → "already carries an active policy".
 - [ ] `/insure` on a plate you don't own → rejected (server reads
       `player_vehicles`, not the client).
@@ -406,13 +406,13 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       street right now". Out + nowhere in the world → files at full
       coverage minus deductible.
 - [ ] Fraud: insure a vehicle and claim within the hour with no replay
-      scene near it → claim `flagged_paid`, `gtarp_evidence` case opened
+      scene near it → claim `flagged_paid`, `palm6_evidence` case opened
       (visible via `/mdtcase`), payout still lands.
 - [ ] `/policy` lists active policies with hours left + processing claims.
 - [ ] devtest boot: `insurance.GetSummary` shape PASSes; both
-      `gtarp_insurance_*` tables present.
+      `palm6_insurance_*` tables present.
 
-## 25. Police MDT — `gtarp_mdt`
+## 25. Police MDT — `palm6_mdt`
 
 - [ ] Boot banner: `desk online — N active BOLO(s), N report(s) on file;
       contract qbx_police_overrides, case system ONLINE` (contract says
@@ -420,7 +420,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Every command refuses off-duty/civilian sources AND on-duty police
       not carrying `mdt_tablet` (buy it at the armoury shop).
 - [ ] `/bolo test unit theft red sultan` → every on-duty officer gets the
-      notify; row in `gtarp_mdt_bolos` expiring per the contract
+      notify; row in `palm6_mdt_bolos` expiring per the contract
       (default 60 min); with the police Discord feed configured, one
       "BOLO #N issued" embed.
 - [ ] `/bolos` lists it with minutes left; `/boloclear [#]` resolves it;
@@ -430,18 +430,18 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       `/mdtcase [#]` prints status, opener, suspects, recent entries.
 - [ ] `/mdtreport 0 [20+ chars]` files standalone paperwork;
       `/mdtreport [case#] [text]` also lands the text in the case file
-      (check `/mdtcase` shows a `[report/gtarp_mdt]` entry). Short text →
+      (check `/mdtcase` shows a `[report/palm6_mdt]` entry). Short text →
       "write it up properly" error.
 - [ ] `/warrant [citizenid] 0 [reason]` on a real citizen (grab a
       citizenid from `/mdtcase` suspects or the players table) → officers
-      notified, row in `gtarp_mdt_warrants`; repeat on the same citizen →
+      notified, row in `palm6_mdt_warrants`; repeat on the same citizen →
       "already has active warrant" error. Fake citizenid → "no citizen
       with that id".
 - [ ] `/warrants` lists it with age; `/mdtcase` on a case whose suspect
       has one shows `ACTIVE WARRANT #N` on the suspect line.
 - [ ] `/book [citizenid] [case#] [charges]` → booking row filed, the
       citizen's active warrants flip to `served`, the case file gains a
-      `[booking/gtarp_mdt]` entry, and the booked player (if online) gets
+      `[booking/palm6_mdt]` entry, and the booked player (if online) gets
       the notify. `/warrantclear [#]` flips one to `dropped` instead.
 - [ ] Physical side unaffected: recipe `/cuff` `/jail` `/unjail` still
       work exactly as before (this layer never touches them).
@@ -453,16 +453,16 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] `enabled = false` in `qbx_police_overrides` `Config.MDT` → boot
       prints the disabled line, no MDT commands exist.
 - [ ] devtest boot: `mdt.GetSummary` + `evidence.ListCases` PASS; all
-      five `gtarp_mdt_*` tables present.
+      five `palm6_mdt_*` tables present.
 
-## 26. Citations — `gtarp_citations`
+## 26. Citations — `palm6_citations`
 
 - [ ] Boot banner: `ledger open — N open, N settled; escalation ONLINE
-      (gtarp_mdt warrants)` (`off` if gtarp_mdt stopped or Enabled=false).
+      (palm6_mdt warrants)` (`off` if palm6_mdt stopped or Enabled=false).
 - [ ] `/cite [citizenid] [amount] [reason]` refuses civilians, off-duty,
       and officers without `mdt_tablet`; refuses amounts outside
       $25-5000 and fake citizenids. Valid cite → row in
-      `gtarp_citations`, cited player notified if online.
+      `palm6_citations`, cited player notified if online.
 - [ ] `/fines` as the cited player lists it with hours left and total;
       other players see "no outstanding fines".
 - [ ] `/payfine [#]` away from city hall → desk error. At city hall
@@ -479,9 +479,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Recipe billing unaffected: on-the-spot police bill dialog and
       radar fines still work exactly as before.
 - [ ] devtest boot: `citations.GetSummary` + `mdt.IssueWarrant`
-      unknown-citizen rejection PASS; `gtarp_citations` table present.
+      unknown-citizen rejection PASS; `palm6_citations` table present.
 
-## 27. Legal — `gtarp_legal`
+## 27. Legal — `palm6_legal`
 
 - [ ] Boot banner: `court open — N petition(s) before the court, N
       granted all-time; records ONLINE`.
@@ -496,7 +496,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Valid filing → fee debited, petition row `processing`, police
       Discord feed post (if configured), court rules in ~10 min.
 - [ ] Granted → booking vanishes from `/record` (and from
-      `gtarp_mdt:GetBookingsFor`), stays in police desk totals; player
+      `palm6_mdt:GetBookingsFor`), stays in police desk totals; player
       notified if online. Second `/expunge` on the same booking → "no
       unsealed booking".
 - [ ] The trap: file a valid petition, then get cited before the ruling
@@ -506,9 +506,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       for the RP settlement.
 - [ ] devtest boot: `legal.GetSummary`, `mdt.GetBooking` unknown-id
       rejection, `citations.GetOpenFor` zeroed shape all PASS;
-      `gtarp_legal_petitions` table present.
+      `palm6_legal_petitions` table present.
 
-## 28. Anonymous tips — `gtarp_tips`
+## 28. Anonymous tips — `palm6_tips`
 
 - [ ] Boot banner: `tip line open — 8 payphone(s); 911 log ONLINE`.
 - [ ] `/tip saw a red sultan dumping bags` away from any payphone →
@@ -519,17 +519,17 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Second `/tip` within 5 min (same character) → cooldown line.
       Different character → allowed (cooldown is per-citizen).
 - [ ] Text under 10 chars → usage error.
-- [ ] Stop gtarp_mdt → `/tip` says "the line is dead", no errors.
+- [ ] Stop palm6_mdt → `/tip` says "the line is dead", no errors.
 - [ ] devtest boot: `tips.GetSummary` + `mdt.LogCall` round-trip PASS
-      (probe row inserted into gtarp_mdt_calls and cleaned up).
+      (probe row inserted into palm6_mdt_calls and cleaned up).
 
-## 29. Wanted board — `gtarp_bounty`
+## 29. Wanted board — `palm6_bounty`
 
 - [ ] Boot banner: `board open — N contract(s) posted ($N total); warrant
-      sync ONLINE` (`off` if `gtarp_mdt` is stopped and
+      sync ONLINE` (`off` if `palm6_mdt` is stopped and
       `Config.State.RequireMdt` is true).
-- [ ] State sync: issue a warrant on a citizen (`/warrant` via `gtarp_mdt`),
-      wait one sync (≤180s, or restart `gtarp_bounty` to sync immediately on
+- [ ] State sync: issue a warrant on a citizen (`/warrant` via `palm6_mdt`),
+      wait one sync (≤180s, or restart `palm6_bounty` to sync immediately on
       boot) → `/bounties` shows a `[STATE]` contract on that citizen with no
       poster, funded from nothing (no player's bank moves). Serve/drop the
       warrant → next sync closes the contract with no refund needed.
@@ -561,10 +561,10 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       the DB, wait one sweep (≤180s) → row flips `expired`, poster
       refunded in full (no fee — natural expiry, not a cancel), notified
       if online.
-- [ ] devtest boot: `bounty.GetSummary` shape PASSes; `gtarp_bounty_contracts`
+- [ ] devtest boot: `bounty.GetSummary` shape PASSes; `palm6_bounty_contracts`
       table present.
 
-## 30. Underground ring — `gtarp_fightclub`
+## 30. Underground ring — `palm6_fightclub`
 
 - [ ] Boot banner: `ring open — N match(es) in progress`.
 - [ ] `/fcjoin` away from the ring → "you need to be at the fight ring".
@@ -586,7 +586,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Race guard: two rapid-fire `/fcbet` commands from the same
       character on the same match (spam the command) → exactly one bet
       row lands, one bank charge — verify no duplicate row in
-      `gtarp_fightclub_bets`.
+      `palm6_fightclub_bets`.
 - [ ] Live fight: after betting closes, walk one fighter out of the ring
       radius → that fighter forfeits within one sweep tick (≤`PollSec`),
       the other is declared winner, purse lands in their bank, and each
@@ -606,24 +606,24 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] Disconnect a live fighter → the other is declared winner on the
       next sweep tick (`checkFighter` treats "not online" as a forfeit).
 - [ ] devtest boot: `fightclub.GetSummary` shape PASSes;
-      `gtarp_fightclub_matches` + `gtarp_fightclub_bets` tables present.
+      `palm6_fightclub_matches` + `palm6_fightclub_bets` tables present.
 
 ## 31. Triage — common failures
 
 | Symptom | Likely cause |
 | --- | --- |
-| Can't join at all | `gtarp_allowlist` enabled with empty allowlist — see §0. |
+| Can't join at all | `palm6_allowlist` enabled with empty allowlist — see §0. |
 | `attempt to index nil (global 'Bridge'/'Game')` | Bridge script not loaded before logic — check `fxmanifest.lua` load order (bridge line above the logic line). |
 | Welcome / spawn never fires | Framework loaded-event not reaching the bridge — confirm `qbx_core` started before `server_base`/`server_identity`. |
 | `/coords` "access denied" for admin | Missing `add_ace group.admin command.coords allow` (in `custom.cfg`) or principal not mapped to `group.admin`. |
-| Courier escrow not charged | oxmysql not connected, or `qbx_economy_overrides` not started before `gtarp_courier`. |
+| Courier escrow not charged | oxmysql not connected, or `qbx_economy_overrides` not started before `palm6_courier`. |
 | A `[custom]` resource missing | Its `ensure` line missing from `custom.cfg`, or the folder wasn't copied into the live `resources/` tree. |
 | DB errors on boot | SQL migrations in `sql/` not applied — run `tools/apply-migrations.sh` (on a DB that pre-dates the tool, `--baseline` ONCE first; see DEPLOY.md). |
-| Custom items "don't exist" / flashdrop self-disables | Deployed `ox_inventory/data/items.lua` missing the GTARP block — run `tools/patch-ox-items.sh <resources-dir>` (CI does this for production deploys). |
+| Custom items "don't exist" / flashdrop self-disables | Deployed `ox_inventory/data/items.lua` missing the PALM6 block — run `tools/patch-ox-items.sh <resources-dir>` (CI does this for production deploys). |
 
-## 32. Kidnapping ransom ledger — `gtarp_ransom`
+## 32. Kidnapping ransom ledger — `palm6_ransom`
 
-- [ ] Boot banner: `ledger open — N active case(s) ($X demanded); mdt escalation ONLINE` (or `offline` if `gtarp_mdt` isn't running).
+- [ ] Boot banner: `ledger open — N active case(s) ($X demanded); mdt escalation ONLINE` (or `offline` if `palm6_mdt` isn't running).
 - [ ] Cuff a citizen (handcuffed/dead/laststand) and use the recipe's
       "Kidnap" radial option on them from within ~5m → no visible
       confirmation (this resource is silent on the validated-kidnap event
@@ -641,7 +641,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       drop point downtown." At the drop point with insufficient bank funds
       → "You need $X in the bank." With funds → bank debited the exact
       case amount, kidnapper's bank credited the same amount, case flips
-      to `paid`, and (if `gtarp_mdt` is running) a warrant is issued on the
+      to `paid`, and (if `palm6_mdt` is running) a warrant is issued on the
       kidnapper.
 - [ ] Race guard: two rapid `/payransom` calls on the same case (or a
       `/payransom` racing the expiry sweep) → exactly one payer is charged
@@ -649,15 +649,15 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       full, not silently dropped.
 - [ ] Let a case sit past `Config.Ransom.TimeoutMinutes` unpaid → next
       sweep tick (`Config.Ransom.SweepSec`) flips it to `expired`, no
-      money moves, and (if `gtarp_mdt` is running) a warrant is still
+      money moves, and (if `palm6_mdt` is running) a warrant is still
       issued — kidnapping is a felony whether or not the ransom was paid.
-- [ ] `gtarp_evidence` integration: every case (demanded, paid, or
+- [ ] `palm6_evidence` integration: every case (demanded, paid, or
       expired) has a linked case file reachable via `/mdtcase` once
-      `gtarp_mdt` is running, with the kidnapper linked as a suspect.
+      `palm6_mdt` is running, with the kidnapper linked as a suspect.
 - [ ] devtest boot: `ransom.GetSummary` shape PASSes;
-      `gtarp_ransom_cases` table present.
+      `palm6_ransom_cases` table present.
 
-## 33. New-player onboarding — `gtarp_onboarding`
+## 33. New-player onboarding — `palm6_onboarding`
 
 - [ ] Boot banner: `online — N citizen(s) onboarded all-time`.
 - [ ] A brand-new citizen's first character load → the mandatory rules
@@ -665,26 +665,26 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       button (no cancel/decline option).
 - [ ] After confirming → `Config.StarterCash.amount` lands in the
       citizen's bank exactly once, the tour panel appears, and a
-      `gtarp_onboarding` row now exists for that citizenid
+      `palm6_onboarding` row now exists for that citizenid
       (`starter_cash_granted = 1`).
 - [ ] Reconnect / relog the same citizen → no rules dialog, no second
       starter-cash grant (row already exists — `UNIQUE(citizenid)` blocks
       a second `INSERT`).
-- [ ] Race guard: two near-simultaneous `gtarp_onboarding:acceptRules`
+- [ ] Race guard: two near-simultaneous `palm6_onboarding:acceptRules`
       events for the same citizen (e.g. a modified client replaying it) →
       exactly one grant lands; the second `INSERT` fails the unique
       constraint and grants nothing.
 - [ ] `/rules` at any time → re-shows the rules text read-only; does not
-      touch `gtarp_onboarding` or re-trigger the tour/grant.
-- [ ] `gtarp_staff` audit log has an `onboarding_rules_accepted` entry
+      touch `palm6_onboarding` or re-trigger the tour/grant.
+- [ ] `palm6_staff` audit log has an `onboarding_rules_accepted` entry
       for the accepting citizenid.
-- [ ] devtest boot: `onboarding.GetSummary` shape PASSes; `gtarp_onboarding`
+- [ ] devtest boot: `onboarding.GetSummary` shape PASSes; `palm6_onboarding`
       table present.
 
-## 34. Black-market weapon dealer + ballistics — `gtarp_gunrunning`
+## 34. Black-market weapon dealer + ballistics — `palm6_gunrunning`
 
 - [ ] Boot banner: `dealer open — N sale(s) all-time ($X), ballistics
-      tracing ONLINE` (or `offline` if `gtarp_evidence` isn't running).
+      tracing ONLINE` (or `offline` if `palm6_evidence` isn't running).
 - [ ] `/buyweapon` with no arg (or a bad index) away from the dealer →
       prints the catalog with prices, no charge.
 - [ ] `/buyweapon <#>` away from the drop point → "You need to be at the
@@ -693,13 +693,13 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       "You need $X in the bank," nothing charged, no item granted.
 - [ ] `/buyweapon <#>` at the drop point with funds → exact catalog price
       debited, the weapon appears in inventory with a `GR-XXXXXX` serial in
-      its metadata, and a `gtarp_gunrunning_sales` row exists for that
+      its metadata, and a `palm6_gunrunning_sales` row exists for that
       serial/citizenid/price.
 - [ ] Fire the purchased weapon → the recipe's own shell-casing evidence
       flow is unaffected (casing still drops, still collectible/dustable
       exactly as before this resource existed).
 - [ ] Fire the purchased weapon within earshot of anyone with
-      `gtarp_evidence` running → a case opens (or an existing recent one for
+      `palm6_evidence` running → a case opens (or an existing recent one for
       the same serial gets a new entry, not a duplicate case — 5-minute
       incident-key bucket) with a `ballistics_match` entry and the buyer
       linked as a suspect. Fire it several times in a row → still one case,
@@ -708,16 +708,16 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       lookup match (confirms the hook only fires on a real serial match,
       not on every gunshot server-wide).
 - [ ] devtest boot: `gunrunning.GetSummary` shape PASSes;
-      `gtarp_gunrunning_sales` table present.
+      `palm6_gunrunning_sales` table present.
 
-## 35. Stolen vehicle economy — `gtarp_chopshop`
+## 35. Stolen vehicle economy — `palm6_chopshop`
 
 - [ ] Boot banner: `shop open — N active stolen report(s), M sale(s)
       all-time`.
 - [ ] `/reportstolen <plate>` for a plate NOT registered to the caller →
       "That plate is not registered to you," no row written.
 - [ ] `/reportstolen <plate>` for the caller's own registered vehicle →
-      a `gtarp_chopshop_stolen` row with `status='active'`,
+      a `palm6_chopshop_stolen` row with `status='active'`,
       `expires_at` ~72h out.
 - [ ] `/reportstolen` the same plate twice → second call rejected
       ("already reported stolen"), no duplicate row.
@@ -732,9 +732,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       registered it) → sale proceeds, `was_stolen=0`, no evidence case
       opened (legal-gray, not itself a chargeable act).
 - [ ] `/sellstolen` a vehicle whose plate has an ACTIVE `/reportstolen`
-      flag → sale proceeds, `was_stolen=1`, the `gtarp_chopshop_stolen`
-      row flips to `resolved`, a `gtarp_evidence` case opens linking the
-      seller as suspect, `gtarp_chopshop_sales.evidence_case_id` is set.
+      flag → sale proceeds, `was_stolen=1`, the `palm6_chopshop_stolen`
+      row flips to `resolved`, a `palm6_evidence` case opens linking the
+      seller as suspect, `palm6_chopshop_sales.evidence_case_id` is set.
   - [ ] Payout matches `Config.ClassPayout[GetVehicleClass(vehicle)]`
       exactly; vehicle entity is deleted after payout (not before —
       confirm no route pays out without also deleting, or deletes without
@@ -743,9 +743,9 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       military) → refused ("We don't touch that kind of vehicle"), no
       sale.
 - [ ] devtest boot: `chopshop.GetSummary` shape PASSes;
-      `gtarp_chopshop_stolen` + `gtarp_chopshop_sales` tables present.
+      `palm6_chopshop_stolen` + `palm6_chopshop_sales` tables present.
 
-## 36. Money laundering — `gtarp_laundering`
+## 36. Money laundering — `palm6_laundering`
 
 - [ ] Boot banner: `laundromat open — $X washed all-time across N run(s);
       fee 30%`.
@@ -757,18 +757,18 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] `/launder` at the front holding ≥ `MinPerRun` → up to the smaller of
       {held, `MaxPerRun`, remaining daily cap} in `black_money` is REMOVED,
       `floor(amount * 0.7)` lands in BANK (clean), and a
-      `gtarp_laundering_runs` row records dirty_in/clean_out/fee_bps.
+      `palm6_laundering_runs` row records dirty_in/clean_out/fee_bps.
 - [ ] Launder repeatedly until the per-day `DailyCap` is hit → "done taking
       your money today," no further wash until tomorrow (SUM over CURDATE).
 - [ ] Wash a run ≥ `Heat.BigRunAlways` (or after heat builds) → police get a
-      dispatch alert and a `gtarp_evidence` "Money laundering" case opens
+      dispatch alert and a `palm6_evidence` "Money laundering" case opens
       linking the launderer; small quiet runs stay unflagged.
 - [ ] Two `/launder` in the same tick → only one runs (cooldown), the daily
       cap is never exceeded by more than one run.
 - [ ] devtest boot: `laundering.GetSummary` shape PASSes;
-      `gtarp_laundering_runs` table present.
+      `palm6_laundering_runs` table present.
 
-## 37. Numbers racket — `gtarp_numbers`
+## 37. Numbers racket — `palm6_numbers`
 
 - [ ] Boot banner: `bookie open — draw #N live (every 10m), M draw(s) run,
       $X staked all-time; pays 60x`.
@@ -777,11 +777,11 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] `/numbers <0-99> <stake>` away from the bookie → "You need to find the
       bookie."
 - [ ] `/numbers <n> <stake>` at the bookie with enough clean cash → stake
-      debited from CASH (atomic), a `gtarp_numbers_bets` row `status='open'`
+      debited from CASH (atomic), a `palm6_numbers_bets` row `status='open'`
       on the current `draw_seq`; over `MaxBetsPerDraw` slips → refused.
 - [ ] `/numbersinfo` → countdown to next draw, your open slips, pending
       dirty winnings, last winning number.
-- [ ] Wait for a draw (or shorten `DrawIntervalSec`): a `gtarp_numbers_draws`
+- [ ] Wait for a draw (or shorten `DrawIntervalSec`): a `palm6_numbers_draws`
       row records the winning number; matching bets → `status='won'` with
       `payout = stake*60`, others `lost`. Online winners get a notify.
 - [ ] `/collectnumbers` at the bookie → all your unpaid `won` bets pay out in
@@ -790,40 +790,40 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       60x winner for 100 stakes) — confirms it's a sink, not a printer.
 - [ ] (Anti-cheat) winning numbers across several draws are NOT predictable
       from the public history — the per-draw reseed holds.
-- [ ] devtest boot: `numbers.GetSummary` shape PASSes; `gtarp_numbers_bets`
-      + `gtarp_numbers_draws` tables present.
+- [ ] devtest boot: `numbers.GetSummary` shape PASSes; `palm6_numbers_bets`
+      + `palm6_numbers_draws` tables present.
 
-## 38. Protection racket — `gtarp_protection`
+## 38. Protection racket — `palm6_protection`
 
 - [ ] Boot banner: `racket open — 6 business(es), N shakedown(s) all-time
-      ($X); turf link ONLINE` (or `OFFLINE` if `gtarp_turf` isn't running).
+      ($X); turf link ONLINE` (or `OFFLINE` if `palm6_turf` isn't running).
 - [ ] `/shakedown` with no gang → "You're not in a crew."
 - [ ] `/shakedown` at a business whose turf zone your gang does NOT control →
       "… isn't your crew's block," no payout.
-- [ ] Capture the turf zone (via `gtarp_turf`), then `/shakedown` at its
+- [ ] Capture the turf zone (via `palm6_turf`), then `/shakedown` at its
       business → `black_money` payout in `[PayoutMin, PayoutMax]`, a
-      `gtarp_protection_collections` row, and the business is "paid up" for
+      `palm6_protection_collections` row, and the business is "paid up" for
       ~30 min (gang-agnostic).
 - [ ] `/shakedown` the same business again before the interval → "already
       paid up — back in ~Nm."
 - [ ] Two gang members `/shakedown` the same business at once → only one
       collects (per-business lock + re-checked cooldown).
-- [ ] ~20% of shakedowns → police dispatch alert + a `gtarp_evidence`
+- [ ] ~20% of shakedowns → police dispatch alert + a `palm6_evidence`
       "Extortion" case linking the collector.
 - [ ] `/rackets` → count of controlled business blocks, ready vs paid-up.
 - [ ] devtest boot: `protection.GetSummary` shape PASSes;
-      `gtarp_protection_collections` table present.
+      `palm6_protection_collections` table present.
 
-## 39. Loan shark — `gtarp_loanshark`
+## 39. Loan shark — `palm6_loanshark`
 
 - [ ] Boot banner: `shark open — N loan(s) outstanding, M defaulted;
-      warrants via gtarp_mdt, 15% interest`.
-- [ ] `/borrow` with `gtarp_mdt` stopped → "enforcement is offline — no
+      warrants via palm6_mdt, 15% interest`.
+- [ ] `/borrow` with `palm6_mdt` stopped → "enforcement is offline — no
       loans" (default must have teeth).
 - [ ] `/borrow <amount>` away from the shark → "You need to find the shark";
       out of `[MinPrincipal, MaxPrincipal]` → range error.
 - [ ] `/borrow <amount>` at the shark, no existing loan, not wanted → you
-      receive `amount` in `black_money`, a `gtarp_loanshark_loans` row owes
+      receive `amount` in `black_money`, a `palm6_loanshark_loans` row owes
       `floor(amount*1.15)` with `due_at` ~3h out.
 - [ ] `/borrow` again while you already owe → "You already owe the shark";
       while `HasActiveWarrant` → refused.
@@ -831,18 +831,18 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] `/repay <amount|all>` at the shark from BANK → reduces owed; paying it
       off → `status='repaid'`; overpay is clamped to remaining.
 - [ ] Let a loan pass `due_at` (or shorten `TermSec`): the sweep flips it to
-      `defaulted` and `gtarp_mdt` issues a "Loan Shark" warrant (which
-      `gtarp_bounty` then auto-posts). `/repay` no longer works on it (settle
+      `defaulted` and `palm6_mdt` issues a "Loan Shark" warrant (which
+      `palm6_bounty` then auto-posts). `/repay` no longer works on it (settle
       with the law).
 - [ ] Race a repay against the default sweep → the payment is refunded if the
       loan defaulted first (never lost, never double-resolved).
 - [ ] devtest boot: `loanshark.GetSummary` shape PASSes;
-      `gtarp_loanshark_loans` table present.
+      `palm6_loanshark_loans` table present.
 
-## 40. Asset forfeiture — `gtarp_seizure`
+## 40. Asset forfeiture — `palm6_seizure`
 
 - [ ] Boot banner: `forfeiture online — N seizure(s), $X taken out of
-      circulation; warrant gate via gtarp_mdt, evidence ONLINE`.
+      circulation; warrant gate via palm6_mdt, evidence ONLINE`.
 - [ ] `/seizedirty` as a non-police (or off-duty) player → "Only on-duty
       police can seize assets."
 - [ ] On-duty officer `/seizedirty` with no suspect within ~3m → "No suspect
@@ -851,22 +851,22 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       active warrant … no probable cause," nothing taken.
 - [ ] `/seizedirty` over a nearby WANTED suspect holding `black_money` → all
       their `black_money` is REMOVED (destroyed, not given to the officer), a
-      `gtarp_seizure_forfeitures` row logs officer/suspect/amount, and a
-      `gtarp_evidence` "Asset forfeiture" case links the suspect. Both parties
+      `palm6_seizure_forfeitures` row logs officer/suspect/amount, and a
+      `palm6_evidence` "Asset forfeiture" case links the suspect. Both parties
       get a notify.
 - [ ] Wanted suspect with no `black_money` → "carrying no dirty money."
 - [ ] Two officers `/seizedirty` the same suspect at once → only one takes it
       (per-suspect lock); the other sees "already processing" or $0.
 - [ ] `/seizures` (on-duty) → all-time count + total + last-24h forfeited.
 - [ ] devtest boot: `seizure.GetSummary` shape PASSes;
-      `gtarp_seizure_forfeitures` table present.
+      `palm6_seizure_forfeitures` table present.
 
-## 41. Contraband smuggling — `gtarp_smuggling`
+## 41. Contraband smuggling — `palm6_smuggling`
 
 - [ ] Boot banner: `routes open — 6 drop site(s) (land/sea/air), N run(s)
       delivered ($X dirty all-time); evidence ONLINE`.
 - [ ] `/smuggle` away from the docks contact → "Find the docks contact."
-- [ ] `/smuggle` at the pickup with no active run → a `gtarp_smuggling_runs`
+- [ ] `/smuggle` at the pickup with no active run → a `palm6_smuggling_runs`
       row `status='active'` with a random drop + mode + payout and
       `expires_at` ~15m out; police get a dispatch ping; you're told the drop
       label, mode, deadline, and pay.
@@ -875,7 +875,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] `/smugglerun` → your drop, mode, pay, and time left.
 - [ ] `/deliver` away from the assigned drop → "Not at the drop — get to …";
       at the drop within the window → `black_money` payout (air > sea > land),
-      run `status='delivered'`, a `gtarp_evidence` "smuggling" case links you.
+      run `status='delivered'`, a `palm6_evidence` "smuggling" case links you.
 - [ ] Let a run pass `expires_at` then `/deliver` (or `/smuggle` again) → the
       stale run is marked `expired`, no payout; you can start a fresh run.
 - [ ] Two `/deliver` at once, or deliver right as it expires → paid at most
@@ -883,16 +883,16 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 - [ ] No new ox item is required (run is server state) — no `patch-ox-items`
       needed for this resource on a fresh deploy.
 - [ ] devtest boot: `smuggling.GetSummary` shape PASSes;
-      `gtarp_smuggling_runs` table present.
+      `palm6_smuggling_runs` table present.
 
-## 42. Drugs — `gtarp_drugs` (Schedule I MVP, weed)
+## 42. Drugs — `palm6_drugs` (Schedule I MVP, weed)
 
 - [ ] Boot: `drugs.GetSummary` shape PASSes in devtest; the 4 tables
-      (`gtarp_drugs_plants`, `gtarp_drugs_recipes`, `gtarp_drugs_progression`, `gtarp_drugs_sales`)
+      (`palm6_drugs_plants`, `palm6_drugs_recipes`, `palm6_drugs_progression`, `palm6_drugs_sales`)
       are present; new ox items (`weed_seed`, `soil`, `wateringcan`,
       `weed_bud`, `weed_product`, additives) resolve after a `patch-ox-items`.
 - [ ] **Grow:** with `weed_seed` + `soil`, target the grow plot → plant. Row
-      appears in `gtarp_drugs_plants` with `stage='growing'`. Water over time; the
+      appears in `palm6_drugs_plants` with `stage='growing'`. Water over time; the
       plant reports `growing` until `ready_at`, then `ready`. Harvest → get
       `weed_bud` with `{strain, quality, effects}` metadata; the plot frees
       (row `harvested` then reclaimed). Let water hit 0% → quality/yield drops.
@@ -900,25 +900,25 @@ via `qbx_properties` directly; there is nothing custom to verify here.
       effects (append-if-absent, capped at 8, order preserved), recomputes
       quality + unit price, prompt to brand → `weed_product` minted with
       `{brand, base, effects, quality, unit_value, batch_id, producer}`. Save a
-      recipe → row in `gtarp_drugs_recipes`, repeatable. A bad-mix roll can add a junk
+      recipe → row in `palm6_drugs_recipes`, repeatable. A bad-mix roll can add a junk
       effect. Verify price ≈ `base × (1 + Σ effect mults) × quality markup`.
 - [ ] **Sell (server-authority):** at the NPC buyer, sell `weed_product` → paid
       DIRTY `black_money` computed from the item's REAL metadata (edit a client
       value / spoof the event → price unchanged; server re-fetches the slot).
       Product is removed BEFORE payout; a full inventory refunds it. Row in
-      `gtarp_drugs_sales`. Hit the per-character daily faucet cap → "buyer tapped out",
+      `palm6_drugs_sales`. Hit the per-character daily faucet cap → "buyer tapped out",
       remaining product kept.
 - [ ] **Heat/evidence:** sell hot / big harvest → police alert fires and a
-      `gtarp_evidence` "street_sale" case links the `batch_id`+`producer`.
+      `palm6_evidence` "street_sale" case links the `batch_id`+`producer`.
 - [ ] **Economy:** `/economy` staff scoreboard now lists a `drugs:` line
       (sales, dirty earned, flagged, growing) and its dirty is in the minted total.
-- [ ] **Anti-exploit:** spam the events (rate-limited by `gtarp_eventguard`
+- [ ] **Anti-exploit:** spam the events (rate-limited by `palm6_eventguard`
       budgets: plant/water/harvest/mix/sell); sell without proximity → rejected;
       sell an item you don't hold → rejected. All amounts server-recomputed.
-- [ ] Not loaded unless `ensure gtarp_drugs` is in `custom.cfg` (it is, after
-      `gtarp_laundering`); `sql/0039_drugs.sql` applied.
+- [ ] Not loaded unless `ensure palm6_drugs` is in `custom.cfg` (it is, after
+      `palm6_laundering`); `sql/0039_drugs.sql` applied.
 
-## 43. Player-run gangs — `gtarp_gangs`
+## 43. Player-run gangs — `palm6_gangs`
 
 Player-created gang management + shared CASH vault + reputation — the layer
 Qbox does NOT ship (qbx_core owns only the STATIC gang registry; this adds
@@ -927,16 +927,16 @@ for QBCore). Server-authoritative throughout; nothing trusts the client for
 gang id / rank / amount / membership.
 
 - [ ] Boot: `gangs.GetSummary` shape PASSes in devtest ({gangs, members,
-      totalVault, topRep}); the 3 tables (`gtarp_gangs`, `gtarp_gang_members`,
-      `gtarp_gang_vault_log`) are present; `GetGang`/`IsSameGang`/`AddRep`
+      totalVault, topRep}); the 3 tables (`palm6_gangs`, `palm6_gang_members`,
+      `palm6_gang_vault_log`) are present; `GetGang`/`IsSameGang`/`AddRep`
       reject-unknown probes PASS. `sql/0041_gangs.sql` applied.
 - [ ] **Create:** `/gang` with no gang → "Create a gang" → enter name + tag.
       Name is sanitised to letters/digits/spaces (3-24), tag upper-cased
       (2-5); a blocklisted word or a duplicate name/tag is rejected. Founder is
       charged `Config.CreationCost` from **bank** (default $50k) and becomes
-      Leader. Row in `gtarp_gangs`; leader row in `gtarp_gang_members`.
+      Leader. Row in `palm6_gangs`; leader row in `palm6_gang_members`.
 - [ ] **One gang per player:** a player already in a gang cannot create or
-      accept an invite (PK on `gtarp_gang_members.citizenid` is the hard guard).
+      accept an invite (PK on `palm6_gang_members.citizenid` is the hard guard).
 - [ ] **Invite/accept:** stand next to a gangless player, officer+ → "Invite
       nearby player" (server picks the CLOSEST eligible player within
       `InviteRadius`; client never names the target). Target gets an accept/
@@ -950,22 +950,22 @@ gang id / rank / amount / membership.
       credit; a failed vault write refunds the cash). Officer+ withdraws
       (atomic guarded decrement — two same-tick withdraws can't both pass, no
       overdraft; a failed payout puts it back). Every move logs a
-      `gtarp_gang_vault_log` row with the balance snapshot.
+      `palm6_gang_vault_log` row with the balance snapshot.
 - [ ] **Leave/disband:** a member leaves freely. A leader with members must
       disband (or promote+leave); a sole leader leaving disbands. Disband pays
       the vault remainder back to the leader's bank (logged `disband_payout`),
       notifies online members, and deletes the gang + all member rows.
-- [ ] **Reputation:** `exports.gtarp_gangs:AddRep(gangId, amount, reason)`
+- [ ] **Reputation:** `exports.palm6_gangs:AddRep(gangId, amount, reason)`
       (server-only) moves a gang's rep (floors at 0); other resources
       (turf/protection/drugs) can call it to reward gang activity.
 - [ ] **Economy:** `/economy` staff scoreboard shows a `gangs:` line (count,
       members, total vault, top rep) — informational, NOT in the dirty
       minted/removed math (vault holds clean cash).
-- [ ] **Anti-exploit:** spam the events (rate-limited by `gtarp_eventguard`
-      budgets); `gtarp_eventguard` ensures BEFORE `gtarp_gangs` in `custom.cfg`.
+- [ ] **Anti-exploit:** spam the events (rate-limited by `palm6_eventguard`
+      budgets); `palm6_eventguard` ensures BEFORE `palm6_gangs` in `custom.cfg`.
 - [ ] **Qbox integration:** does NOT duplicate qbx_core's static gang model;
       reads it read-only via the bridge. `Config.MirrorToQbxGang` (default OFF)
       best-effort mirrors membership into `PlayerData.gang` (only sticks if the
       gang is also registered in qbx_core's static registry — pcall-guarded).
-- [ ] Not loaded unless `ensure gtarp_gangs` is in `custom.cfg` (add after
-      `qbx_core` / near the other crime resources, and AFTER `gtarp_eventguard`).
+- [ ] Not loaded unless `ensure palm6_gangs` is in `custom.cfg` (add after
+      `qbx_core` / near the other crime resources, and AFTER `palm6_eventguard`).

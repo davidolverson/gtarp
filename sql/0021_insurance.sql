@@ -1,18 +1,18 @@
 -- ============================================================================
--- 0021_insurance.sql — gtarp_insurance policy + claim storage.
+-- 0021_insurance.sql — palm6_insurance policy + claim storage.
 --
--- `gtarp_`-prefixed per the defensive convention adopted after the
+-- `palm6_`-prefixed per the defensive convention adopted after the
 -- 0010_properties.sql collision. No FK constraints (house style).
 --
 -- Claims are the interesting rows: risk_factors carries the server-computed
 -- fraud signals as JSON, and case_id links a flagged claim to the
--- gtarp_evidence case the adjuster opened. Payouts are deferred (due_at) —
+-- palm6_evidence case the adjuster opened. Payouts are deferred (due_at) —
 -- the sweep thread pays them out, so a restart never eats a claim.
 -- "One active policy per plate" is enforced in code, not by key (plates
 -- accumulate many lapsed/cancelled rows over a wipe's lifetime).
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gtarp_insurance_policies` (
+CREATE TABLE IF NOT EXISTS `palm6_insurance_policies` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     plate VARCHAR(15) NOT NULL,
     citizenid VARCHAR(64) NOT NULL,
@@ -24,12 +24,12 @@ CREATE TABLE IF NOT EXISTS `gtarp_insurance_policies` (
     status ENUM('active','lapsed','cancelled') NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NOT NULL,
-    INDEX idx_gtarp_insurance_policies_plate (plate, status),
-    INDEX idx_gtarp_insurance_policies_cid (citizenid),
-    INDEX idx_gtarp_insurance_policies_expires (expires_at)
+    INDEX idx_palm6_insurance_policies_plate (plate, status),
+    INDEX idx_palm6_insurance_policies_cid (citizenid),
+    INDEX idx_palm6_insurance_policies_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `gtarp_insurance_claims` (
+CREATE TABLE IF NOT EXISTS `palm6_insurance_claims` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     policy_id INT UNSIGNED NOT NULL,
     plate VARCHAR(15) NOT NULL,
@@ -43,6 +43,6 @@ CREATE TABLE IF NOT EXISTS `gtarp_insurance_claims` (
     filed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     due_at TIMESTAMP NOT NULL,
     resolved_at TIMESTAMP NULL DEFAULT NULL,
-    INDEX idx_gtarp_insurance_claims_cid (citizenid),
-    INDEX idx_gtarp_insurance_claims_status_due (status, due_at)
+    INDEX idx_palm6_insurance_claims_cid (citizenid),
+    INDEX idx_palm6_insurance_claims_status_due (status, due_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

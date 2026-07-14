@@ -85,7 +85,7 @@ ExtraShops = {
             P('tirepack',      180),
             P('flashlight',    150),
             P('radio',         450),
-            -- gtarp_grind tools
+            -- palm6_grind tools
             P('fishing_rod',   250),
             P('pickaxe',       350),
             P('hunting_knife', 300),
@@ -159,7 +159,7 @@ ExtraShops = {
 
     -- ---------------------------------------------------------------------
     -- Garden & Hydro Supply — grow inputs + household "additives" for
-    -- gtarp_drugs. Legit storefront (nothing illegal is sold here; the
+    -- palm6_drugs. Legit storefront (nothing illegal is sold here; the
     -- product itself is made by the player). Prices set against the ~$350
     -- paycheck: a seed + soil + water is a modest starting outlay.
     -- ⚠️ coords are placeholders — VERIFY IN-GAME (on-ground/reachable).

@@ -1,4 +1,4 @@
--- 0011_grind.sql — per-character grind XP for gtarp_grind. Apply after the
+-- 0011_grind.sql — per-character grind XP for palm6_grind. Apply after the
 -- qbx base schema. One row per (citizenid, activity).
 CREATE TABLE IF NOT EXISTS `grind_skill` (
     `citizenid` VARCHAR(64)  NOT NULL,

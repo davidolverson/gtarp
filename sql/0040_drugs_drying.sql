@@ -1,4 +1,4 @@
--- 0040_drugs_drying.sql — the gtarp_drugs_processes timer table for gtarp_drugs
+-- 0040_drugs_drying.sql — the palm6_drugs_processes timer table for palm6_drugs
 -- (Phase-2 drying rack → Heavenly quality). Deferred out of the MVP schema
 -- (0039_drugs.sql, spec §11) and added here — do NOT edit the committed 0039.
 --
@@ -17,7 +17,7 @@
 -- the same slot fails the second INSERT (which the server refunds), so the slot
 -- can never hold two runs. A finished run is DELETEd on collect, freeing the
 -- slot for the next batch.
-CREATE TABLE IF NOT EXISTS `gtarp_drugs_processes` (
+CREATE TABLE IF NOT EXISTS `palm6_drugs_processes` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     owner_cid VARCHAR(64) NOT NULL,
     station_id INT UNSIGNED NOT NULL,

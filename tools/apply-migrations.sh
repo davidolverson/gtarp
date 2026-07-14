@@ -3,7 +3,7 @@
 # tools/apply-migrations.sh [--baseline] [--dry-run]
 #
 # Idempotent runner for sql/*.sql. Tracks what has been applied in a
-# gtarp_schema_migrations table (filename + sha256 + applied_at) so it can
+# palm6_schema_migrations table (filename + sha256 + applied_at) so it can
 # be re-run safely — already-applied files are skipped, and a file whose
 # checksum CHANGED after apply is reported loudly and never silently
 # re-run (edit-after-apply always needs a human decision).
@@ -27,7 +27,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 SQL_DIR="$REPO/sql"
-MYSQL_CMD="${MYSQL_CMD:-docker exec -i gtarp-mariadb mariadb -uqbox -pqbox_pw qbox}"
+MYSQL_CMD="${MYSQL_CMD:-docker exec -i palm6-mariadb mariadb -uqbox -pqbox_pw qbox}"
 
 BASELINE=false
 DRY_RUN=false
@@ -45,7 +45,7 @@ run_sql() { $MYSQL_CMD; }
 # nothing. Uses a CS: marker so it works with or without column headers,
 # and survives the table not existing yet (first --dry-run).
 recorded_checksum() {
-    printf "SELECT CONCAT('CS:', checksum) FROM gtarp_schema_migrations WHERE filename='%s';\n" "$1" \
+    printf "SELECT CONCAT('CS:', checksum) FROM palm6_schema_migrations WHERE filename='%s';\n" "$1" \
         | $MYSQL_CMD 2>/dev/null \
         | sed -n 's/^CS:\([0-9a-f]\{64\}\)$/\1/p' \
         || true
@@ -62,7 +62,7 @@ sha() {
 # Tracking table — safe to create repeatedly.
 if ! $DRY_RUN; then
     run_sql <<'SQL'
-CREATE TABLE IF NOT EXISTS gtarp_schema_migrations (
+CREATE TABLE IF NOT EXISTS palm6_schema_migrations (
     filename   VARCHAR(255) NOT NULL PRIMARY KEY,
     checksum   CHAR(64)     NOT NULL,
     applied_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -89,7 +89,7 @@ for path in "$SQL_DIR"/*.sql; do
             echo "   on disk =$sum" >&2
             echo "   A migration changed after being applied. Resolve by hand" >&2
             echo "   (write a NEW migration; never edit an applied one), then" >&2
-            echo "   UPDATE gtarp_schema_migrations SET checksum='$sum' WHERE filename='$file';" >&2
+            echo "   UPDATE palm6_schema_migrations SET checksum='$sum' WHERE filename='$file';" >&2
             drift=$((drift + 1))
         fi
         continue
@@ -101,13 +101,13 @@ for path in "$SQL_DIR"/*.sql; do
     fi
 
     if $BASELINE; then
-        printf "INSERT INTO gtarp_schema_migrations (filename, checksum, baselined) VALUES ('%s','%s',1);\n" "$file" "$sum" | run_sql
+        printf "INSERT INTO palm6_schema_migrations (filename, checksum, baselined) VALUES ('%s','%s',1);\n" "$file" "$sum" | run_sql
         echo "baselined: $file"
         baselined=$((baselined + 1))
     else
         echo "applying: $file"
         run_sql < "$path"
-        printf "INSERT INTO gtarp_schema_migrations (filename, checksum) VALUES ('%s','%s');\n" "$file" "$sum" | run_sql
+        printf "INSERT INTO palm6_schema_migrations (filename, checksum) VALUES ('%s','%s');\n" "$file" "$sum" | run_sql
         applied=$((applied + 1))
     fi
 done

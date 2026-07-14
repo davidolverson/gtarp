@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'EvThatGuy'
 version '0.1.0'
-description 'gtarp qbx_ambulancejob overrides — grades, salaries, hospital, revive/death timers'
+description 'palm6 qbx_ambulancejob overrides — grades, salaries, hospital, revive/death timers'
 
 shared_scripts {
     '@ox_lib/init.lua',

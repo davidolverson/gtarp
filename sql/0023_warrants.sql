@@ -1,7 +1,7 @@
 -- ============================================================================
--- 0023_warrants.sql — gtarp_mdt v0.2.0 warrant + booking paperwork.
+-- 0023_warrants.sql — palm6_mdt v0.2.0 warrant + booking paperwork.
 --
--- `gtarp_`-prefixed per the defensive convention. No FK constraints
+-- `palm6_`-prefixed per the defensive convention. No FK constraints
 -- (house style).
 --
 -- The recipe's qbx_police owns the PHYSICAL side (/cuff /jail /unjail) and
@@ -11,7 +11,7 @@
 -- warrants). Warrants don't expire — they end served or dropped.
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gtarp_mdt_warrants` (
+CREATE TABLE IF NOT EXISTS `palm6_mdt_warrants` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     citizenid VARCHAR(64) NOT NULL,
     citizen_name VARCHAR(100) NOT NULL DEFAULT '',
@@ -23,11 +23,11 @@ CREATE TABLE IF NOT EXISTS `gtarp_mdt_warrants` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     resolved_at TIMESTAMP NULL DEFAULT NULL,
     resolved_by VARCHAR(64) DEFAULT NULL,
-    INDEX idx_gtarp_mdt_warrants_citizen (citizenid, status),
-    INDEX idx_gtarp_mdt_warrants_status (status)
+    INDEX idx_palm6_mdt_warrants_citizen (citizenid, status),
+    INDEX idx_palm6_mdt_warrants_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `gtarp_mdt_bookings` (
+CREATE TABLE IF NOT EXISTS `palm6_mdt_bookings` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     citizenid VARCHAR(64) NOT NULL,
     citizen_name VARCHAR(100) NOT NULL DEFAULT '',
@@ -37,6 +37,6 @@ CREATE TABLE IF NOT EXISTS `gtarp_mdt_bookings` (
     warrant_id INT UNSIGNED DEFAULT NULL,
     charges TEXT NOT NULL,
     booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_gtarp_mdt_bookings_citizen (citizenid),
-    INDEX idx_gtarp_mdt_bookings_case (case_id)
+    INDEX idx_palm6_mdt_bookings_citizen (citizenid),
+    INDEX idx_palm6_mdt_bookings_case (case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

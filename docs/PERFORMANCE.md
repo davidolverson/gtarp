@@ -1,4 +1,4 @@
-# PERFORMANCE — gtarp budget and tuning
+# PERFORMANCE — palm6 budget and tuning
 
 ## Targets (48-slot, mid-spec client)
 
@@ -33,12 +33,12 @@ Staff runs the following before opening the server:
 | qbx_ambulance_overrides | < 0.05 ms |
 | qbx_civilian_jobs_overrides | < 0.05 ms |
 | ox_inventory_overrides  | < 0.05 ms |
-| gtarp_whitelist_jobs    | < 0.05 ms |
-| gtarp_staff             | < 0.05 ms |
-| gtarp_eventguard        | < 0.10 ms |
-| gtarp_allowlist         | < 0.05 ms |
-| gtarp_courier           | < 0.20 ms |
-| gtarp_perf              | < 0.05 ms |
+| palm6_whitelist_jobs    | < 0.05 ms |
+| palm6_staff             | < 0.05 ms |
+| palm6_eventguard        | < 0.10 ms |
+| palm6_allowlist         | < 0.05 ms |
+| palm6_courier           | < 0.20 ms |
+| palm6_perf              | < 0.05 ms |
 | server_identity         | < 0.10 ms |
 | server_base             | < 0.05 ms |
 
@@ -48,7 +48,7 @@ Staff runs the following before opening the server:
   layer. `Wait(0)` is only acceptable as a single yield during a
   blocking section (e.g. waiting for `IsScreenFadedOut`). Document each
   exception with a comment that includes the word "Wait(0)" and "yield".
-- `gtarp_perf` itself uses `Wait(250)` for sampling and `Wait(5*60_000)`
+- `palm6_perf` itself uses `Wait(250)` for sampling and `Wait(5*60_000)`
   for reporting.
 - The eventguard `now()` table is pruned synchronously inside `prune()`
   rather than swept on a background thread.
@@ -67,5 +67,5 @@ you keep.
 
 ## Webhook
 
-Set `gtarp:perf_webhook` in txAdmin's secret store to receive alerts when
+Set `palm6:perf_webhook` in txAdmin's secret store to receive alerts when
 `Config.WebhookHitchThreshold` hitches are seen in a report window.

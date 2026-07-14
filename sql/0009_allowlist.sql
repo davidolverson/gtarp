@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0009_allowlist.sql — manual allowlist for gtarp_allowlist
+-- 0009_allowlist.sql — manual allowlist for palm6_allowlist
 --
 -- Rows here bypass the Discord-role check. Identifiers should be the
 -- canonical license:... or discord:... form returned by GetPlayerIdentifiers.

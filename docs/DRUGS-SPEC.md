@@ -1,4 +1,4 @@
-# gtarp_drugs — Design Spec (a faithful *Schedule I* adaptation)
+# palm6_drugs — Design Spec (a faithful *Schedule I* adaptation)
 
 Engine-agnostic design spec (Tier-1 per `GTA6-READINESS.md`) for the drug
 supply-chain resource. Models the Steam game **Schedule I** (TVGS): produce →
@@ -6,8 +6,8 @@ supply-chain resource. Models the Steam game **Schedule I** (TVGS): produce →
 customer base → hire dealers → launder → dodge heat → rank up.
 
 **Stack:** FiveM · Qbox (`qbx_core`) · `ox_inventory` (item metadata) · `ox_target` ·
-`ox_lib` · `oxmysql`. **Integrates with:** `gtarp_laundering`, `gtarp_evidence`,
-police/dispatch, `gtarp_economy`, `gtarp_eventguard`.
+`ox_lib` · `oxmysql`. **Integrates with:** `palm6_laundering`, `palm6_evidence`,
+police/dispatch, `palm6_economy`, `palm6_eventguard`.
 
 ---
 
@@ -108,7 +108,7 @@ rating, effect chips.
 → **server** resolves effects (transform-or-append, 8-cap, order preserved), recomputes
 quality + unit_value → on final step prompt to **brand** (sanitize/length/profanity) →
 server writes finished item, consumes inputs, logs `batch_id`. Wrap in an `ox_lib`
-progress/skill-check; failure risks a junk effect. Save named recipes (`gtarp_drugs_recipes`)
+progress/skill-check; failure risks a junk effect. Save named recipes (`palm6_drugs_recipes`)
 for one-click repeat.
 
 ## 8. NPC dealers & customers (Phase 2, server-authoritative)
@@ -123,10 +123,10 @@ players are the primary economy; NPCs are a bounded drain + passive faucet.
 
 ## 9. Integration
 
-- **gtarp_laundering**: all drug income is DIRTY. Export/consume `AddDirtyCash(src, amount, "drugs")`; enforce a clean-deposit cap (bank suspicion) so players must launder.
+- **palm6_laundering**: all drug income is DIRTY. Export/consume `AddDirtyCash(src, amount, "drugs")`; enforce a clean-deposit cap (bank suspicion) so players must launder.
 - **Police/heat**: cooking (loud) + big harvests + public selling emit dispatch/heat; a server-rolled search-vs-concealment on carrying near cops; arrest confiscates product.
-- **gtarp_evidence**: `batch_id`+`producer` on every unit; seizures + cook-site residue log to evidence tied to citizenid for police RP.
-- **gtarp_economy**: feed volume/prices to the staff scoreboard/telemetry.
+- **palm6_evidence**: `batch_id`+`producer` on every unit; seizures + cook-site residue log to evidence tied to citizenid for police RP.
+- **palm6_economy**: feed volume/prices to the staff scoreboard/telemetry.
 
 ## 10. MVP (Phase 1) vs later
 
@@ -134,7 +134,7 @@ players are the primary economy; NPCs are a bounded drain + passive faucet.
 grow spots → wall-clock growth + watering → harvest buds (quality metadata) →
 **mixing station** (base+additives → branded product w/ effects+quality metadata) →
 server price engine → sell to real players + one rate-limited NPC street-buyer → dirty
-cash → `gtarp_laundering` + basic heat/evidence.
+cash → `palm6_laundering` + basic heat/evidence.
 **Phase 2:** meth + shrooms, NPC customers + dealers, full reaction table, rank/XP.
 **Phase 3:** cocaine + cauldron, employee-NPC semi-automation (property-gated cash sink),
 property tiers, dynamic regional demand.
@@ -143,11 +143,11 @@ body-search minigame (→ server roll), the 55-tier grind (→ ~8–10 unlock br
 
 ## 11. SQL tables
 
-`gtarp_drugs_plants` (owner_cid, coords, strain, soil_tier, planted_at, ready_at,
-water_level, additives JSON, stage), `gtarp_drugs_processes` (cook/dry/mix timers),
-`gtarp_drugs_recipes` (owner_cid, brand, base, steps_json, effects_json), `gtarp_drugs_progression`
+`palm6_drugs_plants` (owner_cid, coords, strain, soil_tier, planted_at, ready_at,
+water_level, additives JSON, stage), `palm6_drugs_processes` (cook/dry/mix timers),
+`palm6_drugs_recipes` (owner_cid, brand, base, steps_json, effects_json), `palm6_drugs_progression`
 (owner_cid, xp, rank_tier), `drugs_dealers`, `drugs_customers` (addiction, trust,
-assigned_dealer), `gtarp_drugs_sales` (ledger: channel, brand, quality, units, gross,
+assigned_dealer), `palm6_drugs_sales` (ledger: channel, brand, quality, units, gross,
 cut_paid, net_dirty, region). Finished-product state lives in ox_inventory metadata,
 not a table. Use wall-clock epoch timers resolved on demand (restart-safe, no client tick).
 
@@ -157,7 +157,7 @@ Never trust client price/effects/quality — recompute from config+metadata ever
 Consume inputs before granting output; server-owned DB timers (relog-dupe resistant).
 Caps: 8 effects, per-unit price ceiling, per-tick dealer throughput, per-day NPC-demand
 faucet, mixing concurrency per player. Brand names sanitized/rate-limited. Every unit
-carries batch_id+producer for dupe/laundering audit via gtarp_drugs_sales + gtarp_evidence.
+carries batch_id+producer for dupe/laundering audit via palm6_drugs_sales + palm6_evidence.
 
 ---
 

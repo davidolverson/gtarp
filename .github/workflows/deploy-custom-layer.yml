@@ -164,7 +164,7 @@ jobs:
           # ox_inventory builds its ItemList ONLY from its own data/items.lua;
           # the overrides resource's runtime merge can never register items
           # (Items() returns a msgpack copy). Pull the live file, patch the
-          # GTARP marker block in with tools/patch-ox-items.sh (idempotent,
+          # PALM6 marker block in with tools/patch-ox-items.sh (idempotent,
           # never shadows recipe-defined names), syntax-check, push it back —
           # all BEFORE the restart step so the new boot picks it up. On any
           # failure the live file is left untouched and we warn loudly; the
@@ -203,7 +203,7 @@ jobs:
           # ---- Sync Palm6 vehicle prices into the deployed qbx_core vehicles.lua ----
           # qbx_vehicleshop reads car prices from qbx_core/shared/vehicles.lua and
           # there is no runtime "set price" export, so tools/patch-vehicle-prices.sh
-          # rewrites ONLY the price field for gtarp_dealership catalog models in the
+          # rewrites ONLY the price field for palm6_dealership catalog models in the
           # live file (idempotent; never touches coords, categories, hashes, or any
           # non-catalog model). Same pull→patch→syntax-check→push contract as the ox
           # items sync above; on any failure the live file is left untouched and we

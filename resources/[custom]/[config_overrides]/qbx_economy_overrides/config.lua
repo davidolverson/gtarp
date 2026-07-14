@@ -1,7 +1,7 @@
 -- ============================================================================
 -- qbx_economy_overrides/config.lua
 --
--- Single source of truth for the gtarp money supply: paycheck cadence,
+-- Single source of truth for the palm6 money supply: paycheck cadence,
 -- currency symbol, and per-grade society payroll defaults. These values
 -- override what the recipe-deployed qbx_core/qbx_management read by being
 -- published as convars on resource start.

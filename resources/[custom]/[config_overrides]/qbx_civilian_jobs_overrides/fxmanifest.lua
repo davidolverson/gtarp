@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'EvThatGuy'
 version '0.1.0'
-description 'gtarp civilian-jobs overrides — trucker, taxi, garbage, mechanic'
+description 'palm6 civilian-jobs overrides — trucker, taxi, garbage, mechanic'
 
 shared_scripts {
     '@ox_lib/init.lua',
