@@ -2,7 +2,7 @@ name: Palm6 cityfeed convars
 
 # One-off ops workflow: writes the two palm6:cityfeed_* convars into the live
 # server's server.cfg via the Pterodactyl client API, then restarts FXServer so
-# the gtarp_cityfeed resource picks up its URL + signing secret. Idempotent
+# the palm6_cityfeed resource picks up its URL + signing secret. Idempotent
 # (re-running just re-sets the same two lines). Manual dispatch only.
 #
 # Secrets used (write-only, never in git):
@@ -41,7 +41,7 @@ jobs:
           AUTH=(-H "Authorization: Bearer $PTERO_API_KEY" -H "Accept: application/json")
 
           # Locate the live server.cfg. Prefer the server root; the running
-          # gtarp_cityfeed proves root custom.cfg is exec'd, so root server.cfg
+          # palm6_cityfeed proves root custom.cfg is exec'd, so root server.cfg
           # is the startup file. Fall back to a txData/*.base/server.cfg.
           fetch() {
             # $1 = url-encoded path; writes body to cur.cfg, echoes http code
@@ -85,7 +85,7 @@ jobs:
           fi
 
           # Idempotent: strip any prior cityfeed convars, then PREPEND fresh ones
-          # so they are set before 'exec custom.cfg' / 'ensure gtarp_cityfeed'.
+          # so they are set before 'exec custom.cfg' / 'ensure palm6_cityfeed'.
           grep -vE '^[[:space:]]*set[[:space:]]+palm6:cityfeed_(url|secret)[[:space:]]' cur.cfg > stripped.cfg || true
           {
             printf 'set palm6:cityfeed_url "%s"\n' "$CITYFEED_URL"
@@ -115,4 +115,4 @@ jobs:
           if [ "$rcode" -lt 200 ] || [ "$rcode" -ge 300 ]; then
             echo "::error::restart failed (HTTP $rcode)"; cat restart_resp.txt || true; exit 1
           fi
-          echo "Restart signal accepted (HTTP $rcode). gtarp_cityfeed will emit server_state on boot."
+          echo "Restart signal accepted (HTTP $rcode). palm6_cityfeed will emit server_state on boot."

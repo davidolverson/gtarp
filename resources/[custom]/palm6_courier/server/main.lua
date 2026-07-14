@@ -36,9 +36,13 @@ RegisterNetEvent('palm6_courier:post', function(payload)
     local citizenid = Bridge.GetCitizenId(src)
     if not citizenid then return Bridge.Notify(src, 'Courier', 'Player not loaded', 'error') end
 
-    local b = tonumber(payload and payload.bounty) or 0
-    if b < Config.BountyBounds.min or b > Config.BountyBounds.max then
-        return Bridge.Notify(src, 'Courier', ('Bounty must be %d..%d'):format(
+    local b = tonumber(payload and payload.bounty)
+    -- reject nil / NaN (b~=b) / +-inf / non-integer BEFORE the range check:
+    -- for NaN both `NaN < min` and `NaN > max` are false, so a NaN would slip
+    -- past a bare range guard and poison the bank balance (RemoveMoney(NaN)).
+    if type(b) ~= 'number' or b ~= b or b == math.huge or b == -math.huge
+        or b % 1 ~= 0 or b < Config.BountyBounds.min or b > Config.BountyBounds.max then
+        return Bridge.Notify(src, 'Courier', ('Bounty must be a whole number %d..%d'):format(
             Config.BountyBounds.min, Config.BountyBounds.max), 'error')
     end
     if countActiveByCitizen(citizenid) >= Config.MaxPostingsPerPlayer then

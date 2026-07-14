@@ -40,6 +40,10 @@ end
 function Bridge.ChargeBank(src, amount, reason)
     local p = getPlayer(src)
     if not p or not p.Functions then return false end
+    -- defense-in-depth: never debit a non-finite / negative amount. NaN fails
+    -- every comparison so a bare `bank < amount` check would let it through.
+    if type(amount) ~= 'number' or amount ~= amount or amount < 0
+        or amount == math.huge then return false end
     if (p.PlayerData.money.bank or 0) < amount then return false end
     return p.Functions.RemoveMoney('bank', amount, reason) and true or false
 end

@@ -1563,9 +1563,12 @@ end
 
 -- Resolve elapsed wall-clock into sales. Sells up to unitsPerTick per elapsed
 -- tick, each unit priced SERVER-SIDE from its stored lot, accruing playerCut as
--- owed dirty and charging the per-character daily faucet cap. Mutates + persists
--- the row. Idempotent per instant (a second call in the same second is a no-op).
-local function resolveDealer(row)
+-- owed dirty and charging the per-character daily faucet cap. Mutates the row;
+-- persists it UNLESS persist==false. Idempotent per instant (a second call in the
+-- same second is a no-op). The read-only dealerMenu MUST pass persist=false: if
+-- the menu persisted a stale snapshot it could clobber a concurrent dealerCollect
+-- that just zeroed + paid dirty_owed, resurrecting already-paid cash (dupe).
+local function resolveDealer(row, persist)
     local t = now()
     local elapsed = t - row.last_tick_at
     if elapsed < Config.Dealer.tickSeconds then return 0 end
@@ -1614,7 +1617,7 @@ local function resolveDealer(row)
     else
         row.last_tick_at = row.last_tick_at + ticks * Config.Dealer.tickSeconds
     end
-    saveDealer(row)
+    if persist ~= false then saveDealer(row) end
     return accrued
 end
 
@@ -1630,7 +1633,9 @@ RegisterNetEvent('palm6_drugs:dealerMenu', function()
         Bridge.Notify(src, Config.Dealer.label, 'The dealer is not here.', 'error'); return
     end
     local row = loadDealer(cid)
-    if row then resolveDealer(row) end
+    -- persist=false: the menu is read-only. Persisting here could clobber a
+    -- concurrent dealerCollect that just paid out (owed-cash dupe).
+    if row then resolveDealer(row, false) end
     local held = {}
     for _, s in ipairs(Bridge.ListItemSlots(src, Config.Items.product)) do
         local unit, _, quality, brand = priceOfSlot(Config.Items.product, s.metadata)

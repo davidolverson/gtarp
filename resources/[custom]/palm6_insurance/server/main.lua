@@ -199,6 +199,28 @@ local function cmdInsure(src, args)
         return
     end
 
+    -- Damage claims are repairable (they intentionally do NOT write the vehicle
+    -- off), but without this gate you could re-insure ($ premium) and re-file a
+    -- damage claim on the SAME unrepaired damage every claim-cooldown — a large
+    -- net-positive faucet. Lock re-insuring a plate for one policy term after a
+    -- paid/processing damage claim, so the same damage cannot fund a second
+    -- claim within the window (the car is expected to be repaired by then).
+    local recentDamage
+    pcall(function()
+        recentDamage = MySQL.single.await([[
+            SELECT id FROM palm6_insurance_claims
+            WHERE REPLACE(UPPER(plate), ' ', '') = ?
+              AND kind = 'damage'
+              AND status IN ('processing', 'paid', 'flagged_paid')
+              AND filed_at > NOW() - INTERVAL ? HOUR
+            LIMIT 1
+        ]], { plate, Config.Underwriting.TermHours })
+    end)
+    if recentDamage then
+        Bridge.Notify(src, 'Mors Mutual', 'A recent damage claim is on file for that plate. Get it repaired and come back once the claim window resets.', 'error')
+        return
+    end
+
     local U = Config.Underwriting
     local value = Bridge.GetVehicleValue(veh.vehicle) or U.MinValue
     if value < U.MinValue then value = U.MinValue end
@@ -341,6 +363,21 @@ local function cmdFileClaim(src, args)
             "UPDATE palm6_insurance_policies SET status = 'claimed' WHERE id = ? AND status = 'active'",
             { policy.id })
     end)
+
+    -- Consume the asset on a write-off. A theft or total-loss claim means the
+    -- vehicle is GONE — retire the player_vehicles ownership row so the owner
+    -- cannot keep driving / re-summoning the same car AND pocket the payout
+    -- (that was an unbounded faucet: mere absence-from-sync was treated as
+    -- theft, and the car was never removed). Damage claims are repairable and
+    -- deliberately leave the row intact. scoreClaim's deny check already ran
+    -- above, so a rejected theft claim never reaches this point.
+    if kind == 'theft' or kind == 'total_loss' then
+        pcall(function()
+            MySQL.update.await(
+                'DELETE FROM player_vehicles WHERE plate = ? AND citizenid = ?',
+                { veh.plate, cid })
+        end)
+    end
 
     if score >= Config.Risk.FlagThreshold then
         local caseId = openFraudCase(claimId, cid, Bridge.GetPlayerName(src), veh.plate, kind, factors, assessed)

@@ -125,6 +125,7 @@ Config.Events = {
     ['palm6_gangs:demote']         = { calls = 15, window_seconds = 60 },
     ['palm6_gangs:deposit']        = { calls = 20, window_seconds = 60 },
     ['palm6_gangs:withdraw']       = { calls = 20, window_seconds = 60 },
+    ['palm6_gangs:rename']         = { calls = 5,  window_seconds = 60 },
 
     -- palm6_market — the Commodity Exchange. `sell` pays CLEAN cash for raw
     -- goods; `refine` mints higher-value refined goods (money-touching once
@@ -166,12 +167,14 @@ Config.Events = {
     -- money; each is server-priced + consume-before-grant with its own cooldown.
     ['palm6_flashdrop:finishCheckout'] = { calls = 15, window_seconds = 60 },
     ['palm6_flashdrop:consign:buy']    = { calls = 15, window_seconds = 60 },
+    ['palm6_flashdrop:consign:list']   = { calls = 15, window_seconds = 60 },
     ['palm6_flashdrop:fence:sell']     = { calls = 15, window_seconds = 60 },
 
     -- palm6_counterfeit — counterfeit-cash chain. `printer:finish` collects a
     -- printed run, `sink:spend` launders/spends fake bills, `fence:pass` passes to
     -- a fence; each moves item/money and is server-validated with its own cooldown.
     ['palm6_counterfeit:printer:finish'] = { calls = 15, window_seconds = 60 },
+    ['palm6_counterfeit:printer:feed']   = { calls = 20, window_seconds = 60 },
     ['palm6_counterfeit:sink:spend']     = { calls = 20, window_seconds = 60 },
     ['palm6_counterfeit:fence:pass']     = { calls = 20, window_seconds = 60 },
 

@@ -25,6 +25,13 @@ local lastAction = {}    -- [src] = { [key] = ts } — chat-command spam guard
 local lastPost = {}      -- [citizenid] = ts — private-contract post cooldown
 local lastCapture = {}   -- [citizenid] = ts — per-hunter capture cooldown
 
+-- Free the src-keyed spam guard when a player disconnects so the table cannot
+-- grow without bound over the server's uptime (the citizenid-keyed cooldowns are
+-- naturally bounded by the player base and reused on reconnect).
+AddEventHandler('playerDropped', function()
+    lastAction[source] = nil
+end)
+
 local function now() return os.time() end
 
 local function dbg(msg)

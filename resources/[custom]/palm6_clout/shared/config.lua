@@ -20,7 +20,14 @@ Config.Debug = false
 -- (anyone can /golive). Checked at go-live AND re-checked every tick: sell
 -- or lose the phone mid-stream and the stream dies.
 -- ---------------------------------------------------------------------------
-Config.PhoneItem = 'streamer_phone'
+-- NOTE (pre-beta fix): 'streamer_phone' was NEVER defined in ox_inventory nor
+-- sold anywhere, so CountItem always returned 0 and EVERY /golive was rejected —
+-- the entire clout loop was inert on the live server. Ungated for beta so the
+-- feature works. To RE-GATE: paste the README item block into
+-- ox_inventory_overrides/data/items.lua (re-run patch-ox-items on deploy) AND
+-- add streamer_phone to a shop so players can actually obtain it, then set this
+-- back to 'streamer_phone'.
+Config.PhoneItem = false
 
 -- ---------------------------------------------------------------------------
 -- Stream lifecycle (all enforced server-side).
