@@ -1,0 +1,66 @@
+name: Palm6 box diag (read-only)
+
+# Read-only diagnostic: lists resources/[custom]/ on the live box and surfaces
+# any gtarp_* ensure/exec lines still present in the live server.cfg. Prints NO
+# secrets (only ensure/exec lines whose target contains 'gtarp'). Manual dispatch.
+#
+# Purpose: confirm whether stale pre-rebrand gtarp_* resource directories linger
+# on the box (additive SFTP never removed them) and whether anything still
+# ensures them — which would explain the empty gtarp_* orphan tables reappearing
+# on boot alongside the live palm6_* schema.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-custom-layer   # share the deploy lock; never race a deploy
+  cancel-in-progress: false
+
+env:
+  PANEL_URL: ${{ vars.PANEL_URL || 'https://control.rocketnode.com' }}
+  SERVER_ID: ${{ vars.SERVER_ID || '9524616c' }}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List custom layer + grep gtarp ensures
+        env:
+          PTERO_API_KEY: ${{ secrets.PTERO_API_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${PTERO_API_KEY:-}" ] || { echo "::error::PTERO_API_KEY not set"; exit 1; }
+
+          API="$PANEL_URL/api/client/servers/$SERVER_ID"
+          AUTH=(-H "Authorization: Bearer $PTERO_API_KEY" -H "Accept: application/json")
+
+          echo "===== resources/[custom]/ directory entries on the box ====="
+          code="$(curl -sS -o list.json -w "%{http_code}" "${AUTH[@]}" \
+            "$API/files/list?directory=%2Fresources%2F%5Bcustom%5D" || echo 000)"
+          echo "list http=$code"
+          if [ "$code" = "200" ]; then
+            echo "--- gtarp_* dirs (STALE if present) ---"
+            jq -r '.data[].attributes | select(.is_file==false) | .name' list.json | grep -E '^gtarp_' | sort || echo "(none)"
+            echo "--- palm6_* dirs (expected) ---"
+            jq -r '.data[].attributes | select(.is_file==false) | .name' list.json | grep -E '^palm6_' | sort | tr '\n' ' '; echo
+            echo "--- total custom dirs ---"
+            jq -r '.data[].attributes | select(.is_file==false) | .name' list.json | wc -l
+            echo "--- any OTHER (non gtarp/palm6) dirs ---"
+            jq -r '.data[].attributes | select(.is_file==false) | .name' list.json | grep -vE '^(gtarp_|palm6_)' | sort || echo "(none)"
+          else
+            echo "::warning::could not list [custom] (http=$code); body:"; cat list.json || true
+          fi
+
+          echo
+          echo "===== live server.cfg: gtarp_ ensure/exec lines only (secrets redacted) ====="
+          for cand in "%2Fserver.cfg" "%2FtxData%2Fserver.cfg"; do
+            code="$(curl -sS -o cur.cfg -w "%{http_code}" "${AUTH[@]}" "$API/files/contents?file=$cand" || echo 000)"
+            if [ "$code" = "200" ] && grep -qE 'ensure |exec ' cur.cfg; then
+              echo "server.cfg found at $cand ($(wc -c < cur.cfg) bytes)"
+              echo "--- lines mentioning gtarp ---"
+              grep -nE '(ensure|exec|start).*gtarp' cur.cfg || echo "(no gtarp ensure/exec/start lines)"
+              echo "--- count of ensure lines total ---"
+              grep -cE '^[[:space:]]*ensure ' cur.cfg || true
+              break
+            fi
+          done
