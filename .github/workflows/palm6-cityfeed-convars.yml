@@ -1,0 +1,118 @@
+name: Palm6 cityfeed convars
+
+# One-off ops workflow: writes the two palm6:cityfeed_* convars into the live
+# server's server.cfg via the Pterodactyl client API, then restarts FXServer so
+# the gtarp_cityfeed resource picks up its URL + signing secret. Idempotent
+# (re-running just re-sets the same two lines). Manual dispatch only.
+#
+# Secrets used (write-only, never in git):
+#   PTERO_API_KEY    - existing Pterodactyl client key (already drives restarts)
+#   CITYFEED_URL     - bot webhook endpoint
+#   CITYFEED_SECRET  - shared signing secret (matches bot GAME_EVENT_SIGNING_SECRET)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-custom-layer   # share the deploy lock so we never race a deploy
+  cancel-in-progress: false
+
+env:
+  PANEL_URL: ${{ vars.PANEL_URL || 'https://control.rocketnode.com' }}
+  SERVER_ID: ${{ vars.SERVER_ID || '9524616c' }}
+
+jobs:
+  set-convars:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write cityfeed convars and restart
+        env:
+          PTERO_API_KEY: ${{ secrets.PTERO_API_KEY }}
+          CITYFEED_URL: ${{ secrets.CITYFEED_URL }}
+          CITYFEED_SECRET: ${{ secrets.CITYFEED_SECRET }}
+        run: |
+          set -euo pipefail
+
+          for v in PTERO_API_KEY CITYFEED_URL CITYFEED_SECRET; do
+            if [ -z "${!v:-}" ]; then echo "::error::$v is not set"; exit 1; fi
+          done
+
+          API="$PANEL_URL/api/client/servers/$SERVER_ID"
+          AUTH=(-H "Authorization: Bearer $PTERO_API_KEY" -H "Accept: application/json")
+
+          # Locate the live server.cfg. Prefer the server root; the running
+          # gtarp_cityfeed proves root custom.cfg is exec'd, so root server.cfg
+          # is the startup file. Fall back to a txData/*.base/server.cfg.
+          fetch() {
+            # $1 = url-encoded path; writes body to cur.cfg, echoes http code
+            curl -sS -o cur.cfg -w "%{http_code}" "${AUTH[@]}" \
+              "$API/files/contents?file=$1"
+          }
+
+          CFG_PATH=""
+          for cand in "%2Fserver.cfg" "%2FtxData%2Fserver.cfg"; do
+            code="$(fetch "$cand" || echo 000)"
+            if [ "$code" = "200" ] && grep -qE 'endpoint_add|sv_licenseKey|ensure |exec ' cur.cfg; then
+              CFG_PATH="$cand"; break
+            fi
+          done
+
+          if [ -z "$CFG_PATH" ]; then
+            echo "Root server.cfg not found; scanning /txData for a *.base profile..."
+            code="$(curl -sS -o list.json -w "%{http_code}" "${AUTH[@]}" "$API/files/list?directory=%2FtxData" || echo 000)"
+            if [ "$code" = "200" ]; then
+              base="$(jq -r '.data[].attributes | select(.is_file==false) | .name' list.json | grep -E '\.base$' | head -1 || true)"
+              if [ -n "$base" ]; then
+                enc="%2FtxData%2F${base}%2Fserver.cfg"
+                code="$(fetch "$enc" || echo 000)"
+                if [ "$code" = "200" ] && grep -qE 'endpoint_add|sv_licenseKey|ensure |exec ' cur.cfg; then
+                  CFG_PATH="$enc"
+                fi
+              fi
+            fi
+          fi
+
+          if [ -z "$CFG_PATH" ]; then
+            echo "::error::Could not locate a valid server.cfg to edit. Aborting (nothing written)."
+            exit 1
+          fi
+
+          BYTES="$(wc -c < cur.cfg)"
+          echo "Found server.cfg at '$CFG_PATH' ($BYTES bytes)."
+          if [ "$BYTES" -lt 200 ]; then
+            echo "::error::server.cfg suspiciously small ($BYTES bytes) — refusing to overwrite."
+            exit 1
+          fi
+
+          # Idempotent: strip any prior cityfeed convars, then PREPEND fresh ones
+          # so they are set before 'exec custom.cfg' / 'ensure gtarp_cityfeed'.
+          grep -vE '^[[:space:]]*set[[:space:]]+palm6:cityfeed_(url|secret)[[:space:]]' cur.cfg > stripped.cfg || true
+          {
+            printf 'set palm6:cityfeed_url "%s"\n' "$CITYFEED_URL"
+            printf 'set palm6:cityfeed_secret "%s"\n' "$CITYFEED_SECRET"
+            cat stripped.cfg
+          } > new.cfg
+
+          NEWBYTES="$(wc -c < new.cfg)"
+          echo "New server.cfg is $NEWBYTES bytes; cityfeed set-lines present: $(grep -cE '^set palm6:cityfeed_' new.cfg)/2"
+
+          # Write it back (raw body). Expect 204.
+          wcode="$(curl -sS -o write_resp.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Content-Type: text/plain" \
+            -X POST "$API/files/write?file=$CFG_PATH" \
+            --data-binary @new.cfg || echo 000)"
+          if [ "$wcode" -lt 200 ] || [ "$wcode" -ge 300 ]; then
+            echo "::error::file write failed (HTTP $wcode)"; cat write_resp.txt || true; exit 1
+          fi
+          echo "server.cfg written (HTTP $wcode)."
+
+          # Restart so the resource reloads with the convars.
+          rcode="$(curl -sS -o restart_resp.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Content-Type: application/json" -H "Accept: application/json" \
+            -X POST "$API/power" -d '{"signal":"restart"}' || echo 000)"
+          if [ "$rcode" -lt 200 ] || [ "$rcode" -ge 300 ]; then
+            echo "::error::restart failed (HTTP $rcode)"; cat restart_resp.txt || true; exit 1
+          fi
+          echo "Restart signal accepted (HTTP $rcode). gtarp_cityfeed will emit server_state on boot."
