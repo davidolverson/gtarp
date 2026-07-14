@@ -27,32 +27,32 @@ shop,EMS Medical Supply society,"vector3(307.7, -1433.4, 29.9)",,ox_inventory_ov
 vehicle_model,Police motor pool,"police, police2, police3, policeb, policet",,qbx_police_overrides/config.lua :: Config.VehicleAllowed
 vehicle_model,Ambulance motor pool,ambulance,,qbx_ambulance_overrides/config.lua :: Config.VehicleAllowed
 weapon_model,Police loadout weapon models,"weapon_combatpistol, weapon_stungun, weapon_nightstick, weapon_flashlight",,qbx_police_overrides/config.lua :: Config.LoadoutAllowed
-blip,Courier delivery blip sprite,1,,gtarp_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
-blip,Courier delivery blip colour,5,,gtarp_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
+blip,Courier delivery blip sprite,1,,palm6_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
+blip,Courier delivery blip colour,5,,palm6_courier/bridge/cl_game.lua :: Game.CreateRouteBlip
 density,peds,0.9,,qbx_density_overrides/config.lua :: Config.Density.peds
 density,vehicle,0.7,,qbx_density_overrides/config.lua :: Config.Density.vehicle
 density,randomvehicles,0.7,,qbx_density_overrides/config.lua :: Config.Density.randomvehicles
 density,parked,0.8,,qbx_density_overrides/config.lua :: Config.Density.parked
 density,scenario,0.7,,qbx_density_overrides/config.lua :: Config.Density.scenario
-grind,Fishing spot 1,"vector3(-1850.20, -1235.60, 8.62)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
-grind,Fishing spot 2,"vector3(1299.80, 4224.90, 33.00)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
-grind,Fishing spot 3,"vector3(-1607.90, 5261.30, 3.90)",,gtarp_grind/shared/config.lua :: Activities.fishing.spots
-grind,Fishing buyer,"vector3(-1817.30, -1193.20, 14.30)",,gtarp_grind/shared/config.lua :: Activities.fishing.sell.coords
-grind,Mining spot 1,"vector3(2954.10, 2782.30, 40.50)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
-grind,Mining spot 2,"vector3(2969.40, 2835.60, 42.20)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
-grind,Mining spot 3,"vector3(2915.00, 2792.00, 39.80)",,gtarp_grind/shared/config.lua :: Activities.mining.spots
-grind,Mining buyer,"vector3(1109.60, -2007.90, 31.00)",,gtarp_grind/shared/config.lua :: Activities.mining.sell.coords
-grind,Hunting spot 1,"vector3(-1150.40, 4880.70, 220.10)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
-grind,Hunting spot 2,"vector3(-560.20, 5335.80, 70.40)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
-grind,Hunting spot 3,"vector3(-778.10, 5591.40, 33.50)",,gtarp_grind/shared/config.lua :: Activities.hunting.spots
-grind,Hunting buyer,"vector3(85.20, 6410.30, 31.30)",,gtarp_grind/shared/config.lua :: Activities.hunting.sell.coords
-robbery,ATM Legion Sq,"vector3(147.40, -1035.50, 29.34)",,gtarp_robbery/shared/config.lua :: ATMs.locations
-robbery,ATM Del Perro,"vector3(-1204.60, -324.80, 37.87)",,gtarp_robbery/shared/config.lua :: ATMs.locations
-robbery,ATM Sandy Shores,"vector3(1822.40, 3683.10, 34.28)",,gtarp_robbery/shared/config.lua :: ATMs.locations
-evidence,Evidence locker Mission Row,"vector3(434.0, -983.0, 30.7)",,gtarp_evidence/shared/config.lua :: Config.LockerCoords
-turf,Zone Legion Square,"vector3(195.17, -933.77, 30.69)",,gtarp_turf/shared/config.lua :: Config.Zones
-turf,Zone Grove Street,"vector3(-47.30, -1757.40, 29.42)",,gtarp_turf/shared/config.lua :: Config.Zones
-turf,Zone Mirror Park,"vector3(1163.10, -322.90, 69.20)",,gtarp_turf/shared/config.lua :: Config.Zones
-turf,Zone Vinewood,"vector3(-1222.10, -906.90, 12.33)",,gtarp_turf/shared/config.lua :: Config.Zones
-turf,Zone Sandy Shores,"vector3(1961.30, 3740.30, 32.34)",,gtarp_turf/shared/config.lua :: Config.Zones
-turf,Zone Paleto Bay,"vector3(1728.66, 6414.16, 35.04)",,gtarp_turf/shared/config.lua :: Config.Zones
+grind,Fishing spot 1,"vector3(-1850.20, -1235.60, 8.62)",,palm6_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing spot 2,"vector3(1299.80, 4224.90, 33.00)",,palm6_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing spot 3,"vector3(-1607.90, 5261.30, 3.90)",,palm6_grind/shared/config.lua :: Activities.fishing.spots
+grind,Fishing buyer,"vector3(-1817.30, -1193.20, 14.30)",,palm6_grind/shared/config.lua :: Activities.fishing.sell.coords
+grind,Mining spot 1,"vector3(2954.10, 2782.30, 40.50)",,palm6_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining spot 2,"vector3(2969.40, 2835.60, 42.20)",,palm6_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining spot 3,"vector3(2915.00, 2792.00, 39.80)",,palm6_grind/shared/config.lua :: Activities.mining.spots
+grind,Mining buyer,"vector3(1109.60, -2007.90, 31.00)",,palm6_grind/shared/config.lua :: Activities.mining.sell.coords
+grind,Hunting spot 1,"vector3(-1150.40, 4880.70, 220.10)",,palm6_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting spot 2,"vector3(-560.20, 5335.80, 70.40)",,palm6_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting spot 3,"vector3(-778.10, 5591.40, 33.50)",,palm6_grind/shared/config.lua :: Activities.hunting.spots
+grind,Hunting buyer,"vector3(85.20, 6410.30, 31.30)",,palm6_grind/shared/config.lua :: Activities.hunting.sell.coords
+robbery,ATM Legion Sq,"vector3(147.40, -1035.50, 29.34)",,palm6_robbery/shared/config.lua :: ATMs.locations
+robbery,ATM Del Perro,"vector3(-1204.60, -324.80, 37.87)",,palm6_robbery/shared/config.lua :: ATMs.locations
+robbery,ATM Sandy Shores,"vector3(1822.40, 3683.10, 34.28)",,palm6_robbery/shared/config.lua :: ATMs.locations
+evidence,Evidence locker Mission Row,"vector3(434.0, -983.0, 30.7)",,palm6_evidence/shared/config.lua :: Config.LockerCoords
+turf,Zone Legion Square,"vector3(195.17, -933.77, 30.69)",,palm6_turf/shared/config.lua :: Config.Zones
+turf,Zone Grove Street,"vector3(-47.30, -1757.40, 29.42)",,palm6_turf/shared/config.lua :: Config.Zones
+turf,Zone Mirror Park,"vector3(1163.10, -322.90, 69.20)",,palm6_turf/shared/config.lua :: Config.Zones
+turf,Zone Vinewood,"vector3(-1222.10, -906.90, 12.33)",,palm6_turf/shared/config.lua :: Config.Zones
+turf,Zone Sandy Shores,"vector3(1961.30, 3740.30, 32.34)",,palm6_turf/shared/config.lua :: Config.Zones
+turf,Zone Paleto Bay,"vector3(1728.66, 6414.16, 35.04)",,palm6_turf/shared/config.lua :: Config.Zones

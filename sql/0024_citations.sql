@@ -1,16 +1,16 @@
 -- ============================================================================
--- 0024_citations.sql — gtarp_citations fine ledger.
+-- 0024_citations.sql — palm6_citations fine ledger.
 --
--- `gtarp_`-prefixed per the defensive convention. No FK constraints
+-- `palm6_`-prefixed per the defensive convention. No FK constraints
 -- (house style).
 --
 -- A citation is debt with memory: unpaid past due_at escalates ONCE to a
--- gtarp_mdt warrant (warrant_id backlink) and the row flips to
+-- palm6_mdt warrant (warrant_id backlink) and the row flips to
 -- 'escalated' — still owed, still payable. The recipe's instant billing
 -- records nothing; this table is the record.
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gtarp_citations` (
+CREATE TABLE IF NOT EXISTS `palm6_citations` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     citizenid VARCHAR(64) NOT NULL,
     citizen_name VARCHAR(100) NOT NULL DEFAULT '',
@@ -24,6 +24,6 @@ CREATE TABLE IF NOT EXISTS `gtarp_citations` (
     due_at TIMESTAMP NOT NULL,
     paid_at TIMESTAMP NULL DEFAULT NULL,
     escalated_at TIMESTAMP NULL DEFAULT NULL,
-    INDEX idx_gtarp_citations_citizen (citizenid, status),
-    INDEX idx_gtarp_citations_due (status, due_at)
+    INDEX idx_palm6_citations_citizen (citizenid, status),
+    INDEX idx_palm6_citations_due (status, due_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

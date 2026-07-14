@@ -30,36 +30,36 @@ ExtraItems = {
     flashlight      = { label = 'Flashlight',      weight = 300,  stack = false },
     tirepack        = { label = 'Tire Pack',       weight = 2500, stack = true },
 
-    -- Grind tools (gtarp_grind) — buyable at the Hardware Store.
+    -- Grind tools (palm6_grind) — buyable at the Hardware Store.
     fishing_rod     = { label = 'Fishing Rod',     weight = 1000, stack = false },
     pickaxe         = { label = 'Pickaxe',         weight = 1500, stack = false },
     hunting_knife   = { label = 'Hunting Knife',   weight = 400,  stack = false },
 
-    -- Grind yields (gtarp_grind) — sold to the matching buyer.
+    -- Grind yields (palm6_grind) — sold to the matching buyer.
     raw_fish        = { label = 'Fish',            weight = 200,  stack = true },
     raw_ore         = { label = 'Ore',             weight = 300,  stack = true },
     raw_meat        = { label = 'Raw Meat',        weight = 250,  stack = true },
     animal_pelt     = { label = 'Animal Pelt',     weight = 400,  stack = true },
 
-    -- Refined goods (gtarp_market refining tier v2) — sold only at the exchange.
+    -- Refined goods (palm6_market refining tier v2) — sold only at the exchange.
     refined_metal   = { label = 'Refined Metal',   weight = 500,  stack = true },
     cured_leather   = { label = 'Cured Leather',   weight = 350,  stack = true },
     fillet          = { label = 'Fish Fillet',     weight = 150,  stack = true },
     cured_meat      = { label = 'Cured Meat',      weight = 200,  stack = true },
 
-    -- Prison commissary / contraband (gtarp_yard).
+    -- Prison commissary / contraband (palm6_yard).
     yard_pruno            = { label = 'Pruno',            weight = 200, stack = true, consume = 1 },
     yard_commissary_snack = { label = 'Commissary Snack', weight = 80,  stack = true, consume = 1 },
     yard_soap             = { label = 'Bar of Soap',      weight = 90,  stack = true },
 
-    -- Serialized sneakers (gtarp_flashdrop). One base item; per-pair identity
+    -- Serialized sneakers (palm6_flashdrop). One base item; per-pair identity
     -- (label, serial, uid) rides in metadata. Must match Config.Item in
-    -- gtarp_flashdrop/shared/config.lua — that resource presence-checks this
+    -- palm6_flashdrop/shared/config.lua — that resource presence-checks this
     -- item at start and disables drops with a console error if it is missing.
     flashdrop_sneaker = { label = 'Sneakers',      weight = 800,  stack = false },
 
-    -- Counterfeit-cash economy (gtarp_counterfeit). Must match Config.Items
-    -- in gtarp_counterfeit/shared/config.lua — that resource presence-checks
+    -- Counterfeit-cash economy (palm6_counterfeit). Must match Config.Items
+    -- in palm6_counterfeit/shared/config.lua — that resource presence-checks
     -- these at start and self-disables with a console error if any is
     -- missing. counterfeit_cash is FAKE money with a serial in metadata —
     -- distinct name and semantics from the recipe's `markedbills` (dirty
@@ -70,8 +70,8 @@ ExtraItems = {
     counterfeit_ink     = { label = 'Intaglio Ink',    weight = 350,  stack = true },
     marker_pen          = { label = 'Detector Pen',    weight = 30,   stack = false },
 
-    -- Drug supply chain (gtarp_drugs) — Schedule I MVP (weed). Must match
-    -- Config in gtarp_drugs/shared/config.lua: the resource presence-checks the
+    -- Drug supply chain (palm6_drugs) — Schedule I MVP (weed). Must match
+    -- Config in palm6_drugs/shared/config.lua: the resource presence-checks the
     -- core items at start and self-disables with a console error if any core
     -- item is missing (and warns per missing mix additive). Names are distinct
     -- from qbx_drugs' weed_brick/coke_brick so the two item sets never overlap.
@@ -96,10 +96,10 @@ ExtraItems = {
     weed_bud            = { label = 'Cannabis Buds',   weight = 40,   stack = true  },
     weed_product        = { label = 'Weed Product',    weight = 30,   stack = true  },
 
-    -- Meth cook chain (gtarp_drugs §9). pseudo/acid/red_phosphorus are the cook
+    -- Meth cook chain (palm6_drugs §9). pseudo/acid/red_phosphorus are the cook
     -- precursors; meth_raw is the raw crystal (same metadata shape as weed_bud,
     -- base='meth'), meth_product the finished branded product (like weed_product).
-    -- gtarp_drugs stays disabled for meth until all five are registered here.
+    -- palm6_drugs stays disabled for meth until all five are registered here.
     -- pseudo       metadata: { grade }                       (1-2; sets quality floor)
     -- meth_raw     metadata: { base, quality, effects[], dried }
     -- meth_product metadata: { brand, base, effects[], quality, unit_value, batch_id, producer }
@@ -109,7 +109,7 @@ ExtraItems = {
     meth_raw            = { label = 'Meth (Raw)',       weight = 30,   stack = true  },
     meth_product        = { label = 'Meth',             weight = 20,   stack = true  },
 
-    -- Mix additives (gtarp_drugs §2). Each appends one base effect at the
+    -- Mix additives (palm6_drugs §2). Each appends one base effect at the
     -- mixing station. `energy_drink` (Athletic) is already registered above
     -- under civilian items and is reused — it is intentionally NOT re-declared
     -- here.

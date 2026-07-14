@@ -23,7 +23,7 @@ The pipeline is the GitHub Actions workflow
 4. **Patches Palm6 vehicle prices** into the deployed
    `resources/[qbx]/qbx_core/shared/vehicles.lua`: downloads the live file, runs
    `tools/patch-vehicle-prices.sh` (rewrites ONLY the `price` field for
-   `gtarp_dealership` catalog models to their tier price; idempotent; never
+   `palm6_dealership` catalog models to their tier price; idempotent; never
    touches coords, categories, hashes, or non-catalog models), syntax-checks it
    with `lua5.4` (backticks flattened for the check), and uploads it back.
    `qbx_vehicleshop` reads prices from this file, so without this step the
@@ -41,12 +41,12 @@ The pipeline is the GitHub Actions workflow
 ## Applying SQL migrations (`tools/apply-migrations.sh`)
 
 The safe way to run the manual migration step. Tracks applied files in a
-`gtarp_schema_migrations` table (filename + sha256), so re-running is a no-op
+`palm6_schema_migrations` table (filename + sha256), so re-running is a no-op
 and a migration edited *after* being applied fails loudly (exit 2) instead of
 silently re-running.
 
 ```bash
-# local test DB (default: docker exec into gtarp-mariadb)
+# local test DB (default: docker exec into palm6-mariadb)
 bash tools/apply-migrations.sh --dry-run   # show what would run
 bash tools/apply-migrations.sh             # apply anything new
 

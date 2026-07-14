@@ -1,4 +1,4 @@
-# RULES — gtarp roleplay
+# RULES — palm6 roleplay
 
 These rules are pinned in Discord. Breaking them is grounds for warning,
 kick, or ban depending on severity and recurrence.
@@ -48,7 +48,7 @@ yelling at moderators.
 
 - General membership: open allowlist via Discord application.
 - Emergency-services roles (police, EMS): separate whitelist, see Discord
-  application form. Enforced by `gtarp_whitelist_jobs`.
+  application form. Enforced by `palm6_whitelist_jobs`.
 
 Repeat violations of any rule above can result in removal from both
 allowlists.

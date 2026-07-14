@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0007_staff_log.sql — audit log table for gtarp_staff
+-- 0007_staff_log.sql — audit log table for palm6_staff
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `audit_log` (

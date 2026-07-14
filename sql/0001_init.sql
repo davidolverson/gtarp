@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 0001_init.sql
 --
--- Initial (empty) migration for the gtarp custom layer.
+-- Initial (empty) migration for the palm6 custom layer.
 --
 -- All custom schema changes for this server live in numbered migration files
 -- in this folder: 0001_init.sql, 0002_<short_description>.sql, and so on.

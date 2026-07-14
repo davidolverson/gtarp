@@ -1,7 +1,7 @@
 # Palm6 — Beta Test Kit
 
 **Server:** `193.31.31.27:30149` (Direct Connect → globe icon, or F8 console `connect 193.31.31.27:30149`)
-**Live as of:** 2026-07-13 — prod healthy, 53 `gtarp_*` resources + `palm6_props` / `server_identity` / `mystudio_props` loaded, 0/48 players.
+**Live as of:** 2026-07-13 — prod healthy, 53 `palm6_*` resources + `palm6_props` / `server_identity` / `mystudio_props` loaded, 0/48 players.
 **Purpose:** everything a small group of beta testers (and the operator) needs to shake down Palm6 in one guided session. Ordered so the operator can verify every placeholder coordinate in a single in-game pass.
 
 > This is an internal ops doc. The player-facing command reference is in-game via `/help` (and `/help <topic>`); it is the source of truth and is reproduced condensed in §7.
@@ -14,10 +14,10 @@ These are the standing gaps between "shipped to prod" and "ready for outside pla
 
 | # | Gap | Owner | Action | Blocks beta? |
 |---|-----|-------|--------|--------------|
-| 0.1 | **Server-browser name still `gtarp — Qbox RP`** (not "Palm6"). Not set in the repo — it lives in the panel-managed `server.cfg`. | David (panel) | RocketNode panel → server.cfg → set `sv_projectName "Palm6"` and `sv_hostname` to the branded name, restart. | Cosmetic, but first impression |
+| 0.1 | **Server-browser name still `palm6 — Qbox RP`** (not "Palm6"). Not set in the repo — it lives in the panel-managed `server.cfg`. | David (panel) | RocketNode panel → server.cfg → set `sv_projectName "Palm6"` and `sv_hostname` to the branded name, restart. | Cosmetic, but first impression |
 | 0.2 | **7 new item icons blank** (PNGs owed). See §5 manifest. | David (generate in ChatGPT) | Drop PNGs into `ox_inventory/web/images/`, re-deploy. | No — items work, just show the placeholder box |
-| 0.3 | **Starter-vehicle garage name unconfirmed.** `gtarp_onboarding` grants a `blista` into garage `motelgarage`. If that garage name doesn't exist in the deployed `qbx_garages`, new players get the $1500 cash but the car silently no-ops. | Operator (in-game) | Onboard a fresh character, confirm the starter car is retrievable from a garage. If not, set `Config.StarterVehicle.garage` to a real garage name. | Yes — new players stranded without a car |
-| 0.4 | **Allowlist/whitelist mode for beta.** `gtarp_allowlist` does role-OR-license gating; txAdmin whitelist must stay `disabled` or joins double-gate. | David | Decide open vs closed beta; if closed, seed the allowlist with tester identifiers. | Depends on beta model |
+| 0.3 | **Starter-vehicle garage name unconfirmed.** `palm6_onboarding` grants a `blista` into garage `motelgarage`. If that garage name doesn't exist in the deployed `qbx_garages`, new players get the $1500 cash but the car silently no-ops. | Operator (in-game) | Onboard a fresh character, confirm the starter car is retrievable from a garage. If not, set `Config.StarterVehicle.garage` to a real garage name. | Yes — new players stranded without a car |
+| 0.4 | **Allowlist/whitelist mode for beta.** `palm6_allowlist` does role-OR-license gating; txAdmin whitelist must stay `disabled` or joins double-gate. | David | Decide open vs closed beta; if closed, seed the allowlist with tester identifiers. | Depends on beta model |
 | 0.5 | **Placeholder coords un-walked.** ~8 systems still sit on round-number placeholder coordinates (§3). Verify/retune in the §2 pass. | Operator (in-game) | Walk each §3 POI; retune any that float/clip/are unreachable. | Yes for those systems |
 
 ---
@@ -26,7 +26,7 @@ These are the standing gaps between "shipped to prod" and "ready for outside pla
 
 1. **Connect** → Palm6 branded loading screen (`server_identity`) with a live progress bar.
 2. **Character creation** (qbx multichar) — pick/create a character.
-3. **Mandatory rules dialog** (`gtarp_onboarding`) — 5 house rules (RP-first, fear-for-life, NLR, no-exploiting, staff-final). Must accept to continue.
+3. **Mandatory rules dialog** (`palm6_onboarding`) — 5 house rules (RP-first, fear-for-life, NLR, no-exploiting, staff-final). Must accept to continue.
 4. **Starter grant** — **$1500 to bank** + a one-time **starter car** (blista, parked in a public garage) on first-ever join.
 5. **Getting-started tour** — short text: bank/ATMs, jobs, `/rules` re-shows anytime, `/mdt` for aspiring police.
 6. **`/help`** — opens the branded Palm6 NUI command panel (categorized). `/help crime`, `/help leo`, etc. drill in.
@@ -115,13 +115,13 @@ These sit on obvious round-number placeholders and have never been stood on in-g
 
 | System | File | Current placeholder | What it is |
 |--------|------|--------------------|-----------|
-| Market exchange | `gtarp_market/shared/config.lua:23` | `-40, -2530, 6` | commodity exchange ped/blip |
-| Market refinery | `gtarp_market/shared/config.lua:57` | `1075, -2005, 32` | refinery ped/blip |
-| Yard labor | `gtarp_yard/shared/config.lua:31` | `1800, 2600, 46` | prison labor point |
-| Yard commissary | `gtarp_yard/shared/config.lua:32` | `1780, 2600, 46` | commissary |
-| Yard bail | `gtarp_yard/shared/config.lua:33` | `1690, 2560, 45` | bail desk |
-| Smuggling pickup + drops | `gtarp_smuggling/shared/config.lua:35–48` | `-119,-2489,6` + 6 round drops | contraband run nodes |
-| Counterfeit heat zones | `gtarp_counterfeit/shared/config.lua:65–70` | 6 round centroids | district heat zones (approximate is OK) |
+| Market exchange | `palm6_market/shared/config.lua:23` | `-40, -2530, 6` | commodity exchange ped/blip |
+| Market refinery | `palm6_market/shared/config.lua:57` | `1075, -2005, 32` | refinery ped/blip |
+| Yard labor | `palm6_yard/shared/config.lua:31` | `1800, 2600, 46` | prison labor point |
+| Yard commissary | `palm6_yard/shared/config.lua:32` | `1780, 2600, 46` | commissary |
+| Yard bail | `palm6_yard/shared/config.lua:33` | `1690, 2560, 45` | bail desk |
+| Smuggling pickup + drops | `palm6_smuggling/shared/config.lua:35–48` | `-119,-2489,6` + 6 round drops | contraband run nodes |
+| Counterfeit heat zones | `palm6_counterfeit/shared/config.lua:65–70` | 6 round centroids | district heat zones (approximate is OK) |
 
 ---
 
@@ -138,7 +138,7 @@ Low-severity notes (documented, **not** exploitable — no code change made):
 - **Protection** could leak a per-business `collectLock` if an *unexpected* Lua error fired between the two internally-`pcall`-wrapped calls in the lock window — would soft-brick that one business until restart. Availability nit, not money.
 - **Dealership** has no runtime purchase logic — car buys run through qbx_core's native shop (prices patched from the catalog at deploy by `tools/patch-vehicle-prices.sh`). The custom catalog validator rejects bad prices/models. If qbx_core's shop hasn't had its own price-re-derivation audit, that's where any dealership money risk would live — flagged for a separate recipe-layer review, not a custom-layer beta blocker.
 
-**Prod DB note (verify if in doubt):** numbers (`sql/0034`) and fightclub (`sql/0028`) tables — including fightclub's load-bearing `UNIQUE(match_id, citizenid)` double-bet key — are in the 0001–0038 range the 7/11 prod ledger recorded as already applied. `gtarp_dbmigrate` self-applies only 0040 + 0042–0047, so these two rely on that earlier apply. Expected present; confirm on prod if a double-bet is ever observed.
+**Prod DB note (verify if in doubt):** numbers (`sql/0034`) and fightclub (`sql/0028`) tables — including fightclub's load-bearing `UNIQUE(match_id, citizenid)` double-bet key — are in the 0001–0038 range the 7/11 prod ledger recorded as already applied. `palm6_dbmigrate` self-applies only 0040 + 0042–0047, so these two rely on that earlier apply. Expected present; confirm on prod if a double-bet is ever observed.
 
 - [x] Audit complete, findings triaged — 10/10 clean
 - [x] No confirmed findings requiring a fix
@@ -149,17 +149,17 @@ Low-severity notes (documented, **not** exploitable — no code change made):
 Second pass covering the WHOLE custom layer along 5 orthogonal lenses (boot/items, money-remaining-16, cross-resource contracts, new-player path, coords). 6 CONFIRMED findings, 10 UNCERTAIN (mostly coords needing in-game verify).
 
 **FIXED (committed `d1509cf`, local):**
-- **[HIGH] gtarp_insurance theft-claim faucet** — `insure → file theft/total-loss claim → policy retires → re-insure same plate` was a strictly net-positive loop (~54% of vehicle value payout vs 5% premium, every 15 min; theft claims also bypass the forensic deny gate because `vehCoords` is nil in the theft branch; vehicle never consumed). **Fix: a written-off plate (prior theft/total_loss claim) is no longer re-insurable** — kills the repeatable loop. Repairable minor damage stays insurable.
-- **[LOW] gtarp_dbmigrate** — fxmanifest `lua54 'yes'` added; scope comments corrected (0040/0042/0043/0044 → 0040 + 0042-0047; code already applies 0045-0047).
-- **[LOW] gtarp_help** — `/lottery` (real public command) added to the City menu (was missing).
+- **[HIGH] palm6_insurance theft-claim faucet** — `insure → file theft/total-loss claim → policy retires → re-insure same plate` was a strictly net-positive loop (~54% of vehicle value payout vs 5% premium, every 15 min; theft claims also bypass the forensic deny gate because `vehCoords` is nil in the theft branch; vehicle never consumed). **Fix: a written-off plate (prior theft/total_loss claim) is no longer re-insurable** — kills the repeatable loop. Repairable minor damage stays insurable.
+- **[LOW] palm6_dbmigrate** — fxmanifest `lua54 'yes'` added; scope comments corrected (0040/0042/0043/0044 → 0040 + 0042-0047; code already applies 0045-0047).
+- **[LOW] palm6_help** — `/lottery` (real public command) added to the City menu (was missing).
 
-**CLEARED during triage:** gtarp_yard's `xt-prison` dependency — confirmed **xt-prison IS running on prod** (base-recipe resource, correctly not in our custom.cfg). Not a blocker.
+**CLEARED during triage:** palm6_yard's `xt-prison` dependency — confirmed **xt-prison IS running on prod** (base-recipe resource, correctly not in our custom.cfg). Not a blocker.
 
 **David decisions / actions still open (from the sweep):**
-- **Insurance theft semantics (deeper):** the repeatable faucet is closed, but manufactured theft (car state=0 + not in synced world, no real theft event) still pays once with no forensic gate. Decide: gate theft on a gtarp_replay scene or a real reported-stolen event, and/or consume the vehicle in `player_vehicles` on a theft/total-loss payout. *(my call: worth doing before a big beta, but not a repeatable exploit anymore)*
-- **eventguard budgets:** counterfeit/flashdrop/pumpcoin/grind/witnesses money events + `gtarp_mechanic:acceptInvoice` have no eventguard rate-cap (defense-in-depth only — each resource's own cooldown already prevents dupes; not exploitable). Plus a stale gtarp_mechanic eventguard comment. *(I can add these; sizing needs each resource's cooldown read first — say the word.)*
-- **evidence table-payload renders as raw JSON** to officers in `/mdtcase`/`/evidence case` — cosmetic UX (touches gtarp_mdt, currently owned by the Discord terminal — left to avoid collision).
-- **gtarp_devtest** is convar-gated OFF in prod, so contract drift ships silently — consider enabling briefly on a staging boot.
+- **Insurance theft semantics (deeper):** the repeatable faucet is closed, but manufactured theft (car state=0 + not in synced world, no real theft event) still pays once with no forensic gate. Decide: gate theft on a palm6_replay scene or a real reported-stolen event, and/or consume the vehicle in `player_vehicles` on a theft/total-loss payout. *(my call: worth doing before a big beta, but not a repeatable exploit anymore)*
+- **eventguard budgets:** counterfeit/flashdrop/pumpcoin/grind/witnesses money events + `palm6_mechanic:acceptInvoice` have no eventguard rate-cap (defense-in-depth only — each resource's own cooldown already prevents dupes; not exploitable). Plus a stale palm6_mechanic eventguard comment. *(I can add these; sizing needs each resource's cooldown read first — say the word.)*
+- **evidence table-payload renders as raw JSON** to officers in `/mdtcase`/`/evidence case` — cosmetic UX (touches palm6_mdt, currently owned by the Discord terminal — left to avoid collision).
+- **palm6_devtest** is convar-gated OFF in prod, so contract drift ships silently — consider enabling briefly on a staging boot.
 - Coords: market exchange/refinery, yard stations, smuggling nodes remain Tier-3 placeholders (see §3).
 
 ---

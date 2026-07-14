@@ -3,7 +3,7 @@
 # tools/new-resource.sh <name> [--db] [--client-only] [--server-only]
 #
 # Scaffolds a new bridge-pattern-native custom resource under
-# resources/[custom]/gtarp_<name>/ so it is GTA-VI-portable from day one
+# resources/[custom]/palm6_<name>/ so it is GTA-VI-portable from day one
 # (see docs/GTA6-READINESS.md). Logic goes in server/ + client/; every
 # framework/native call lives in bridge/. Also reminds you to wire the
 # `ensure` line into custom.cfg.
@@ -30,7 +30,7 @@ done
 [ -n "$NAME" ] || { echo "usage: new-resource.sh <name> [--db] [--client-only] [--server-only]" >&2; exit 1; }
 echo "$NAME" | grep -qE '^[a-z][a-z0-9_]*$' || { echo "name must be lower_snake_case (got '$NAME')" >&2; exit 1; }
 
-RES="gtarp_$NAME"
+RES="palm6_$NAME"
 DIR="$CU/$RES"
 [ -e "$DIR" ] && { echo "ERROR: $DIR already exists" >&2; exit 1; }
 mkdir -p "$DIR/shared"
@@ -45,7 +45,7 @@ mkdir -p "$DIR/shared"
   echo
   echo "author 'EvThatGuy'"
   echo "version '0.1.0'"
-  echo "description 'gtarp $NAME'"
+  echo "description 'palm6 $NAME'"
   echo
   if [ "$CLIENT" = 1 ]; then
     echo "shared_scripts {"
@@ -63,7 +63,7 @@ mkdir -p "$DIR/shared"
     echo "server_scripts {"
     [ "$WITH_DB" = 1 ] && echo "    '@oxmysql/lib/MySQL.lua',"
     # --server-only: no shared_scripts block (nothing to ship to clients) —
-    # config.lua loads here instead. Precedent: gtarp_bounty's hand-fixed manifest.
+    # config.lua loads here instead. Precedent: palm6_bounty's hand-fixed manifest.
     [ "$CLIENT" = 0 ] && echo "    'shared/config.lua',"
     echo "    'bridge/sv_framework.lua',  -- framework adapter — before server logic"
     echo "    'server/main.lua',"
@@ -128,7 +128,7 @@ cat > "$DIR/server/main.lua" <<EOF
 --     local src = source
 --     local cid = Bridge.GetCitizenId(src)
 --     if not cid then return end
---     Bridge.Notify(src, 'gtarp $NAME', 'hello from the server', 'success')
+--     Bridge.Notify(src, 'palm6 $NAME', 'hello from the server', 'success')
 -- end)
 EOF
 fi
@@ -175,14 +175,14 @@ if [ "$WITH_DB" = 1 ]; then
   NEXT="$(ls "$REPO/sql" 2>/dev/null | grep -oE '^[0-9]{4}' | sort -n | tail -1)"
   NEXT="$(printf '%04d' $(( 10#${NEXT:-0} + 1 )))"
   cat > "$REPO/sql/${NEXT}_${NAME}.sql" <<EOF
--- ${NEXT}_${NAME}.sql — tables for gtarp_$NAME. Apply after the qbx base schema.
--- gtarp_-prefixed per the table-naming convention (see docs/GTA6-READINESS.md
+-- ${NEXT}_${NAME}.sql — tables for palm6_$NAME. Apply after the qbx base schema.
+-- palm6_-prefixed per the table-naming convention (see docs/GTA6-READINESS.md
 -- history — an unprefixed table silently collided with a recipe resource once).
-CREATE TABLE IF NOT EXISTS \`gtarp_${NAME}\` (
+CREATE TABLE IF NOT EXISTS \`palm6_${NAME}\` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     citizenid VARCHAR(64) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_gtarp_${NAME}_citizenid (citizenid)
+    INDEX idx_palm6_${NAME}_citizenid (citizenid)
 );
 EOF
   echo "  + sql/${NEXT}_${NAME}.sql"

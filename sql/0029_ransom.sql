@@ -1,12 +1,12 @@
 -- ============================================================================
--- 0029_ransom.sql — gtarp_ransom kidnapping ransom ledger.
+-- 0029_ransom.sql — palm6_ransom kidnapping ransom ledger.
 --
--- `gtarp_`-prefixed per the defensive convention (a bare `ransom` table
--- risks the same silent collision class documented for `gtarp_housing`'s
+-- `palm6_`-prefixed per the defensive convention (a bare `ransom` table
+-- risks the same silent collision class documented for `palm6_housing`'s
 -- original `properties` table). No FK constraints (house style).
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gtarp_ransom_cases` (
+CREATE TABLE IF NOT EXISTS `palm6_ransom_cases` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     kidnapper_citizenid VARCHAR(64) NOT NULL,
     kidnapper_name VARCHAR(100) NOT NULL DEFAULT '',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS `gtarp_ransom_cases` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL DEFAULT NULL,
     resolved_at TIMESTAMP NULL DEFAULT NULL,
-    INDEX idx_gtarp_ransom_cases_status (status),
-    INDEX idx_gtarp_ransom_cases_victim (victim_citizenid),
-    INDEX idx_gtarp_ransom_cases_kidnapper (kidnapper_citizenid)
+    INDEX idx_palm6_ransom_cases_status (status),
+    INDEX idx_palm6_ransom_cases_victim (victim_citizenid),
+    INDEX idx_palm6_ransom_cases_kidnapper (kidnapper_citizenid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

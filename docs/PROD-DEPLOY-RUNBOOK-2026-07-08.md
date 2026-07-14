@@ -5,11 +5,11 @@ production game server.
 
 **Updated 2026-07-08 afternoon**: the original draft below was written
 against `ship`/`origin/main` (`dade10e`, 26 sql migrations, 25
-`gtarp_*` resources). Since then, four rounds of independent security
+`palm6_*` resources). Since then, four rounds of independent security
 audits (10 real bugs found+fixed) and two new signature resources
-(`gtarp_bounty`, `gtarp_fightclub`) landed on local branch
+(`palm6_bounty`, `palm6_fightclub`) landed on local branch
 `claude/integration-2026-07-08` — now **28 sql migrations, 26
-`gtarp_*` resources**, fully boot-verified clean, but **NOT YET pushed
+`palm6_*` resources**, fully boot-verified clean, but **NOT YET pushed
 to `main`**. Nothing code-side is blocking; this is waiting on David's
 explicit push approval. Check `git log main` / `git log claude/
 integration-2026-07-08` to see which state is actually live before
@@ -45,28 +45,28 @@ the OLD host):
   with no CI pipeline actually reaching it yet. If so, ask Ward directly
   for the new host/user/server-id/remote-base values before running
   Step 3, rather than guessing.
-- **New GitHub org: `BlacklineDevs`.** Two repos moved in: `gtarp` (this
-  one) and a second repo, **`GTARPScripts`**, not previously known to
+- **New GitHub org: `BlacklineDevs`.** Two repos moved in: `palm6` (this
+  one) and a second repo, **`PALM6Scripts`**, not previously known to
   this session. You've been granted **Admin** on both — **two pending org
   invites are sitting in your GitHub notifications/email, not yet
   accepted.**
 - **New: an AI NPC system is now live** — "CivCore NPC Pro" (installed
-  from the `GTARPScripts` repo), extended by Ward with Groq (Llama 3.3
+  from the `PALM6Scripts` repo), extended by Ward with Groq (Llama 3.3
   70B, primary) → GitHub Models GPT-4o (fallback), using keys "reused
   from our Syndicate stack" (Ev's own infra — see
   `project_syndicate_bridge` memory: previously a "never copy without
   ownership sign-off" boundary, now apparently sharing credentials the
-  other direction into gtarp). This is unaudited by anyone on David's
+  other direction into palm6). This is unaudited by anyone on David's
   side — no code review, no dup-gate, no bridge-pattern check. Treat as
   out of scope for this session's hardening/build tracks (they only
-  touch `resources/[custom]/gtarp_*`) but flag to David as something to
+  touch `resources/[custom]/palm6_*`) but flag to David as something to
   eventually look at, especially the credential-sharing angle.
 - txAdmin backup login + AI provider keys are being sent by Ward
   **directly, not by email** — not yet in David's hands as of the email.
 
 ## Confirmed current config (read live from GitHub, not memory)
 
-Repo: `BlacklineDevs/gtarp` (the old `EvThatGuy/gtarp` URL redirects here —
+Repo: `BlacklineDevs/palm6` (the old `EvThatGuy/palm6` URL redirects here —
 an org transfer happened, not a rename you need to chase).
 
 Effective deploy target (repo Variables override the workflow file's
@@ -129,7 +129,7 @@ on every deploy run since.
 You do not need to hand-run `tools/patch-ox-items.sh` against prod
 yourself — once the corruption above is fixed, the deploy workflow's own
 "Upload custom layer over SFTP" step re-downloads this file, re-patches
-the GTARP marker block into it automatically, syntax-checks it, and
+the PALM6 marker block into it automatically, syntax-checks it, and
 re-uploads it, every time it runs. Step 1 just removes the thing that's
 been making that automatic step fail.
 
@@ -156,7 +156,7 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
    required instead of a local client):
 
    ```sql
-   SHOW TABLES LIKE 'gtarp_%';
+   SHOW TABLES LIKE 'palm6_%';
    ```
 
    - **If this returns zero rows** (most likely per the 7/7 handoff):
@@ -176,7 +176,7 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
    tool with that target:
 
    ```bash
-   cd /c/Users/Mgtda/Projects/Active/gtarp
+   cd /c/Users/Mgtda/Projects/Active/palm6
    MYSQL_CMD="mysql -h<PROD_DB_HOST> -P<PROD_DB_PORT> -u<PROD_DB_USER> -p<PROD_DB_PASS> <PROD_DB_NAME>" \
      bash tools/apply-migrations.sh --dry-run
    ```
@@ -240,7 +240,7 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
 
    **`0027_bounty.sql` and `0028_fightclub.sql` are new since this
    runbook was first written** — they ship the two signature features
-   (`gtarp_bounty`, `gtarp_fightclub`) built later in the same session,
+   (`palm6_bounty`, `palm6_fightclub`) built later in the same session,
    currently sitting on local branch `claude/integration-2026-07-08`,
    NOT YET merged to `main`. Prod cannot have these two applied until
    that branch is pushed — check `git log main` for the actual deployed
@@ -248,12 +248,12 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
    `0025`–`0028` are the ones LEAST likely to have ever been hand-applied
    to prod.
 
-3. After applying, re-run the `SHOW TABLES LIKE 'gtarp_%';` check — you
+3. After applying, re-run the `SHOW TABLES LIKE 'palm6_%';` check — you
    should see one table per resource that ships SQL (evidence, mdt,
    mdt_warrants, mdt_bookings, citations, legal (petitions), insurance,
    turf, grind, pumpcoin, replay, clout, flashdrop, witnesses,
    counterfeit, allowlist, security_events, staff audit_log, courier,
-   bounty, fightclub, plus `gtarp_schema_migrations` itself if you used
+   bounty, fightclub, plus `palm6_schema_migrations` itself if you used
    the script).
 
 ## Step 3 — Redeploy and verify
@@ -279,12 +279,12 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
 3. Once the server restarts, open the panel's **Console** tab and watch
    the boot log. Confirm:
    - Zero lines containing `SCRIPT ERROR`.
-   - Each `gtarp_*` resource prints its boot banner (same banners
-     verified locally all session: e.g. `gtarp_eventguard` "guarding N
+   - Each `palm6_*` resource prints its boot banner (same banners
+     verified locally all session: e.g. `palm6_eventguard` "guarding N
      events" printed exactly once — not twice, or the double-registration
-     bug is back; `gtarp_mdt` "case system ONLINE"; `gtarp_legal` "court
-     open"; `gtarp_citations` "escalation ONLINE"; `gtarp_insurance`,
-     `gtarp_discord` "announcer online"; `gtarp_devtest` prints a
+     bug is back; `palm6_mdt` "case system ONLINE"; `palm6_legal` "court
+     open"; `palm6_citations` "escalation ONLINE"; `palm6_insurance`,
+     `palm6_discord` "announcer online"; `palm6_devtest` prints a
      "disabled" line on a normal prod boot, which is correct — devtest is
      convar-gated off by default).
    - `ox_inventory_overrides` does NOT print any `FATAL` line naming a
@@ -296,7 +296,7 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
 1. Panel login → File Manager → delete the stray backtick in
    `ox_inventory/data/items.lua` (line ~79), save.
 2. Find the prod DB's real connection details (panel Databases tab or
-   console) → run `SHOW TABLES LIKE 'gtarp_%';` to see what's already
+   console) → run `SHOW TABLES LIKE 'palm6_%';` to see what's already
    there → apply the missing `sql/*.sql` files in numeric order (26
    total, list via `ls sql/*.sql | sort` in the repo — don't hand-type
    the list) via either `tools/apply-migrations.sh` (if you get a direct
@@ -308,4 +308,4 @@ DB, which was baselined on 7/3). Do not assume the state — check first.
    and check whether `Server restart triggered` is `true` — if `false`,
    restart manually from the panel Console.
 5. Watch the Console boot log for zero `SCRIPT ERROR` lines and all 25
-   `gtarp_*` resource banners present — that's the finish line.
+   `palm6_*` resource banners present — that's the finish line.

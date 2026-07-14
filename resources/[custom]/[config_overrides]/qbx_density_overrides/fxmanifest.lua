@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'EvThatGuy'
 version '0.1.0'
-description 'gtarp config override layer for qbx_density (world population / NPC + traffic density)'
+description 'palm6 config override layer for qbx_density (world population / NPC + traffic density)'
 
 -- config.lua is shared so the documented levers are readable everywhere;
 -- the values are only consumed client-side (see note below).

@@ -29,8 +29,8 @@ set onesync on
 # ---------------------------------------------------------------------------
 # Server identity
 # ---------------------------------------------------------------------------
-sv_hostname "gtarp — Qbox RP"
-sv_projectName "gtarp"
+sv_hostname "palm6 — Qbox RP"
+sv_projectName "palm6"
 sv_projectDesc "Qbox-based roleplay server"
 locale "en-US"
 load_server_icon icon.png

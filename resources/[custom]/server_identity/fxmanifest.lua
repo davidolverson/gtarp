@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'EvThatGuy'
 version '0.1.0'
-description 'gtarp server_identity - loading screen, spawn handler, Discord rich presence'
+description 'palm6 server_identity - loading screen, spawn handler, Discord rich presence'
 
 shared_scripts {
     '@ox_lib/init.lua',

@@ -1,7 +1,7 @@
 # Palm6 — Player Cars & Clothes — Design Spec
 
 **Date:** 2026-07-11
-**Repo:** `gtarp` (Palm6 custom layer)
+**Repo:** `palm6` (Palm6 custom layer)
 **Status:** Design approved (David, 2026-07-11). Terminal G owns the code; TF stood down.
 
 ## Goal
@@ -52,14 +52,14 @@ resource actually reads:
 
 ### Subsystem 1 — Vehicle dealership catalog
 
-- **`gtarp_dealership`** (new config-only resource): `shared/catalog.lua` = the canonical
+- **`palm6_dealership`** (new config-only resource): `shared/catalog.lua` = the canonical
   Palm6 catalog as pure data — a curated model list, each with a Palm6 **price tier**
   (economy / commuter / sedan / suv / sport / performance / super / motorcycle / offroad /
   utility) and a shop assignment (`pdm` standard lot vs `luxury` Bayside Prestige lot).
   Tier → price is a single table so the whole economy is tunable in one place. A boot-time
   `onResourceStart` validates the catalog (no dup models, price bounds, every tier defined)
   and prints a summary. No runtime game calls — safe.
-- **`tools/patch-vehicle-prices.sh`** (deploy-time): reads `gtarp_dealership/shared/catalog.lua`,
+- **`tools/patch-vehicle-prices.sh`** (deploy-time): reads `palm6_dealership/shared/catalog.lua`,
   opens the live `[qbx]/qbx_core/shared/vehicles.lua`, and rewrites ONLY the `price =` field
   for each curated model to `tierPrice[tier]`. Idempotent (re-run = same result), verifies
   each target model exists, prints a per-model diff, and leaves the file untouched on any
@@ -86,7 +86,7 @@ resource actually reads:
   A preset "starter outfit" saved to the player's outfit list is possible later, gated OFF
   until validated in-game.
 
-### Subsystem 3 — New-player starter kit (extends `gtarp_onboarding`)
+### Subsystem 3 — New-player starter kit (extends `palm6_onboarding`)
 
 Extend the existing guarded accept flow. After the `UNIQUE(citizenid)` INSERT succeeds and
 starter cash is granted:
@@ -101,9 +101,9 @@ starter cash is granted:
 - **Starter outfit** (config-gated, OFF by default): placeholder Bridge hook
   `Bridge.SetStarterOutfit`; left OFF until the illenium outfit-save path is validated in-game.
 - **DB**: add nullable columns `starter_vehicle_granted TINYINT(1) DEFAULT 0` and
-  `starter_outfit_granted TINYINT(1) DEFAULT 0` to `gtarp_onboarding` via a new numbered
+  `starter_outfit_granted TINYINT(1) DEFAULT 0` to `palm6_onboarding` via a new numbered
   migration (next free number after 0044). Additive, safe, idempotent guard unchanged.
-- **Bridge additions** (`gtarp_onboarding/bridge/sv_framework.lua`): `GiveStarterVehicle`,
+- **Bridge additions** (`palm6_onboarding/bridge/sv_framework.lua`): `GiveStarterVehicle`,
   `SetStarterOutfit`, `ResourceStarted('qbx_vehicles')` guard so the grant no-ops cleanly if
   the vehicle resource is absent (never crashes onboarding — cash still lands).
 
@@ -127,8 +127,8 @@ makes/badges/brands). David generates on ChatGPT and drafts to the MGT email. Sa
 
 ## Testing
 
-- **`gtarp_devtest`**: add boot-check assertions — catalog validates, tier table complete,
-  `gtarp_dealership` online, onboarding exports present. (devtest already gates boot; the
+- **`palm6_devtest`**: add boot-check assertions — catalog validates, tier table complete,
+  `palm6_dealership` online, onboarding exports present. (devtest already gates boot; the
   drugs work added similar checks.)
 - **In-game (deploy-validated, can't be automated locally):** buy a car at each lot at the
   curated price; new character receives starter car in the right garage exactly once; clothing
@@ -143,7 +143,7 @@ makes/badges/brands). David generates on ChatGPT and drafts to the MGT email. Sa
 ## Build order
 
 1. This spec.
-2. Migration `sql/00NN_onboarding_starter_grants.sql` + starter-kit code in `gtarp_onboarding`.
-3. `gtarp_dealership` catalog resource + `tools/patch-vehicle-prices.sh`.
-4. `gtarp_devtest` boot-checks.
+2. Migration `sql/00NN_onboarding_starter_grants.sql` + starter-kit code in `palm6_onboarding`.
+3. `palm6_dealership` catalog resource + `tools/patch-vehicle-prices.sh`.
+4. `palm6_devtest` boot-checks.
 5. Clothing store config/art wiring (mostly deploy-side; asset pack already delivered).

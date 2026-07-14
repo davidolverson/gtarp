@@ -1,4 +1,4 @@
-# GTA6-READINESS — porting the gtarp custom layer to GTA VI
+# GTA6-READINESS — porting the palm6 custom layer to GTA VI
 
 This document is the migration map for the day a community RP framework
 exists for GTA VI. It audits every resource in this custom layer by how
@@ -65,8 +65,8 @@ The parts with no hard dependency on the GTA V engine or framework:
   lifecycle.
 - The auto-deploy pipeline (SFTP + panel restart) — engine-independent.
 - SQL schema for **our own** tables (`courier_postings`, `audit_log`,
-  `event_violations`, `allowlist`, `gtarp_properties`, `grind_skill`,
-  `gtarp_evidence`, `gtarp_turf`, …).
+  `event_violations`, `allowlist`, `palm6_properties`, `grind_skill`,
+  `palm6_evidence`, `palm6_turf`, …).
 - All of `docs/`.
 
 ### Tier 2 — Carries with a bridge rewrite (thin adapter swap)
@@ -74,40 +74,40 @@ Resources whose **logic** is portable but that call framework or game
 APIs. The fix is the bridge pattern (Section 3): the logic stays, you
 rewrite one small adapter file per resource against the GTA VI framework.
 
-- `gtarp_courier` (bridged — reference implementation, see Section 4)
-- `gtarp_whitelist_jobs`
-- `gtarp_staff`
-- `gtarp_eventguard`
-- `gtarp_perf`
-- `gtarp_allowlist` (mostly Tier 1; the `playerConnecting` deferral hook
+- `palm6_courier` (bridged — reference implementation, see Section 4)
+- `palm6_whitelist_jobs`
+- `palm6_staff`
+- `palm6_eventguard`
+- `palm6_perf`
+- `palm6_allowlist` (mostly Tier 1; the `playerConnecting` deferral hook
   is the only runtime binding)
 - `server_base`
 - `server_identity` (loading screen is Tier 1; spawn handler is Tier 3)
-- `gtarp_grind` (loop timing, yields, prices, XP are Tier 1; gather-spot
+- `palm6_grind` (loop timing, yields, prices, XP are Tier 1; gather-spot
   and buyer coords are Tier 3 — see retune worksheet §10)
-- `gtarp_robbery` (ATM-only — timers, rewards, dispatch logic are Tier 1/2;
+- `palm6_robbery` (ATM-only — timers, rewards, dispatch logic are Tier 1/2;
   ATM coords are Tier 3 — see retune worksheet §11. Store robbery is
   recipe-owned `qbx_storerobbery`, not duplicated here)
-- `gtarp_mechanic` (repair-invoice logic, no coords of its own — targets
+- `palm6_mechanic` (repair-invoice logic, no coords of its own — targets
   whatever damaged vehicle is nearby)
-- `gtarp_evidence` (log/locker lifecycle is Tier 1/2; locker coords are
+- `palm6_evidence` (log/locker lifecycle is Tier 1/2; locker coords are
   Tier 3 — see retune worksheet §12)
-- `gtarp_turf` (zone/ownership/leaderboard lifecycle is Tier 1/2; zone
+- `palm6_turf` (zone/ownership/leaderboard lifecycle is Tier 1/2; zone
   coords are Tier 3 — see retune worksheet §13)
-- `gtarp_bounty` (contract ledger, warrant sync, escrow, and the capture
+- `palm6_bounty` (contract ledger, warrant sync, escrow, and the capture
   guard are Tier 1/2; the Bounty Board desk coords are Tier 3)
-- `gtarp_fightclub` (queue/pairing, betting pool, parimutuel payout math,
+- `palm6_fightclub` (queue/pairing, betting pool, parimutuel payout math,
   and the knockout/forfeit sweep are Tier 1/2; the Ring coords are Tier 3)
-- `gtarp_ransom` (kidnap re-validation, demand/pay ledger, expiry sweep,
+- `palm6_ransom` (kidnap re-validation, demand/pay ledger, expiry sweep,
   and the evidence/warrant hookup are Tier 1/2; the drop point coords are
   Tier 3)
-- `gtarp_onboarding` (rules-acceptance gate, starter-grant guard, and
+- `palm6_onboarding` (rules-acceptance gate, starter-grant guard, and
   tour content are entirely Tier 1/2 — no world coords at all, the whole
   resource carries with a bridge rewrite only)
-- `gtarp_gunrunning` (sale ledger, price/proximity validation, and the
-  ballistics-match hookup into `gtarp_evidence` are Tier 1/2; the dealer
+- `palm6_gunrunning` (sale ledger, price/proximity validation, and the
+  ballistics-match hookup into `palm6_evidence` are Tier 1/2; the dealer
   drop point coords are Tier 3)
-- `gtarp_chopshop` (stolen report registry, sale ledger, ownership/class
+- `palm6_chopshop` (stolen report registry, sale ledger, ownership/class
   validation, and the evidence hookup are Tier 1/2; the drop point coords
   and per-class payout table are Tier 3)
 
@@ -138,7 +138,7 @@ directly. It calls a stable internal API that we own. Each resource ships
 a `bridge/` folder that is the *only* place framework/native calls live.
 
 ```
-gtarp_<resource>/
+palm6_<resource>/
   bridge/
     sv_framework.lua   -- server: wraps qbx_core money/identity/notify
     cl_game.lua        -- client: wraps GTA natives (blips, coords, peds)
@@ -182,9 +182,9 @@ logic — it is our schema and fully portable. Only writes against the
 
 ---
 
-## 4. Reference implementation: gtarp_courier
+## 4. Reference implementation: palm6_courier
 
-`gtarp_courier` is the first resource bridged, as the pattern template.
+`palm6_courier` is the first resource bridged, as the pattern template.
 
 **Server bridge — `bridge/sv_framework.lua`** exposes `Bridge`:
 - `Bridge.GetCitizenId(src)` — stable player id
@@ -222,26 +222,26 @@ coords are known.
 
 | Resource | Dominant tier | Migration work |
 |---|---|---|
-| `gtarp_allowlist` | 1 | Re-point the connect-deferral hook; Discord call unchanged. |
-| `gtarp_eventguard` | 1/2 | Logic unchanged; update the **guarded event names** to the new framework's money/inventory events. |
+| `palm6_allowlist` | 1 | Re-point the connect-deferral hook; Discord call unchanged. |
+| `palm6_eventguard` | 1/2 | Logic unchanged; update the **guarded event names** to the new framework's money/inventory events. |
 | `sql/*` (our tables) | 1 | Apply as-is. Re-check only migrations that assume qbx `players`/`jobs` shape. |
 | deploy workflow | 1 | Repoint paths to the GTA VI server base; mechanism unchanged. |
-| `gtarp_courier` | 2 | Rewrite 2 bridge files (done as template). |
-| `gtarp_whitelist_jobs` | 2 | Bridge the `setjob`/`OnPlayerLoaded` calls; allow-table logic unchanged. |
-| `gtarp_staff` | 2 | Bridge name/identifier lookups only; webhook + audit logic unchanged (commands removed 2026-07-03 — recipe owns them). |
-| `gtarp_perf` | 2 | Bridge `GetGameTimer`; p95/p99 math unchanged. |
+| `palm6_courier` | 2 | Rewrite 2 bridge files (done as template). |
+| `palm6_whitelist_jobs` | 2 | Bridge the `setjob`/`OnPlayerLoaded` calls; allow-table logic unchanged. |
+| `palm6_staff` | 2 | Bridge name/identifier lookups only; webhook + audit logic unchanged (commands removed 2026-07-03 — recipe owns them). |
+| `palm6_perf` | 2 | Bridge `GetGameTimer`; p95/p99 math unchanged. |
 | `server_base` | 2 | Bridge `/coords` natives; banner/logger/`/serverinfo` unchanged. |
 | `server_identity` | 2/3 | Loading screen carries as-is; **respawn coords** are Tier 3. |
-| `gtarp_grind` | 2/3 | Bridge inventory/XP calls; loop timing and yields unchanged. **Gather-spot and buyer coords** (worksheet §10) are Tier 3. |
-| `gtarp_robbery` | 2/3 | ATM-only. Bridge police-dispatch/notify calls; timers and rewards unchanged. **ATM coords** (worksheet §11) are Tier 3. Store robbery is recipe-owned `qbx_storerobbery`. |
-| `gtarp_mechanic` | 2 | Bridge the framework money/job calls and repair natives; invoice logic unchanged. No coords of its own. |
-| `gtarp_evidence` | 2/3 | Bridge the framework job/stash calls; log/locker logic unchanged. **Locker coords** (worksheet §12) are Tier 3. |
-| `gtarp_turf` | 2/3 | Bridge the framework gang calls and blip natives; tag/ownership/leaderboard logic unchanged. **Zone coords** (worksheet §13) are Tier 3. |
-| `gtarp_bounty` | 2/3 | Bridge the framework money/health/position calls; contract ledger, warrant sync, and capture-guard logic unchanged. **Bounty Board desk coords** are Tier 3. |
-| `gtarp_fightclub` | 2/3 | Bridge the framework money/health/position/weapon calls; queue pairing, betting pool, knockout/forfeit sweep, and parimutuel payout math unchanged. **Ring coords** are Tier 3. |
-| `gtarp_ransom` | 2/3 | Bridge the framework money/citizen/position/metadata calls; kidnap re-validation, demand/pay ledger, expiry sweep, and evidence/warrant hookup unchanged. **Drop point coords** are Tier 3. |
-| `gtarp_gunrunning` | 2/3 | Bridge the framework money/inventory/weapon-metadata calls; sale ledger, price/proximity validation, and ballistics-match hookup unchanged. **Dealer drop point coords** are Tier 3. |
-| `gtarp_chopshop` | 2/3 | Bridge the framework money/vehicle calls; stolen-report registry, ownership/class validation, and evidence hookup unchanged. **Drop point coords + per-class payout table** are Tier 3. |
+| `palm6_grind` | 2/3 | Bridge inventory/XP calls; loop timing and yields unchanged. **Gather-spot and buyer coords** (worksheet §10) are Tier 3. |
+| `palm6_robbery` | 2/3 | ATM-only. Bridge police-dispatch/notify calls; timers and rewards unchanged. **ATM coords** (worksheet §11) are Tier 3. Store robbery is recipe-owned `qbx_storerobbery`. |
+| `palm6_mechanic` | 2 | Bridge the framework money/job calls and repair natives; invoice logic unchanged. No coords of its own. |
+| `palm6_evidence` | 2/3 | Bridge the framework job/stash calls; log/locker logic unchanged. **Locker coords** (worksheet §12) are Tier 3. |
+| `palm6_turf` | 2/3 | Bridge the framework gang calls and blip natives; tag/ownership/leaderboard logic unchanged. **Zone coords** (worksheet §13) are Tier 3. |
+| `palm6_bounty` | 2/3 | Bridge the framework money/health/position calls; contract ledger, warrant sync, and capture-guard logic unchanged. **Bounty Board desk coords** are Tier 3. |
+| `palm6_fightclub` | 2/3 | Bridge the framework money/health/position/weapon calls; queue pairing, betting pool, knockout/forfeit sweep, and parimutuel payout math unchanged. **Ring coords** are Tier 3. |
+| `palm6_ransom` | 2/3 | Bridge the framework money/citizen/position/metadata calls; kidnap re-validation, demand/pay ledger, expiry sweep, and evidence/warrant hookup unchanged. **Drop point coords** are Tier 3. |
+| `palm6_gunrunning` | 2/3 | Bridge the framework money/inventory/weapon-metadata calls; sale ledger, price/proximity validation, and ballistics-match hookup unchanged. **Dealer drop point coords** are Tier 3. |
+| `palm6_chopshop` | 2/3 | Bridge the framework money/vehicle calls; stolen-report registry, ownership/class validation, and evidence hookup unchanged. **Drop point coords + per-class payout table** are Tier 3. |
 | `[config_overrides]/qbx_economy` | 1 (values) | Re-wire to new framework's economy keys; **numbers carry**. |
 | `[config_overrides]/ox_inventory` (items) | 1 (data) | Item catalog carries; re-wire to new inventory API; shop **coords** Tier 3. |
 | `[config_overrides]/qbx_police` etc. | 3 | Re-author coords + **model names**; grade/salary **design** carries. |
@@ -283,5 +283,5 @@ A resource is "bridge-clean" when:
   vehicle/weapon model, blip id, and density lever with a blank GTA VI
   column and the exact source file to paste each value back into.
 - **First-mover vs stability.** Being early on a new engine means broken
-  natives and churn. Decide whether gtarp chases the GTA VI launch window
+  natives and churn. Decide whether palm6 chases the GTA VI launch window
   or lets the framework layer stabilise first.

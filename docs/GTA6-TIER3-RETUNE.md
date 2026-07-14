@@ -106,7 +106,7 @@ and carry.
 
 ## 7. Blip sprites & colours
 
-Source: `resources/[custom]/gtarp_courier/bridge/cl_game.lua` →
+Source: `resources/[custom]/palm6_courier/bridge/cl_game.lua` →
 `Game.CreateRouteBlip`. Blip sprite/colour ids are GTA V native ids; re-map to
 the GTA VI blip id table. (This is the only custom-authored blip — recipe jobs
 own their own blips upstream.)
@@ -133,17 +133,17 @@ GTA VI native names/behaviour and re-map the density-type keys if they change.
 
 ## 9. Housing — removed (duplicated recipe-provided `qbx_properties`)
 
-`gtarp_housing` was reverted before merge: the recipe's own `qbx_properties`
+`palm6_housing` was reverted before merge: the recipe's own `qbx_properties`
 already does buy/rent/keyholders/stash/enter-exit at the same real-world
 locations (Del Perro Heights, Integrity Way), plus furniture decorating and
 a realtor-driven property-creation flow (`/createproperty`) that
-`gtarp_housing` didn't have. Same pattern as the `gtarp_civilian_runs`
+`palm6_housing` didn't have. Same pattern as the `palm6_civilian_runs`
 revert. Housing is out of scope for this worksheet — whatever GTA VI
 framework re-authors `qbx_properties` owns it.
 
 ## 10. Grind — gather spots & buyers
 
-Source: `resources/[custom]/gtarp_grind/shared/config.lua`
+Source: `resources/[custom]/palm6_grind/shared/config.lua`
 (`Config.Activities[*].spots` and `.sell.coords`). Tools/yields/prices/XP are
 Tier 1; only coords are Tier 3.
 
@@ -164,7 +164,7 @@ Tier 1; only coords are Tier 3.
 
 ## 11. Robbery — ATMs
 
-Source: `resources/[custom]/gtarp_robbery/shared/config.lua`
+Source: `resources/[custom]/palm6_robbery/shared/config.lua`
 (`Config.ATMs.locations`). Reward/timer/dispatch are Tier 1; only coords are
 Tier 3. Store-register robbery is recipe-owned (`qbx_storerobbery`) and bank
 vault heists are recipe-owned (`qbx_bankrobbery`) — neither is tracked here,
@@ -178,7 +178,7 @@ they belong to whatever GTA VI framework re-authors the recipe.
 
 ## 12. Evidence — locker
 
-Source: `resources/[custom]/gtarp_evidence/shared/config.lua`
+Source: `resources/[custom]/palm6_evidence/shared/config.lua`
 (`Config.LockerCoords`). Log/locker lifecycle is Tier 1; only the coord is
 Tier 3. Matches `qbx_police`'s own Mission Row station coords
 (`config/shared.lua` `locations.duty[1]`) — keep the two in sync if either
@@ -190,7 +190,7 @@ changes.
 
 ## 13. Turf — gang zones
 
-Source: `resources/[custom]/gtarp_turf/shared/config.lua` (`Config.Zones`).
+Source: `resources/[custom]/palm6_turf/shared/config.lua` (`Config.Zones`).
 Tag/ownership/leaderboard lifecycle is Tier 1; only coords are Tier 3.
 These reuse already-validated points from elsewhere in this worksheet
 (spawn §1, shops §4, robbery §11) rather than new coords — retune those

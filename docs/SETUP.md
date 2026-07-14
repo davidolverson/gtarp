@@ -1,4 +1,4 @@
-# SETUP — deploying gtarp on a fresh box
+# SETUP — deploying palm6 on a fresh box
 
 ## 1. Provision FXServer + txAdmin
 
@@ -23,13 +23,13 @@ From a checkout of this repo:
 
 1. Copy the **entire** `resources/[custom]/` tree into the live server's
    `resources/` — all `[config_overrides]/*` override resources plus the
-   `gtarp_*`, `server_identity`, and `server_base` resources, each with its
+   `palm6_*`, `server_identity`, and `server_base` resources, each with its
    `bridge/` folder. `custom.cfg`'s `ensure` list is the authoritative set of
    what must be present.
 2. Copy `custom.cfg` next to the recipe-generated `server.cfg`.
 3. Append `exec custom.cfg` to the bottom of `server.cfg`. This is the
    single hook the custom layer needs — `custom.cfg` itself `ensure`s every
-   override resource and every `gtarp_*` resource in dependency order, then
+   override resource and every `palm6_*` resource in dependency order, then
    `server_identity` and `server_base`, and grants the command ACEs.
 4. Diff your `server.cfg` against `server.cfg.example`. Reconcile
    `sv_maxclients`, `sv_endpointprivacy`, `sv_enforceGameBuild`, and
@@ -50,9 +50,9 @@ Secrets in txAdmin's secret store, never in this repo:
 - `sv_licenseKey`
 - `steam_webApiKey`
 - the `oxmysql` connection string
-- `gtarp:staff_webhook` — Discord webhook for staff actions (Phase 7)
-- `gtarp:discord_bot_token` and `gtarp:discord_guild_id` — used by
-  `gtarp_allowlist` (Phase 9) to read Discord role membership
+- `palm6:staff_webhook` — Discord webhook for staff actions (Phase 7)
+- `palm6:discord_bot_token` and `palm6:discord_guild_id` — used by
+  `palm6_allowlist` (Phase 9) to read Discord role membership
 
 Edit in the repo (not secrets, but per-environment):
 
@@ -64,7 +64,7 @@ Edit in the repo (not secrets, but per-environment):
 
 Start the server. Verify:
 
-1. Dark gtarp loading screen appears on join.
+1. Dark palm6 loading screen appears on join.
 2. Console banner: `server_base started — version 0.1.0`.
 3. `/serverinfo` responds in chat.
 4. Welcome notification fires once the character finishes loading

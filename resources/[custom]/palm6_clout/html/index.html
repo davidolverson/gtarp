@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>clout.live</title>
+<style>
+  /* ------------------------------------------------------------------
+     palm6_clout NUI — self-contained (no CDNs, no external fonts, zero
+     network calls). A pure HUD overlay: never takes focus, sends nothing
+     back. The "audience" is generated right here from template pools —
+     the only real number is the viewer count the server pushes.
+     ------------------------------------------------------------------ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden;
+    font-family: 'Segoe UI', 'Arial', sans-serif; user-select: none; }
+
+  #hud { position: absolute; top: 14vh; right: 18px; width: 300px;
+    display: flex; flex-direction: column; gap: 8px; }
+  #hud.hidden { display: none; }
+
+  /* live pill + viewers */
+  .card { background: rgba(10, 10, 14, 0.72); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; backdrop-filter: blur(2px); }
+  #status { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  .live { display: flex; align-items: center; gap: 6px; background: #e91916;
+    color: #fff; font-weight: 800; font-size: 11px; letter-spacing: 1.5px;
+    padding: 3px 9px; border-radius: 4px; }
+  .live .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff;
+    animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  #viewers { font-size: 20px; font-weight: 700; color: #fff; margin-left: auto;
+    display: flex; align-items: baseline; gap: 6px; }
+  #viewers .eye { font-size: 13px; color: #ff5c5c; }
+  #trend { font-size: 12px; width: 12px; }
+  #trend.up { color: #2bd576; } #trend.down { color: #ff5c5c; } #trend.flat { color: #8a8f98; }
+  #uptime { font-size: 11px; color: #9aa0aa; font-variant-numeric: tabular-nums; }
+
+  /* chat */
+  #chat { height: 240px; padding: 8px 10px; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end; }
+  .msg { font-size: 12px; line-height: 1.45; color: #d7dae0; margin-top: 3px;
+    animation: rise 0.18s ease-out; word-wrap: break-word; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg .u { font-weight: 700; }
+  .msg.dono { background: rgba(43, 213, 118, 0.14); border-left: 3px solid #2bd576;
+    border-radius: 4px; padding: 4px 7px; color: #d9ffe9; }
+  .msg.sys { background: rgba(255, 196, 77, 0.12); border-left: 3px solid #ffc44d;
+    border-radius: 4px; padding: 4px 7px; color: #ffe9bd; }
+
+  /* milestone banner */
+  #banner { position: absolute; top: -9999px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,10,14,0.85); border: 1px solid #ffc44d; border-radius: 10px;
+    padding: 14px 26px; text-align: center; color: #ffe9bd; }
+  #banner.show { top: 22vh; animation: bannerIn 0.25s ease-out; }
+  @keyframes bannerIn { from { opacity: 0; transform: translateX(-50%) scale(0.92); }
+    to { opacity: 1; transform: translateX(-50%) scale(1); } }
+  #banner h1 { font-size: 16px; letter-spacing: 1px; color: #ffc44d; }
+  #banner p { font-size: 12px; margin-top: 4px; }
+
+  /* end-of-stream summary */
+  #summary { position: absolute; top: -9999px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,10,14,0.88); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px; padding: 16px 30px; text-align: center; color: #d7dae0; }
+  #summary.show { top: 22vh; animation: bannerIn 0.25s ease-out; }
+  #summary h1 { font-size: 14px; letter-spacing: 2px; color: #ff5c5c; }
+  #summary p { font-size: 12px; margin-top: 6px; line-height: 1.6; }
+  #summary b { color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="hud" class="hidden">
+  <div class="card" id="status">
+    <div class="live"><span class="dot"></span>LIVE</div>
+    <div id="uptime">00:00</div>
+    <div id="viewers"><span class="eye">&#9679;</span><span id="vnum">0</span><span id="trend" class="flat">&#9644;</span></div>
+  </div>
+  <div class="card" id="chat"></div>
+</div>
+
+<div id="banner"><h1 id="b-title">BRAND DEAL UNLOCKED</h1><p id="b-sub"></p></div>
+<div id="summary"><h1>STREAM ENDED</h1><p id="s-body"></p></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- template audience (all local — zero external calls) ---------------
+  var USERS = [
+    'xX_Sn1per_Xx','GrindsetGoblin','NPC_Energy','ClipFarmer99','BasedBecky',
+    'ratio_machine','SendItSteve','MoistCritikal2','YourMomsFavorite','CopWatcher24',
+    'BlockBaby400','TouchGrassAndy','W_Rizzler','SkillIssueSam','LilCapper',
+    'GigaChadwick','PoorCashApp','The5thStar','AltF4Gaming','MicMuted','LethalLarry',
+    'OGKushLord','DrDonowitz','FreeVbucks_org','glizzy_gladiator','side_eye_sally',
+    'chat_lurker_9','vpn_andy','mod_wannabe','1080pEnjoyer','downbad_dan',
+    'aura_farmer','no_mic_nick','TTVBackseat','emote_only_erin','fed_watcher'
+  ];
+  var COLORS = ['#ff7a7a','#7ab8ff','#8aff9e','#ffd47a','#d59aff','#7affe8','#ff9ad5','#c2ff7a'];
+  var POOLS = {
+    idle: [
+      'yo chat','anything gonna happen or','W stream','this is content?','lurking',
+      'bro is just walking around','where the drama at','GO SOMEWHERE','sooo quiet',
+      'first time here, what is this','average day in the city fr','somebody call his opps',
+      'mods wake up','chat dead as this street','L content rn ngl','go to the block!!',
+      'he streams every day and nothing happens','vibes tho','music? oh wait'
+    ],
+    hype: [
+      'YOOO','it\'s heating up','CLIP THAT','chat we eating','here we go',
+      'W W W W','crowd pulling up','this is why i sub','LETS GOOO','something bout to happen',
+      'told you to stay in this stream','viewers incoming','share the stream NOW'
+    ],
+    gunfight: [
+      'SHOTS FIRED','GET DOWN','CLIP IT CLIP IT CLIP IT','WHO IS SHOOTING','BRO RUN??',
+      'HE\'S STILL FILMING LMAOO','this man has no fear','average tuesday','CONTENT',
+      'do NOT drop the phone','somebody is NOT ok','MOVE CAMERAMAN','cameraman never dies'
+    ],
+    chase: [
+      'CODE 3 CODE 3','HE\'S GONE','THE UNITS OMG','do not catch a charge on live',
+      'FASTER','this VOD is evidence lil bro','delete the vod after LOL','pull over??',
+      'GTA in real life fr','chat call his lawyer','he got the pit maneuver coming'
+    ],
+    death: [
+      'NOOOO','F','HE\'S DOWN','CLIP THE WHOLE THING','stream snipers won',
+      'RIP THE STREAM','someone pick up the phone','F in the chat','that\'s on the VOD forever',
+      'medics where','it was a good run','unalived on live smh'
+    ],
+    dono: [
+      'take my money king','for the content','get yourself something nice',
+      'best streamer in the city','put this toward a vest fr','no reason, W stream',
+      'from your biggest fan','buy better opps','this is rent money btw','keep filming the block'
+    ]
+  };
+  var EMOTES = ['🔥','💀','😭','💥','🙏','👀','😱','🤣','❤️','📸'];
+
+  var hud = document.getElementById('hud');
+  var chat = document.getElementById('chat');
+  var vnum = document.getElementById('vnum');
+  var trendEl = document.getElementById('trend');
+  var uptimeEl = document.getElementById('uptime');
+  var banner = document.getElementById('banner');
+  var bSub = document.getElementById('b-sub');
+  var summary = document.getElementById('summary');
+  var sBody = document.getElementById('s-body');
+
+  var open = false, viewers = 0, mood = 'idle', startedAt = 0;
+  var shownViewers = 0, bannerTimer = null, summaryTimer = null;
+
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+  function pushMsg(html, cls) {
+    var el = document.createElement('div');
+    el.className = 'msg' + (cls ? ' ' + cls : '');
+    el.innerHTML = html;
+    chat.appendChild(el);
+    while (chat.children.length > 14) chat.removeChild(chat.firstChild);
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function chatLine(pool) {
+    var u = pick(USERS), c = pick(COLORS), m = pick(POOLS[pool] || POOLS.idle);
+    if (Math.random() < 0.35) m += ' ' + pick(EMOTES);
+    if (Math.random() < 0.12) m = m.toUpperCase();
+    pushMsg('<span class="u" style="color:' + c + '">' + esc(u) + ':</span> ' + esc(m));
+  }
+
+  // Chat velocity scales with the audience: bigger rooms talk more.
+  function burst(pool, extra) {
+    var n = 1 + (extra || 0);
+    if (viewers > 50) n += 1;
+    if (viewers > 200) n += 1;
+    for (var i = 0; i < n; i++) setTimeout(function () { chatLine(pool); }, i * 240);
+  }
+
+  // Idle drip so the room never looks frozen between server ticks.
+  setInterval(function () {
+    if (!open) return;
+    var p = Math.min(0.75, 0.18 + viewers / 400);
+    if (Math.random() < p) chatLine(mood);
+  }, 1700);
+
+  // Viewer counter eases toward the server number instead of teleporting.
+  setInterval(function () {
+    if (!open) return;
+    if (shownViewers !== viewers) {
+      var step = Math.max(1, Math.floor(Math.abs(viewers - shownViewers) / 4));
+      shownViewers += (viewers > shownViewers ? step : -step);
+      if (Math.abs(viewers - shownViewers) < step) shownViewers = viewers;
+      vnum.textContent = shownViewers.toLocaleString();
+    }
+  }, 120);
+
+  setInterval(function () {
+    if (!open || !startedAt) return;
+    var s = Math.floor((Date.now() - startedAt) / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    uptimeEl.textContent = (h > 0 ? h + ':' : '') +
+      String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+  }, 1000);
+
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.action === 'open') {
+      open = true; startedAt = Date.now();
+      viewers = d.viewers || 0; shownViewers = 0; mood = 'idle';
+      chat.innerHTML = ''; summary.className = '';
+      hud.className = '';
+      pushMsg('stream started — be good on camera, everything is on the VOD', 'sys');
+      burst('idle', 1);
+    } else if (d.action === 'tick') {
+      viewers = d.viewers || 0;
+      mood = d.mood || 'idle';
+      trendEl.className = d.trend || 'flat';
+      trendEl.innerHTML = d.trend === 'up' ? '&#9650;' : d.trend === 'down' ? '&#9660;' : '&#9644;';
+      if (mood !== 'idle') burst(mood, mood === 'death' ? 3 : 1);
+    } else if (d.action === 'donation') {
+      var nm = esc(d.name || 'anon'), amt = Number(d.amount || 0);
+      pushMsg('<span class="u">' + nm + '</span> donated <b>$' + amt.toLocaleString() +
+        '</b> — ' + esc(pick(POOLS.dono)), 'dono');
+    } else if (d.action === 'milestone') {
+      pushMsg('<b>' + Number(d.viewers || 0).toLocaleString() +
+        ' VIEWERS</b> — brand deal unlocked: ' + esc(d.label || ''), 'sys');
+      bSub.textContent = d.label || '';
+      banner.className = 'show';
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(function () { banner.className = ''; }, 5000);
+    } else if (d.action === 'ended') {
+      open = false;
+      hud.className = 'hidden';
+      banner.className = '';
+      var secs = Number(d.seconds || 0);
+      var mins = Math.floor(secs / 60);
+      sBody.innerHTML = 'Peak <b>' + Number(d.peak || 0).toLocaleString() + '</b> viewers · ' +
+        '<b>' + mins + 'm</b> live · <b>$' + Number(d.donations || 0).toLocaleString() +
+        '</b> in donations';
+      summary.className = 'show';
+      if (summaryTimer) clearTimeout(summaryTimer);
+      summaryTimer = setTimeout(function () { summary.className = ''; }, 6000);
+    } else if (d.action === 'hide') {
+      open = false;
+      hud.className = 'hidden';
+      banner.className = '';
+      summary.className = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>

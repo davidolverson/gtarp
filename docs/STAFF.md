@@ -1,4 +1,4 @@
-# STAFF — gtarp staff matrix
+# STAFF — palm6 staff matrix
 
 This document describes the staff hierarchy, the ACE groups each role
 belongs to, and the commands each can run. Source of truth: ACE grants in
@@ -20,7 +20,7 @@ recipe-generated `server.cfg`.
 
 All player-management commands are the RECIPE's own (qbx_core `/tp` `/tpm`,
 qbx_medical `/revive` `/heal`, qbx_adminmenu's `/admin` menu for
-goto/bring/spectate/etc.) — gtarp_staff's duplicate registrations were
+goto/bring/spectate/etc.) — palm6_staff's duplicate registrations were
 removed 2026-07-03 because they collided with and overrode the recipe
 handlers. The recipe restricts these to `group.admin`; the `custom.cfg` ACE
 matrix is what extends `/tp` `/tpm` `/revive` `/heal` to `group.mod`.
@@ -53,11 +53,11 @@ accidentally strip lower-tier access.
 
 ## Audit log
 
-Staff/security actions logged through `exports.gtarp_staff:Log(...)`
+Staff/security actions logged through `exports.palm6_staff:Log(...)`
 (allowlist denials, eventguard violations, pumpcoin rug reveals, …) are
 written to the `audit_log` table
 (`sql/0007_staff_log.sql`) and posted to the Discord webhook configured
-via the `gtarp:staff_webhook` convar. The webhook URL is a secret-grade
+via the `palm6:staff_webhook` convar. The webhook URL is a secret-grade
 value and must be set in txAdmin's secret store, never committed.
 
 Querying recent staff activity:

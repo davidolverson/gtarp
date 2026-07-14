@@ -1,9 +1,9 @@
-# DEVELOPMENT — conventions for the gtarp custom layer
+# DEVELOPMENT — conventions for the palm6 custom layer
 
 ## Scope
 
 This repo holds **only** custom code, config overrides, SQL migrations, and
-docs for the gtarp server. The Qbox framework and FXServer artifacts are
+docs for the palm6 server. The Qbox framework and FXServer artifacts are
 provisioned by the txAdmin Qbox recipe and live outside version control. If
 something belongs to the framework, do not vendor it here — extend it via a
 new resource under `resources/[custom]/` instead.
@@ -32,8 +32,8 @@ Do not nest deeper than that.
 
 ## Resource naming
 
-- Lowercase, snake_case: `server_base`, `gtarp_hud`, `gtarp_jobs_courier`.
-- Prefix server-specific resources with `gtarp_` so they sort together and
+- Lowercase, snake_case: `server_base`, `palm6_hud`, `palm6_jobs_courier`.
+- Prefix server-specific resources with `palm6_` so they sort together and
   are unambiguous next to `qbx_*` and `ox_*` resources.
 - The single exception is `server_base`, which is the template/bootstrap
   resource and is intentionally unprefixed.

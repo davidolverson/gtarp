@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pump.exchange</title>
+<style>
+  /* ------------------------------------------------------------------
+     palm6_pumpcoin NUI — self-contained (no CDNs, no external fonts).
+     Dark degen-terminal look; renders as a centered overlay in game.
+     ------------------------------------------------------------------ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden;
+    font-family: 'Consolas', 'Courier New', monospace; user-select: none; }
+
+  #app { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #app.hidden { display: none; }
+
+  .panel {
+    width: 1060px; max-width: 96vw; height: 640px; max-height: 92vh;
+    background: #0b0e11; border: 1px solid #1f2a33; border-radius: 10px;
+    box-shadow: 0 0 60px rgba(0, 255, 156, 0.08), 0 20px 60px rgba(0,0,0,0.7);
+    display: flex; flex-direction: column; color: #cfd8dc; overflow: hidden;
+  }
+
+  /* header */
+  .hdr { display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+    border-bottom: 1px solid #1f2a33; background: #0e1216; }
+  .hdr .logo { font-size: 16px; font-weight: bold; color: #00ff9c; letter-spacing: 1px; }
+  .hdr .logo span { color: #5c6b73; }
+  .hdr .bank { margin-left: auto; font-size: 13px; color: #9fb3bd; }
+  .hdr .bank b { color: #e8f5e9; }
+  .btn { background: #14211c; color: #00ff9c; border: 1px solid #1e4034; border-radius: 5px;
+    padding: 7px 14px; font-family: inherit; font-size: 12px; cursor: pointer; letter-spacing: 0.5px; }
+  .btn:hover { background: #1a2f26; }
+  .btn.warn { color: #ff5c5c; border-color: #4a1e1e; background: #211414; }
+  .btn.warn:hover { background: #2f1a1a; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.x { padding: 7px 11px; }
+
+  /* body */
+  .body { display: flex; flex: 1; min-height: 0; }
+
+  /* coin list */
+  .list { width: 46%; border-right: 1px solid #1f2a33; overflow-y: auto; }
+  .list::-webkit-scrollbar { width: 6px; }
+  .list::-webkit-scrollbar-thumb { background: #22313c; border-radius: 3px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid #141b21; cursor: pointer; }
+  .row:hover { background: #10161b; }
+  .row.sel { background: #10201a; box-shadow: inset 3px 0 0 #00ff9c; }
+  .row .emo { font-size: 22px; width: 30px; text-align: center; }
+  .row .mid { flex: 1; min-width: 0; }
+  .row .tick { font-size: 14px; font-weight: bold; color: #e8f5e9; }
+  .row .nm { font-size: 11px; color: #5c6b73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .right { text-align: right; }
+  .row .pr { font-size: 14px; color: #e8f5e9; }
+  .row .mult { font-size: 11px; }
+  .up { color: #00ff9c; } .down { color: #ff5c5c; } .flat { color: #9fb3bd; }
+  .badges { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+  .badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.5px; }
+  .b-ver { background: #10301f; color: #00ff9c; border: 1px solid #1e4034; }
+  .b-rug { background: #3a1010; color: #ff5c5c; border: 1px solid #4a1e1e; }
+  .b-shill { background: #33270d; color: #ffc44d; border: 1px solid #4d3a14; }
+  .b-mine { background: #101c30; color: #6db3ff; border: 1px solid #1e2f4a; }
+  .b-hold { background: #1a1a2b; color: #b39dff; border: 1px solid #2c2c45; }
+  .empty { padding: 40px 20px; text-align: center; color: #5c6b73; font-size: 13px; line-height: 1.8; }
+
+  /* detail */
+  .detail { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .d-head { padding: 14px 18px 8px; }
+  .d-title { font-size: 20px; color: #e8f5e9; font-weight: bold; }
+  .d-title small { color: #5c6b73; font-weight: normal; font-size: 12px; margin-left: 8px; }
+  .d-sub { font-size: 11px; color: #5c6b73; margin-top: 4px; line-height: 1.6; }
+  .d-sub b { color: #9fb3bd; }
+  .d-price { font-size: 26px; color: #00ff9c; margin-top: 6px; }
+  .d-price.rugged { color: #ff5c5c; }
+  canvas { display: block; width: 100%; height: 220px; }
+  .chart-wrap { padding: 6px 18px; }
+  .chart-box { background: #0e1216; border: 1px solid #1f2a33; border-radius: 6px; overflow: hidden; }
+
+  /* trade controls */
+  .trade { padding: 10px 18px 14px; display: flex; gap: 10px; align-items: center; }
+  .trade input { width: 130px; background: #0e1216; border: 1px solid #1f2a33; color: #e8f5e9;
+    border-radius: 5px; padding: 8px 10px; font-family: inherit; font-size: 13px; }
+  .trade input:focus { outline: none; border-color: #1e4034; }
+  .est { font-size: 11px; color: #5c6b73; margin-left: auto; text-align: right; line-height: 1.5; }
+
+  .foot { padding: 8px 16px; border-top: 1px solid #1f2a33; font-size: 10px; color: #44525a;
+    display: flex; justify-content: space-between; }
+
+  /* mint modal */
+  #mint { position: absolute; inset: 0; background: rgba(4, 6, 8, 0.75);
+    display: flex; align-items: center; justify-content: center; }
+  #mint.hidden { display: none; }
+  .m-card { width: 440px; background: #0b0e11; border: 1px solid #1f2a33; border-radius: 10px; padding: 20px; }
+  .m-card h2 { font-size: 15px; color: #00ff9c; margin-bottom: 4px; letter-spacing: 1px; }
+  .m-card p { font-size: 11px; color: #5c6b73; margin-bottom: 14px; line-height: 1.6; }
+  .m-card label { display: block; font-size: 10px; color: #9fb3bd; margin: 10px 0 4px; letter-spacing: 1px; }
+  .m-card input { width: 100%; background: #0e1216; border: 1px solid #1f2a33; color: #e8f5e9;
+    border-radius: 5px; padding: 9px 10px; font-family: inherit; font-size: 13px; }
+  .m-card input:focus { outline: none; border-color: #1e4034; }
+  .emojis { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .emojis span { font-size: 18px; padding: 4px 7px; border: 1px solid #1f2a33; border-radius: 5px;
+    cursor: pointer; background: #0e1216; }
+  .emojis span.sel { border-color: #00ff9c; background: #10201a; }
+  .m-actions { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div id="app" class="hidden">
+  <div class="panel">
+    <div class="hdr">
+      <div class="logo">💊 PUMP<span>.</span>EXCHANGE <span>// back alley terminal</span></div>
+      <div class="bank">BANK <b id="bank">$0</b></div>
+      <button class="btn" id="btn-mint">+ LAUNCH A COIN</button>
+      <button class="btn" id="btn-refresh">↻</button>
+      <button class="btn warn x" id="btn-close">✕</button>
+    </div>
+
+    <div class="body">
+      <div class="list" id="list"></div>
+
+      <div class="detail" id="detail">
+        <div class="empty" id="d-empty">select a coin from the board<br>·<br>every candle on this chart is another player's money</div>
+        <div id="d-content" style="display:none">
+          <div class="d-head">
+            <div class="d-title"><span id="d-emoji"></span> $<span id="d-ticker"></span><small id="d-name"></small></div>
+            <div class="d-sub">
+              dev: <b id="d-creator"></b> · holders: <b id="d-holders"></b> ·
+              supply: <b id="d-supply"></b> · delists in: <b id="d-expiry"></b>
+            </div>
+            <div class="d-price" id="d-price"></div>
+          </div>
+          <div class="chart-wrap"><div class="chart-box"><canvas id="chart" width="560" height="220"></canvas></div></div>
+          <div class="trade">
+            <input type="number" id="units" min="1" step="1" placeholder="units" value="10">
+            <button class="btn" id="btn-buy">BUY</button>
+            <button class="btn warn" id="btn-sell">SELL</button>
+            <div class="est" id="est"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span id="foot-left">2% exchange fee on every fill · price is a bonding curve of real player buys · DYOR, anon</span>
+      <span>coins self-destruct after <span id="foot-days">7</span> days · ESC to close</span>
+    </div>
+  </div>
+
+  <div id="mint" class="hidden">
+    <div class="m-card">
+      <h2>LAUNCH A COIN</h2>
+      <p>Costs <b id="m-cost">$5000</b>. You get a hidden dev wallet of <b id="m-alloc">250</b> units.
+      Nobody will know it's yours — unless you rug.</p>
+      <label>NAME</label>
+      <input id="m-name" maxlength="24" placeholder="Grove Street Inu">
+      <label>TICKER</label>
+      <input id="m-ticker" maxlength="6" placeholder="GROVE" style="text-transform:uppercase">
+      <label>EMOJI</label>
+      <div class="emojis" id="m-emojis"></div>
+      <div class="m-actions">
+        <button class="btn warn" id="m-cancel">CANCEL</button>
+        <button class="btn" id="m-go">MINT IT</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var RES = (typeof GetParentResourceName === 'function') ? GetParentResourceName() : 'palm6_pumpcoin';
+
+  var state = {
+    coins: [], bank: 0, selected: null, chartPoints: [],
+    ui: { mintCost: 5000, feePct: 0.02, maxUnits: 5000, devAlloc: 250, lifetimeDays: 7,
+          emojis: [], nameMax: 24, tickerMax: 6 },
+    pickedEmoji: null
+  };
+
+  function post(cb, data) {
+    fetch('https://' + RES + '/' + cb, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data || {})
+    }).catch(function () {});
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function fmtMoney(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+  function fmtPrice(n) { return '$' + Number(n).toFixed(2); }
+  function fmtDur(sec) {
+    if (sec <= 0) return 'now';
+    var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm';
+  }
+
+  // ----- coin list ---------------------------------------------------------
+  function badge(cls, txt) {
+    var b = document.createElement('span');
+    b.className = 'badge ' + cls; b.textContent = txt; return b;
+  }
+
+  function renderList() {
+    var list = $('list');
+    list.textContent = '';
+    if (!state.coins.length) {
+      var e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = 'no coins on the board — be the first dev. or the first exit liquidity.';
+      list.appendChild(e);
+      return;
+    }
+    state.coins.forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'row' + (state.selected === c.id ? ' sel' : '');
+      row.addEventListener('click', function () { select(c.id); });
+
+      var emo = document.createElement('div'); emo.className = 'emo'; emo.textContent = c.emoji;
+
+      var mid = document.createElement('div'); mid.className = 'mid';
+      var tick = document.createElement('div'); tick.className = 'tick'; tick.textContent = '$' + c.ticker;
+      var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = c.name + ' · dev ' + c.creator;
+      var badges = document.createElement('div'); badges.className = 'badges';
+      if (c.status === 'rugged') badges.appendChild(badge('b-rug', 'RUGGED'));
+      if (c.verified) badges.appendChild(badge('b-ver', 'VERIFIED'));
+      if (c.shill) badges.appendChild(badge('b-shill', 'SHILL LIVE'));
+      if (c.mine) badges.appendChild(badge('b-mine', 'YOURS'));
+      if (c.myUnits > 0) badges.appendChild(badge('b-hold', 'HOLD ' + c.myUnits));
+      mid.appendChild(tick); mid.appendChild(nm);
+      if (badges.children.length) mid.appendChild(badges);
+
+      var right = document.createElement('div'); right.className = 'right';
+      var pr = document.createElement('div'); pr.className = 'pr'; pr.textContent = fmtPrice(c.price);
+      var mult = document.createElement('div');
+      var x = c.launchPrice > 0 ? c.price / c.launchPrice : 1;
+      mult.className = 'mult ' + (x > 1.01 ? 'up' : (x < 0.99 ? 'down' : 'flat'));
+      mult.textContent = '×' + x.toFixed(2) + ' since launch';
+      right.appendChild(pr); right.appendChild(mult);
+
+      row.appendChild(emo); row.appendChild(mid); row.appendChild(right);
+      list.appendChild(row);
+    });
+  }
+
+  // ----- detail ------------------------------------------------------------
+  function coinById(id) {
+    for (var i = 0; i < state.coins.length; i++) if (state.coins[i].id === id) return state.coins[i];
+    return null;
+  }
+
+  function select(id) {
+    state.selected = id;
+    state.chartPoints = [];
+    renderList(); renderDetail();
+    post('chart', { coinId: id });
+  }
+
+  function renderDetail() {
+    var c = coinById(state.selected);
+    if (!c) {
+      $('d-empty').style.display = '';
+      $('d-content').style.display = 'none';
+      return;
+    }
+    $('d-empty').style.display = 'none';
+    $('d-content').style.display = '';
+    $('d-emoji').textContent = c.emoji;
+    $('d-ticker').textContent = c.ticker;
+    $('d-name').textContent = c.name;
+    $('d-creator').textContent = c.creator + (c.verified ? ' ✓' : '');
+    $('d-holders').textContent = c.holders;
+    $('d-supply').textContent = c.supply.toLocaleString('en-US');
+    $('d-expiry').textContent = fmtDur(c.expiresInSec);
+    var priceEl = $('d-price');
+    priceEl.textContent = fmtPrice(c.price) + (c.status === 'rugged' ? '  ☠ RUGGED — sells only' : '');
+    priceEl.className = 'd-price' + (c.status === 'rugged' ? ' rugged' : '');
+    $('btn-buy').disabled = c.status !== 'live';
+    $('btn-sell').disabled = c.myUnits <= 0;
+    updateEstimate();
+    drawChart();
+  }
+
+  function updateEstimate() {
+    var c = coinById(state.selected);
+    var el = $('est');
+    if (!c) { el.textContent = ''; return; }
+    var u = parseInt($('units').value, 10) || 0;
+    var approx = u * c.price * (1 + state.ui.feePct);
+    el.textContent = '≈ ' + fmtMoney(approx) + ' at spot + fee — final fill priced server-side, big orders move the curve. You hold ' + (c.myUnits || 0) + '.';
+  }
+
+  // ----- chart -------------------------------------------------------------
+  function drawChart() {
+    var cv = $('chart'), ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0e1216'; ctx.fillRect(0, 0, W, H);
+
+    var pts = state.chartPoints;
+    ctx.font = '11px Consolas, monospace';
+    // An empty Lua table crosses the NUI boundary as {} (an object with no
+    // .length), not [] — guard on Array.isArray or pts.forEach throws below.
+    if (!Array.isArray(pts) || pts.length < 2) {
+      ctx.fillStyle = '#44525a';
+      ctx.fillText(Array.isArray(pts) && pts.length === 1 ? 'one fill on the tape — chart needs two' : 'no tape yet', 20, H / 2);
+      return;
+    }
+
+    var pad = { l: 46, r: 12, t: 14, b: 18 };
+    var min = Infinity, max = -Infinity;
+    pts.forEach(function (p) { if (p.p < min) min = p.p; if (p.p > max) max = p.p; });
+    if (max - min < 0.01) { max += 0.5; min -= 0.5; }
+    var span = max - min;
+
+    var X = function (i) { return pad.l + (i / (pts.length - 1)) * (W - pad.l - pad.r); };
+    var Y = function (v) { return pad.t + (1 - (v - min) / span) * (H - pad.t - pad.b); };
+
+    // gridlines + labels
+    ctx.strokeStyle = '#16202a'; ctx.fillStyle = '#44525a';
+    for (var g = 0; g <= 3; g++) {
+      var v = min + (span * g) / 3, y = Y(v);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+      ctx.fillText('$' + v.toFixed(2), 4, y + 3);
+    }
+
+    var last = pts[pts.length - 1].p, first = pts[0].p;
+    var lineCol = last >= first ? '#00ff9c' : '#ff5c5c';
+
+    // fill
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(pts[0].p));
+    pts.forEach(function (p, i) { ctx.lineTo(X(i), Y(p.p)); });
+    ctx.lineTo(X(pts.length - 1), H - pad.b); ctx.lineTo(X(0), H - pad.b); ctx.closePath();
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, last >= first ? 'rgba(0,255,156,0.18)' : 'rgba(255,92,92,0.18)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad; ctx.fill();
+
+    // line
+    ctx.beginPath();
+    pts.forEach(function (p, i) { i === 0 ? ctx.moveTo(X(i), Y(p.p)) : ctx.lineTo(X(i), Y(p.p)); });
+    ctx.strokeStyle = lineCol; ctx.lineWidth = 2; ctx.stroke();
+
+    // rug markers
+    pts.forEach(function (p, i) {
+      if (p.s === 'rug') {
+        ctx.fillStyle = '#ff5c5c';
+        ctx.beginPath(); ctx.arc(X(i), Y(p.p), 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillText('RUG', Math.min(X(i) + 6, W - 36), Y(p.p) - 6);
+      }
+    });
+  }
+
+  // ----- mint modal --------------------------------------------------------
+  function openMint() {
+    $('m-cost').textContent = fmtMoney(state.ui.mintCost);
+    $('m-alloc').textContent = state.ui.devAlloc;
+    $('m-name').value = ''; $('m-ticker').value = '';
+    $('m-name').maxLength = state.ui.nameMax;
+    $('m-ticker').maxLength = state.ui.tickerMax;
+    state.pickedEmoji = null;
+    var box = $('m-emojis'); box.textContent = '';
+    (state.ui.emojis || []).forEach(function (e) {
+      var s = document.createElement('span');
+      s.textContent = e;
+      s.addEventListener('click', function () {
+        state.pickedEmoji = e;
+        Array.prototype.forEach.call(box.children, function (ch) { ch.className = ''; });
+        s.className = 'sel';
+      });
+      box.appendChild(s);
+    });
+    $('mint').classList.remove('hidden');
+  }
+
+  // ----- wiring ------------------------------------------------------------
+  $('btn-close').addEventListener('click', function () { post('close'); hide(); });
+  $('btn-refresh').addEventListener('click', function () { post('refresh'); });
+  $('btn-mint').addEventListener('click', openMint);
+  $('m-cancel').addEventListener('click', function () { $('mint').classList.add('hidden'); });
+  $('m-go').addEventListener('click', function () {
+    post('mint', {
+      name: $('m-name').value, ticker: $('m-ticker').value, emoji: state.pickedEmoji || ''
+    });
+    $('mint').classList.add('hidden');
+  });
+  $('btn-buy').addEventListener('click', function () {
+    if (state.selected == null) return;
+    post('buy', { coinId: state.selected, units: parseInt($('units').value, 10) || 0 });
+  });
+  $('btn-sell').addEventListener('click', function () {
+    if (state.selected == null) return;
+    post('sell', { coinId: state.selected, units: parseInt($('units').value, 10) || 0 });
+  });
+  $('units').addEventListener('input', updateEstimate);
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') {
+      if (!$('mint').classList.contains('hidden')) { $('mint').classList.add('hidden'); return; }
+      post('close'); hide();
+    }
+  });
+
+  function hide() {
+    $('app').classList.add('hidden');
+    $('mint').classList.add('hidden');
+  }
+
+  window.addEventListener('message', function (ev) {
+    var msg = ev.data || {};
+    if (msg.action === 'open') {
+      if (msg.ui) state.ui = msg.ui;
+      state.coins = msg.coins || [];
+      state.bank = msg.bank || 0;
+      $('bank').textContent = fmtMoney(state.bank);
+      $('foot-days').textContent = state.ui.lifetimeDays;
+      // keep selection if the coin still exists
+      if (state.selected != null && !coinById(state.selected)) state.selected = null;
+      renderList(); renderDetail();
+      $('app').classList.remove('hidden');
+    } else if (msg.action === 'data') {
+      state.coins = msg.coins || [];
+      state.bank = msg.bank || 0;
+      $('bank').textContent = fmtMoney(state.bank);
+      if (state.selected != null && !coinById(state.selected)) state.selected = null;
+      renderList(); renderDetail();
+      if (state.selected != null) post('chart', { coinId: state.selected });
+    } else if (msg.action === 'chart') {
+      if (msg.coinId === state.selected) {
+        state.chartPoints = msg.points || [];
+        drawChart();
+      }
+    } else if (msg.action === 'hide') {
+      hide();
+    }
+  });
+})();
+</script>
+</body>
+</html>

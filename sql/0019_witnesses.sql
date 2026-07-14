@@ -1,17 +1,17 @@
 -- ============================================================================
--- 0019_witnesses.sql — gtarp_witnesses NPC-witness tables.
+-- 0019_witnesses.sql — palm6_witnesses NPC-witness tables.
 --
--- Two tables, both `gtarp_`-prefixed per the defensive convention adopted
+-- Two tables, both `palm6_`-prefixed per the defensive convention adopted
 -- after the 0010_properties.sql collision (see 0012_evidence.sql notes):
 --
---   gtarp_witnesses_incidents  one row per witnessed CRIME (event-bus hit
+--   palm6_witnesses_incidents  one row per witnessed CRIME (event-bus hit
 --                              that found NPC bystanders). Holds the full
 --                              server-captured fact pool and, once the
---                              first canvass lands, the gtarp_evidence
+--                              first canvass lands, the palm6_evidence
 --                              case id (cases are created lazily through
 --                              the frozen EnsureCase export — this file
---                              touches NO gtarp_evidence table).
---   gtarp_witnesses            the witness markers themselves: a street
+--                              touches NO palm6_evidence table).
+--   palm6_witnesses            the witness markers themselves: a street
 --                              position + the 1-2 facts dealt to that
 --                              witness, plus press/payoff state. The peds
 --                              players see are cosmetic; these rows are
@@ -25,10 +25,10 @@
 -- files — the resource degrades gracefully without it).
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS `gtarp_witnesses_incidents` (
+CREATE TABLE IF NOT EXISTS `palm6_witnesses_incidents` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    -- Opaque incident token; feeds the gtarp_evidence EnsureCase
-    -- incident_key ('gtarp_witnesses:<uid>') so concurrent canvasses of
+    -- Opaque incident token; feeds the palm6_evidence EnsureCase
+    -- incident_key ('palm6_witnesses:<uid>') so concurrent canvasses of
     -- the same incident converge on one case.
     uid CHAR(16) NOT NULL UNIQUE,
     crime VARCHAR(32) NOT NULL,
@@ -41,15 +41,15 @@ CREATE TABLE IF NOT EXISTS `gtarp_witnesses_incidents` (
     -- Everything the suspect exposed at crime time, captured server-side
     -- (JSON array of { key, text }). Witnesses hold subsets of this.
     fact_pool TEXT NOT NULL,
-    -- Set on first canvass via the gtarp_evidence v2 EnsureCase export.
+    -- Set on first canvass via the palm6_evidence v2 EnsureCase export.
     case_id INT UNSIGNED DEFAULT NULL,
     created_at INT UNSIGNED NOT NULL,
     expires_at INT UNSIGNED NOT NULL,
-    INDEX idx_gtarp_witnesses_incidents_suspect (suspect_citizenid),
-    INDEX idx_gtarp_witnesses_incidents_expires (expires_at)
+    INDEX idx_palm6_witnesses_incidents_suspect (suspect_citizenid),
+    INDEX idx_palm6_witnesses_incidents_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `gtarp_witnesses` (
+CREATE TABLE IF NOT EXISTS `palm6_witnesses` (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     incident_id INT UNSIGNED NOT NULL,
     -- Street-corner position the witness was snapshotted at (the marker).
@@ -72,6 +72,6 @@ CREATE TABLE IF NOT EXISTS `gtarp_witnesses` (
     -- pressing/paying suspect) — audit trail.
     status_by VARCHAR(64) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_gtarp_witnesses_incident (incident_id),
-    INDEX idx_gtarp_witnesses_status (status)
+    INDEX idx_palm6_witnesses_incident (incident_id),
+    INDEX idx_palm6_witnesses_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

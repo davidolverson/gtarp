@@ -1,6 +1,6 @@
-# BUILD-ROADMAP — gtarp Qbox RP server
+# BUILD-ROADMAP — palm6 Qbox RP server
 
-This document is the ordered plan for taking the gtarp server from its
+This document is the ordered plan for taking the palm6 server from its
 current basic state to a complete general-purpose roleplay server. It is
 scoped to a small (48-slot) community and is meant to be dispatched
 phase-by-phase to Claude Code on the web.
@@ -156,7 +156,7 @@ one PR.
   - ACE: `group.admin` and a new `group.eup` allowed to use
     `/setjob police` and `/setjob ambulance` via `custom.cfg`.
   - Whitelist enforcement: a small **(build)** addition,
-    `resources/[custom]/gtarp_whitelist_jobs/`, listening to
+    `resources/[custom]/palm6_whitelist_jobs/`, listening to
     `QBCore:Server:OnPlayerLoaded` and rejecting `setjob` for non-allowed
     discord roles or license identifiers. Source of truth is a
     `Config.Allowed = { police = { 'license:CHANGEME' } }` table.
@@ -184,7 +184,7 @@ one PR.
   - Decide and document the curated lineup (recommend: trucker, taxi,
     garbage, mechanic) — anything else is deferred.
   - If a chosen job is not in the recipe, **build** a minimal version
-    under `resources/[custom]/gtarp_<job>_<short>/` rather than
+    under `resources/[custom]/palm6_<job>_<short>/` rather than
     vendoring.
 - **Depends on:** Phase 2 (paychecks/economy), Phase 3 (job framework
   proven).
@@ -224,9 +224,9 @@ one PR.
 ### Phase 6 — Signature custom feature (placeholder)
 
 - **Goal:** one community-defining custom resource that distinguishes
-  gtarp from a stock Qbox install. Concept TBD per server.
+  palm6 from a stock Qbox install. Concept TBD per server.
 - **Type:** build (custom resource under
-  `resources/[custom]/gtarp_<feature>/`).
+  `resources/[custom]/palm6_<feature>/`).
 - **Scope:**
   - One new resource: fxmanifest, config, client/server entry points,
     optional SQL migration `sql/0005_<feature>.sql`.
@@ -257,7 +257,7 @@ one PR.
     qbx_core/ox commands; ACE grants make them callable).
   - Document the staff matrix (owner / admin / moderator / trial) in
     `docs/STAFF.md`.
-  - Optional **build** `resources/[custom]/gtarp_staff/`: small chat
+  - Optional **build** `resources/[custom]/palm6_staff/`: small chat
     commands that log staff actions to a Discord webhook (webhook URL
     via convar — secret-managed).
   - SQL migration `sql/0006_staff_log.sql` for an `audit_log` table.
@@ -265,7 +265,7 @@ one PR.
   groupings; Phases 4–5 for the commands to act on real entities.
 - **Verifiable by Claude Code:**
   - Every ACE line in `custom.cfg` has a matching command in either
-    framework code or our `gtarp_staff` resource (grep).
+    framework code or our `palm6_staff` resource (grep).
   - Audit-log migration is idempotent.
   - Webhook URL is read from a convar, never hardcoded.
 - **Needs in-game check:** admin can `/tp` to a player; mod cannot;
@@ -283,7 +283,7 @@ one PR.
   - `custom.cfg` convars: `sv_filterRequestControl 2`,
     `sv_scriptHookAllowed 0`, `onesync_distanceCullVehicles true`,
     plus `sv_authMaxVariance 1` / `sv_authMinTrust 5`.
-  - `resources/[custom]/gtarp_eventguard/` — server-side ratelimit
+  - `resources/[custom]/palm6_eventguard/` — server-side ratelimit
     around `QBCore:Server:UpdateMoney`, `qb-inventory:server:*` (if any
     remain), and any custom money/inventory events introduced in
     earlier phases. Drops + logs offenders.
@@ -306,10 +306,10 @@ one PR.
 
 - **Goal:** restrict joins to approved players, surface rules to
   joiners, and tie staff/whitelist actions to Discord roles.
-- **Type:** build (`resources/[custom]/gtarp_allowlist/`) + configure
+- **Type:** build (`resources/[custom]/palm6_allowlist/`) + configure
   (txAdmin Discord bot if used).
 - **Scope:**
-  - `gtarp_allowlist/`: `playerConnecting` deferral that calls Discord
+  - `palm6_allowlist/`: `playerConnecting` deferral that calls Discord
     API with a bot token (convar) and checks the joining user's roles
     against `Config.AllowedRoles`. Deny with a friendly message
     otherwise. Cache role lookups for 60s.
@@ -343,7 +343,7 @@ one PR.
   - Run `resmon` and `txAdmin`'s perf panel under a 30-player synthetic
     load (deferred to staff before launch; this phase ships the
     instrumentation).
-  - `resources/[custom]/gtarp_perf/`: lightweight thread-hitch logger
+  - `resources/[custom]/palm6_perf/`: lightweight thread-hitch logger
     that samples `GetGameTimer()` deltas in critical loops and prints
     p95/p99 to console every 5 minutes; pushes to a webhook on
     threshold breach.

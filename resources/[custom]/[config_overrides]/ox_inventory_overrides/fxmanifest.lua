@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'EvThatGuy'
 version '0.1.0'
-description 'gtarp ox_inventory overrides — shops catalog, items, price ladder'
+description 'palm6 ox_inventory overrides — shops catalog, items, price ladder'
 
 shared_scripts {
     '@ox_lib/init.lua',

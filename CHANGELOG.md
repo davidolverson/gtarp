@@ -1,4 +1,4 @@
-# Changelog - Palm6 (gtarp server)
+# Changelog - Palm6 (palm6 server)
 
 All notable changes to the Palm6 RP server's custom layer. **This is the
 source of truth we post from** — every entry has an internal/technical list for
@@ -9,14 +9,14 @@ Format: newest first. Dates are EDT.
 
 ---
 
-## 2026-07-13 - Prison economy (`gtarp_yard`)
+## 2026-07-13 - Prison economy (`palm6_yard`)
 
 Jail stops being dead time. Inside Bolingbroke you can now **work to shave your
 sentence** and earn commissary cash, buy from a **commissary**, or **post bail**
 to walk early (with a catch).
 
 **Tracking (internal):**
-- 🆕 **`gtarp_yard`** — three server-authoritative loops on top of the existing
+- 🆕 **`palm6_yard`** — three server-authoritative loops on top of the existing
   xt-prison jail: **labor** (`E` at the yard: a task pays a small trickle and
   shaves your sentence), **commissary** (buy-only cash shop), **bail** (pay to
   release early).
@@ -30,13 +30,13 @@ to walk early (with a catch).
 - ⚖️ **Bail**: superlinear price (short sentences are cheap to skip, long ones
   hurt) with a floor above typical crime payout so it stays a deterrent. Money
   is taken **before** release; if release fails it refunds. Bail is **not a
-  clean slate** — it re-issues an `gtarp_mdt` warrant (so `gtarp_bounty`
+  clean slate** — it re-issues an `palm6_mdt` warrant (so `palm6_bounty`
   auto-posts a contract on the skipper) and stamps a re-arrest cooldown.
 - 🔒 Server-authoritative sentence: stored/persisted via xt-prison's own Qbox
   `injail` metadata, keyed to citizenid; disconnect/death/restart never clears
   it; only timer expiry, paid bail, or admin release does. Never trusts a client
   "I'm free" or a client shave/price/amount.
-- 🔧 Wiring: `sql/0047` (4 gtarp_-prefixed tables); 3 `gtarp_eventguard` budgets;
+- 🔧 Wiring: `sql/0047` (4 palm6_-prefixed tables); 3 `palm6_eventguard` budgets;
   3 ox contraband/commissary items (`yard_pruno`, `yard_commissary_snack`,
   `yard_soap`); self-disables loudly if xt-prison isn't running or an item is
   missing. Bridge-pattern native (§6 clean). **Coords are Bolingbroke Tier-3
@@ -50,7 +50,7 @@ for bringing you back in.
 
 ---
 
-## 2026-07-13 - Refining tier (`gtarp_market` v2)
+## 2026-07-13 - Refining tier (`palm6_market` v2)
 
 The Commodity Exchange gets a value-add tier: turn raw goods into **refined
 goods** worth more, at a new **Refinery**.
@@ -71,7 +71,7 @@ goods** worth more, at a new **Refinery**.
   grant with a refund ladder, refinery self-disables if a refined item def is
   missing.
 - 🔧 Wiring: 4 new ox items (`refined_metal`, `cured_leather`, `fillet`,
-  `cured_meat`); `gtarp_market:refine` eventguard budget; no new SQL table.
+  `cured_meat`); `palm6_market:refine` eventguard budget; no new SQL table.
   **Refinery coords are a Tier-3 placeholder — VERIFY IN-GAME.** Item PNGs owed.
 
 **📣 Public:** The exchange now has a **Refinery**. Turn your raw ore, pelts,
@@ -81,17 +81,17 @@ the price drops the same way raw goods do.
 
 ---
 
-## 2026-07-13 - Commodity Exchange (`gtarp_market`)
+## 2026-07-13 - Commodity Exchange (`palm6_market`)
 
 The legal grind gets a real market. A new **Palm6 Commodity Exchange** buys raw
-goods (`gtarp_grind` outputs) at a **live price that moves with supply and
+goods (`palm6_grind` outputs) at a **live price that moves with supply and
 demand** instead of a flat vendor rate — and it's the first place you can ever
 sell **animal pelts**, which hunting drops but nothing used to buy.
 
 **Tracking (internal):**
-- 🆕 **`gtarp_market`** — sell all raw goods (`raw_fish`, `raw_ore`, `raw_meat`,
+- 🆕 **`palm6_market`** — sell all raw goods (`raw_fish`, `raw_ore`, `raw_meat`,
   `animal_pelt`) at the exchange counter with **E**; check live prices any time
-  with **`/market`** (a branded `gtarp_ui` panel).
+  with **`/market`** (a branded `palm6_ui` panel).
 - 📈 **Dynamic price model, server-authoritative, no client ticks.** Price is a
   pure function of the last persisted `{price, timestamp}` and the current time:
   it recovers toward a rested `base` over wall-clock time and drops per unit
@@ -100,7 +100,7 @@ sell **animal pelts**, which hunting drops but nothing used to buy.
   base. Restart- and relog-safe, same discipline as the drug grow/dry/cook
   timers.
 - 🐟 `raw_fish`/`raw_ore`/`raw_meat` can be sold at *either* their fixed
-  `gtarp_grind` buyer (the safe floor, with the grind XP bonus) *or* the
+  `palm6_grind` buyer (the safe floor, with the grind XP bonus) *or* the
   fluctuating exchange — a genuine sell-now-or-time-it choice. **`animal_pelt`
   is exchange-only** (fixes the confirmed orphan).
 - 🔒 Money/dupe-safe: atomic per-player cooldown set before any yield;
@@ -108,9 +108,9 @@ sell **animal pelts**, which hunting drops but nothing used to buy.
   consume-before-grant; the market only moves on a completed sale; in-memory
   price set before the DB write so concurrent sellers can't double-dip the top
   price; marginal loop hard-capped.
-- 🔧 Wiring: `sql/0046` (`gtarp_market_state` + `gtarp_market_trades`,
-  `gtarp_`-prefixed); `gtarp_eventguard` budgets `gtarp_market:sell` (now
-  guarding 51 events); `gtarp_economy` shows an informational **clean-cash**
+- 🔧 Wiring: `sql/0046` (`palm6_market_state` + `palm6_market_trades`,
+  `palm6_`-prefixed); `palm6_eventguard` budgets `palm6_market:sell` (now
+  guarding 51 events); `palm6_economy` shows an informational **clean-cash**
   line via a `GetSummary` export. Bridge-pattern native (§6 gate clean).
   **Exchange coords are a Tier-3 placeholder — VERIFY IN-GAME.** No new items,
   so no PNG debt. Refining tier (`raw_ore→refined_metal`, `pelt→cured_leather`)
@@ -124,14 +124,14 @@ price. Check the board any time with **/market**.
 
 ---
 
-## 2026-07-13 - Branded UI: NUI panel + loading screen (`gtarp_ui`, `server_identity`)
+## 2026-07-13 - Branded UI: NUI panel + loading screen (`palm6_ui`, `server_identity`)
 
 The server got its look. Command output moved out of the raw chat feed into a
 branded panel, and the first thing every player sees is now a Palm6 loading
 screen.
 
 **Tracking (internal):**
-- 🆕 **`gtarp_ui`** — a shared `ox_lib` panel renderer. Nine server-only commands
+- 🆕 **`palm6_ui`** — a shared `ox_lib` panel renderer. Nine server-only commands
   (help, gangs, economy, city stats, wanted, and more) route their multi-line
   output through one branded panel instead of dumping lines into chat; a
   one-liner falls back to a non-blocking toast so it never freezes the player.
@@ -152,12 +152,12 @@ A batch of quality-of-life and civic systems went live together, filling in the
 city's public-facing layer.
 
 **Tracking (internal):**
-- 🆕 Shipped nine self-contained resources: **`gtarp_help`** (in-game command
-  directory), **`gtarp_citystats`** (live city economy stats), **`gtarp_ems`**
-  (EMS billing + dispatch reader), **`gtarp_lottery`** (scheduled civic lottery),
-  **`gtarp_blotter`** / **`gtarp_wanted`** (public crime + wanted boards),
-  **`gtarp_rapsheet`** (criminal history), **`gtarp_ganginfo`** (public gang
-  directory), **`gtarp_season`** (season framework).
+- 🆕 Shipped nine self-contained resources: **`palm6_help`** (in-game command
+  directory), **`palm6_citystats`** (live city economy stats), **`palm6_ems`**
+  (EMS billing + dispatch reader), **`palm6_lottery`** (scheduled civic lottery),
+  **`palm6_blotter`** / **`palm6_wanted`** (public crime + wanted boards),
+  **`palm6_rapsheet`** (criminal history), **`palm6_ganginfo`** (public gang
+  directory), **`palm6_season`** (season framework).
 - 🎨 Shipped a branded **`palm6_props`** prop set into the live custom layer.
 - 🔧 Fixed EMS/lottery commands registering behind a boot delay instead of at
   boot, and granted the correct staff ACEs.
@@ -190,7 +190,7 @@ Palm6 dealership is open for your next upgrade.
 
 ---
 
-## 2026-07-11 - Meth cook lab (`gtarp_drugs` §9)
+## 2026-07-11 - Meth cook lab (`palm6_drugs` §9)
 
 The Schedule I supply chain gets its second drug: **meth**, via a new cook
 station. Meth is not a strain (it can never be planted); the cook lab is its
@@ -201,7 +201,7 @@ relog.
 **Tracking (internal):**
 - 🆕 **Cook station** (3 burners). Load a pseudo stack (its grade sets the
   quality floor) plus acid and red phosphorus; the batch cooks over wall-clock
-  time in `gtarp_drugs_processes` (`kind='cook'`, reusing the drying table) and
+  time in `palm6_drugs_processes` (`kind='cook'`, reusing the drying table) and
   mints `meth_raw` crystal on collect.
 - 🎲 **Outcome rolled AND stored at start**, never at collect: success (scales
   with rank, capped at 0.9), quality (grade floor, one tier lower on a failed
@@ -214,16 +214,16 @@ relog.
   your hands are full, and a per-character concurrent-cook cap. A stranded
   `collecting` row is deleted at boot (err toward loss, never a dupe).
 - 🚔 **Cooking is loud**: it warms dealer heat faster than a street sale and has
-  a high flat chance to ping police and open a `gtarp_evidence` case the moment
+  a high flat chance to ping police and open a `palm6_evidence` case the moment
   the burner lights.
 - 💊 `meth_raw` and `meth_product` flow through the existing mix, sell and price
   engine automatically (base-agnostic refactor: the base id is `meta.base or
   meta.strain`). Also fixed a latent bug where the street buyer offered meth but
   the sell handler still hardcoded weed items and rejected the sale.
 - 🔧 Wiring: 5 ox_inventory items (`pseudo`, `acid`, `red_phosphorus`,
-  `meth_raw`, `meth_product`); `gtarp_eventguard` budgets for the 3 cook events;
+  `meth_raw`, `meth_product`); `palm6_eventguard` budgets for the 3 cook events;
   a soft boot gate that leaves the lab dark (weed unaffected) until all five
-  items are registered. **No new SQL migration** (reuses `gtarp_drugs_processes`).
+  items are registered. **No new SQL migration** (reuses `palm6_drugs_processes`).
   Cook coords are a placeholder to verify in-game; item PNGs are still needed
   (David) before icons render.
 
@@ -235,7 +235,7 @@ through weed to unlock it.
 
 ---
 
-## 2026-07-11 - Gang rename (`gtarp_gangs`)
+## 2026-07-11 - Gang rename (`palm6_gangs`)
 
 **Tracking (internal):**
 - ➕ `/gang` gains a leader-only **Rename** action: change your gang's name and
@@ -249,7 +249,7 @@ through weed to unlock it.
 
 ---
 
-## 2026-07-10 — Player-run gangs (`gtarp_gangs`)
+## 2026-07-10 — Player-run gangs (`palm6_gangs`)
 
 New custom resource: the **player-created gang layer Qbox does not ship**.
 qbx_core owns only the STATIC gang registry (predefined gangs + grades,
@@ -259,7 +259,7 @@ vault, and reputation. The static qbx model is **not** duplicated; it's read
 read-only through the bridge, with an opt-in (default-off) mirror seam.
 
 **Tracking (internal):**
-- 🆕 **gtarp_gangs** — `/gang` menu. Create (unique name+tag, sanitised/length-
+- 🆕 **palm6_gangs** — `/gang` menu. Create (unique name+tag, sanitised/length-
   limited/profanity-filtered, bank-charged founding cost) / disband (leader).
   Membership + ranks (Leader/Officer/Member): invite the closest eligible nearby
   player (server-chosen, never client-named), accept, leave, kick (officer+,
@@ -268,7 +268,7 @@ read-only through the bridge, with an opt-in (default-off) mirror seam.
 - 💰 **Shared CASH vault** — rank-gated deposit (any member) / withdraw
   (officer+). Deposits are consume-before-credit; withdraws use an **atomic
   guarded decrement** (no double-withdraw race, no overdraft) with rollback on a
-  failed payout. Every move logged to `gtarp_gang_vault_log` with a balance
+  failed payout. Every move logged to `palm6_gang_vault_log` with a balance
   snapshot. Disband pays the vault remainder back to the leader's bank.
 - 📈 **Reputation** — per-gang `rep` + a server-only `AddRep(gangId, amount,
   reason)` export (floors at 0) so turf/protection/drugs can reward gang activity
@@ -276,10 +276,10 @@ read-only through the bridge, with an opt-in (default-off) mirror seam.
 - 🔒 Server-authoritative throughout (rank/membership/amounts re-checked
   server-side; parameterised SQL; bridge-isolated per GTA6-readiness).
 - 🔧 Wiring: `sql/0041_gangs.sql` (3 indexed, restart-safe tables); rate-limit
-  budgets in `gtarp_eventguard`; devtest shape + table-map assertions; a `gangs:`
+  budgets in `palm6_eventguard`; devtest shape + table-map assertions; a `gangs:`
   line on the `/economy` scoreboard; `docs/TESTING.md` §43. (custom.cfg ensure
   line left for the operator — after qbx_core, near the crime resources, after
-  `gtarp_eventguard`.)
+  `palm6_eventguard`.)
 
 **📣 Public:** Start your own **crew**. Found a gang with a name and a tag, run
 your roster with officer and member ranks, invite people, and pool your money in
@@ -297,16 +297,16 @@ and a continued bridge-pattern rollout. **8 confirmed-exploitable bugs fixed;
 the other 12 audited resources came back clean.**
 
 **Tracking (internal):**
-- 🔴 **gtarp_courier** — fixed a **critical double-payout race**: `complete` now
+- 🔴 **palm6_courier** — fixed a **critical double-payout race**: `complete` now
   atomically gates the `UPDATE` on `status='taken' AND courier_citizenid` and only
   pays when rows-affected == 1. Same guard on cancel-refund and both lifetime sweeps.
-- **gtarp_insurance** — policy is now consumed on claim (one payout per policy);
+- **palm6_insurance** — policy is now consumed on claim (one payout per policy);
   no-scene damage claims are hard-denied instead of trusting client health.
-- **gtarp_chopshop** — closed a free-money faucet: ambient/NPC cars (no
+- **palm6_chopshop** — closed a free-money faucet: ambient/NPC cars (no
   `player_vehicles` row, no active stolen report) can no longer be sold.
-- **gtarp_bounty** — fixed a city-money faucet: captured state contracts update in
+- **palm6_bounty** — fixed a city-money faucet: captured state contracts update in
   place (`status IN ('active','claimed')`) instead of re-posting every sweep.
-- **gtarp_mechanic** — repairs now require a **customer consent handshake**
+- **palm6_mechanic** — repairs now require a **customer consent handshake**
   (offer → confirm → accept, re-validated server-side) plus a per-customer cooldown;
   a mechanic can no longer force-charge a non-consenting nearby player.
 - 🧩 **Bridge pattern** — extended to `ox_inventory_overrides` (isolated its
@@ -325,7 +325,7 @@ the other 12 audited resources came back clean.**
 > mechanics now ask for your approval before charging you. Plus we moved a bunch of
 > racket locations to their real spots around the city. Cleaner, fairer hustle. 💰
 
-## 2026-07-10 — 🌿 New: `gtarp_drugs` (Schedule I-style) — MVP Phase 1 built
+## 2026-07-10 — 🌿 New: `palm6_drugs` (Schedule I-style) — MVP Phase 1 built
 
 The missing drug supply chain — a faithful adaptation of **Schedule I**. Design
 locked in `docs/DRUGS-SPEC.md`; **MVP (weed only) built**: grow → mix a custom
@@ -338,7 +338,7 @@ branded product with stacking effects + quality → sell → dirty cash → laun
   interaction** (restart-safe, no client ticks), harvest `weed_bud` with
   `{strain,quality,effects,dried}` metadata. Neglect (water → 0%) drops quality/yield.
 - 🌬️ **Drying rack → Heavenly** — hang a stack of fresh `weed_bud` on the rack
-  (ox_target) to dry it over a **wall-clock `gtarp_drugs_processes` timer** (`kind='dry'`,
+  (ox_target) to dry it over a **wall-clock `palm6_drugs_processes` timer** (`kind='dry'`,
   epoch seconds, resolved on interaction like the grow timers). On collect the buds
   come back **bumped to Heavenly (tier 4, ×1.30)** with `dried=true`, and the price
   engine applies the markup on any later mix/sell. One run per rack slot (UNIQUE
@@ -349,7 +349,7 @@ branded product with stacking effects + quality → sell → dirty cash → laun
   effects (**reactions first, then append-if-absent, 8-cap, order kept**), recomputes
   quality + unit price via the spec §5 formula, sanitizes a player brand, mints one
   `weed_product` (`{brand,base,effects[],quality,unit_value,batch_id,producer}`).
-  Bad-mix roll can inflict a junk effect. Named recipes saved to `gtarp_drugs_recipes` for
+  Bad-mix roll can inflict a junk effect. Named recipes saved to `palm6_drugs_recipes` for
   one-click repeat.
 - ⚗️ **Effect reaction/transform system** — the signature Schedule I mechanic:
   mixing now **transforms** existing effects into other (often higher-value) ones
@@ -361,19 +361,19 @@ branded product with stacking effects + quality → sell → dirty cash → laun
   `doMix`), 8-cap preserved. Retune vs the live mixing DB as the game patches it.
 - 💵 **Selling** — real players via ox_inventory trade, plus one **rate-limited NPC
   street-buyer** paying DIRTY `black_money` priced from the item's real metadata,
-  bounded by a **per-character daily faucet cap**. Logged to `gtarp_drugs_sales`.
+  bounded by a **per-character daily faucet cap**. Logged to `palm6_drugs_sales`.
 - 🚔 **Heat/evidence (basic)** — sales warm a per-dealer heat model; a hot dealer or
   witness roll (and the odd big harvest) trips a native police alert +
-  `gtarp_evidence` case. Every unit carries `batch_id`+`producer` for audit.
+  `palm6_evidence` case. Every unit carries `batch_id`+`producer` for audit.
 - 🧱 **Full §1–5 config** — 4 weed strains, 16 additives→effects, all 34 effect
   multipliers, 5 quality tiers, and the server-authoritative `Config.Price` helper.
 - 🛡️ **Server-authoritative** — never trusts client price/effects/quality/amount;
   recomputes from config + metadata; consumes inputs before granting outputs;
   proximity re-derived server-side; all SQL parameterized. 12 net events registered
-  in `gtarp_eventguard`. New items added to `ox_inventory_overrides` (replacing the
-  earlier generic `cannabis_leaf`/`weed_baggie` draft). SQL: `gtarp_drugs_plants`,
-  `gtarp_drugs_recipes`, `gtarp_drugs_progression`, `gtarp_drugs_sales` (`sql/0039_drugs.sql`) +
-  `gtarp_drugs_processes` (the drying-rack timer, `sql/0040_drugs_drying.sql`).
+  in `palm6_eventguard`. New items added to `ox_inventory_overrides` (replacing the
+  earlier generic `cannabis_leaf`/`weed_baggie` draft). SQL: `palm6_drugs_plants`,
+  `palm6_drugs_recipes`, `palm6_drugs_progression`, `palm6_drugs_sales` (`sql/0039_drugs.sql`) +
+  `palm6_drugs_processes` (the drying-rack timer, `sql/0040_drugs_drying.sql`).
 - ⏭️ **Deferred to Phase 2/3:** meth/shrooms/coke, NPC customers + hired dealers,
   and rank/XP-gated properties.
 

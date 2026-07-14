@@ -1,4 +1,4 @@
--- 0042_drugs_dealers.sql — table for the gtarp_drugs NPC dealer (Phase 2 §8).
+-- 0042_drugs_dealers.sql — table for the palm6_drugs NPC dealer (Phase 2 §8).
 -- One dealer per character. The dealer is a passive, hard-capped dirty-cash
 -- faucet: the owner stocks weed_product into stash_json, and sales resolve
 -- LAZILY on interaction over wall-clock time (like the grow/dry timers in 0039/
@@ -13,7 +13,7 @@
 -- day_key/day_dirty : per-character daily faucet accounting (YYYY-MM-DD, UTC),
 --               enforcing Config.Dealer.dailyDirtyCap so the passive faucet can
 --               never outpace real-player dealing.
-CREATE TABLE IF NOT EXISTS `gtarp_drugs_dealers` (
+CREATE TABLE IF NOT EXISTS `palm6_drugs_dealers` (
     owner_cid          VARCHAR(64) NOT NULL PRIMARY KEY,
     hired_at           BIGINT UNSIGNED NOT NULL,
     last_tick_at       BIGINT UNSIGNED NOT NULL,

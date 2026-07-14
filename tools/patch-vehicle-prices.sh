@@ -3,7 +3,7 @@
 # tools/patch-vehicle-prices.sh <path-to-deployed-resources-dir>
 #
 # Rewrites the `price =` field in the LIVE qbx_core/shared/vehicles.lua for each
-# model in gtarp_dealership/shared/catalog.lua to its Palm6 tier price. Touches
+# model in palm6_dealership/shared/catalog.lua to its Palm6 tier price. Touches
 # NOTHING else — no coords, categories, hashes, types, or non-listed models. The
 # catalog resource is the single source of truth; this is the deploy-time half
 # that qbx_core actually reads (qbx_vehicleshop pulls prices from qbx_core's
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-CATALOG="$REPO/resources/[custom]/gtarp_dealership/shared/catalog.lua"
+CATALOG="$REPO/resources/[custom]/palm6_dealership/shared/catalog.lua"
 RES_DIR="${1:?usage: patch-vehicle-prices.sh <deployed-resources-dir>}"
 
 [ -f "$CATALOG" ] || { echo "ERROR: missing $CATALOG" >&2; exit 1; }
