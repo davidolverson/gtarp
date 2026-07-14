@@ -1,0 +1,110 @@
+name: Palm6 upload ox icons
+
+# One-off ops: uploads the 7 owed ox_inventory item icons (assets/ox_icons/*.png)
+# to the live box's ox_inventory web/images dir over SFTP, then restarts
+# ox_inventory so the NUI picks them up. Manual dispatch. Idempotent (re-put
+# overwrites). ox_inventory serves web/images/<itemname>.png by default, so the
+# file basename MUST equal the item name.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-custom-layer   # share the deploy lock; never race a deploy
+  cancel-in-progress: false
+
+env:
+  SFTP_HOST: ${{ vars.SFTP_HOST || 'fx-dtx-10.apollopanel.com' }}
+  SFTP_PORT: ${{ vars.SFTP_PORT || '2022' }}
+  SFTP_USERNAME: ${{ vars.SFTP_USERNAME || 'w8bh16e6.9524616c' }}
+  REMOTE_BASE: ${{ vars.REMOTE_BASE || '.' }}
+  PANEL_URL: ${{ vars.PANEL_URL || 'https://control.rocketnode.com' }}
+  SERVER_ID: ${{ vars.SERVER_ID || '9524616c' }}
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Upload icons over SFTP
+        env:
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+          SFTP_SSH_KEY: ${{ secrets.SFTP_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          IMG_DIR="resources/[ox]/ox_inventory/web/images"
+
+          ls -1 assets/ox_icons/*.png
+          COUNT=$(ls -1 assets/ox_icons/*.png | wc -l)
+          echo "icons to upload: $COUNT"
+          [ "$COUNT" -eq 7 ] || { echo "::error::expected 7 icons, found $COUNT"; exit 1; }
+
+          KEYFILE=""
+          cleanup() { [ -n "$KEYFILE" ] && rm -f "$KEYFILE" || true; }
+          trap cleanup EXIT
+          if [ -n "${SFTP_SSH_KEY:-}" ]; then
+            AUTH_MODE="ssh-key"; KEYFILE="$(mktemp)"; chmod 600 "$KEYFILE"
+            printf '%s\n' "$SFTP_SSH_KEY" > "$KEYFILE"
+          else
+            AUTH_MODE="password"
+          fi
+          echo "SFTP auth mode: $AUTH_MODE"
+
+          run_lftp() {
+            local cmds; cmds="$(cat)"
+            if [ "$AUTH_MODE" = "ssh-key" ]; then
+              lftp <<LFTP
+          set sftp:auto-confirm yes
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 30
+          set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $KEYFILE"
+          open -u "$SFTP_USERNAME" "sftp://$SFTP_HOST:$SFTP_PORT"
+          $cmds
+          bye
+          LFTP
+            else
+              lftp <<LFTP
+          set sftp:auto-confirm yes
+          set cmd:fail-exit yes
+          set net:max-retries 2
+          set net:timeout 30
+          open -u "$SFTP_USERNAME,$SFTP_PASSWORD" "sftp://$SFTP_HOST:$SFTP_PORT"
+          $cmds
+          bye
+          LFTP
+            fi
+          }
+
+          # Put each icon (mirror uploads the whole dir; basenames = item names).
+          run_lftp <<EOF
+          mirror --reverse --verbose --no-perms "assets/ox_icons/" "$REMOTE_BASE/$IMG_DIR/"
+          EOF
+          echo "Icons uploaded to $IMG_DIR"
+
+          echo "--- verify landed (remote ls) ---"
+          run_lftp <<EOF
+          cls -1 "$REMOTE_BASE/$IMG_DIR/refined_metal.png" "$REMOTE_BASE/$IMG_DIR/cured_leather.png" "$REMOTE_BASE/$IMG_DIR/fillet.png" "$REMOTE_BASE/$IMG_DIR/cured_meat.png" "$REMOTE_BASE/$IMG_DIR/yard_pruno.png" "$REMOTE_BASE/$IMG_DIR/yard_commissary_snack.png" "$REMOTE_BASE/$IMG_DIR/yard_soap.png"
+          EOF
+
+      - name: Restart ox_inventory
+        env:
+          PTERO_API_KEY: ${{ secrets.PTERO_API_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${PTERO_API_KEY:-}" ] || { echo "::error::PTERO_API_KEY not set"; exit 1; }
+          API="$PANEL_URL/api/client/servers/$SERVER_ID"
+          code="$(curl -sS -o resp.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Content-Type: application/json" -H "Accept: application/json" \
+            -X POST "$API/command" -d '{"command":"restart ox_inventory"}' || echo 000)"
+          echo "restart ox_inventory -> HTTP $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::warning::command send returned $code; body:"; cat resp.txt || true
+            echo "If the console command endpoint is unavailable, restart ox_inventory from the panel console."
+          fi
