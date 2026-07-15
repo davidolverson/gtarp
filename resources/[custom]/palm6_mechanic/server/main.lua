@@ -156,3 +156,21 @@ AddEventHandler('playerDropped', function()
     offers[source] = nil
     pending[source] = nil
 end)
+
+-- ---------------------------------------------------------------------------
+-- Self-serve vehicle kits (usable items). Consume-before-repair: the item is
+-- removed server-side FIRST, then the client repairs the nearest vehicle. This
+-- means the item can never be used for free (the client only decides WHICH
+-- vehicle, never whether it's spent). Using a kit with no vehicle nearby spends
+-- it (the client warns) — like any consumable used in the wrong place.
+-- ---------------------------------------------------------------------------
+if Config.Kits and Config.Kits.Enabled then
+    local function useKit(kind, item)
+        return function(src)
+            if not Bridge.RemoveItem(src, item, 1) then return end
+            TriggerClientEvent('palm6_mechanic:useKit', src, kind)
+        end
+    end
+    Bridge.OnUseItem(Config.Kits.RepairItem, useKit('repair', Config.Kits.RepairItem))
+    Bridge.OnUseItem(Config.Kits.TireItem,   useKit('tire',   Config.Kits.TireItem))
+end

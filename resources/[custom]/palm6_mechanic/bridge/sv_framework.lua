@@ -45,6 +45,21 @@ function Bridge.CreditBank(src, amount, reason)
     return true
 end
 
+-- Register an ox_inventory usable-item callback (fires server-side on use).
+function Bridge.OnUseItem(name, fn)
+    pcall(function()
+        exports.qbx_core:CreateUseableItem(name, function(source) fn(source) end)
+    end)
+end
+
+-- Remove `count` of an item from a player. Returns true if it was removed.
+function Bridge.RemoveItem(src, name, count)
+    local ok, removed = pcall(function()
+        return exports.ox_inventory:RemoveItem(src, name, count or 1)
+    end)
+    return ok and removed ~= false
+end
+
 -- Notify a player.
 function Bridge.Notify(src, title, msg, t)
     TriggerClientEvent('ox_lib:notify', src, {

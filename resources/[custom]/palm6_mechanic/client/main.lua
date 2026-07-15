@@ -43,6 +43,23 @@ RegisterNetEvent('palm6_mechanic:applyRepair', function(vehNetId)
     if veh then Game.RepairVehicle(veh) end
 end)
 
+-- Self-serve kit use: the server already consumed the item, so here we just
+-- apply the effect to the nearest vehicle (or warn if there isn't one).
+RegisterNetEvent('palm6_mechanic:useKit', function(kind)
+    local veh = Game.GetClosestVehicle(Game.GetPlayerCoords(), (Config.Kits and Config.Kits.Radius) or 5.0)
+    if not veh or veh == 0 then
+        Game.Notify({ title = 'Vehicle Kit', description = 'No vehicle close enough to work on.', type = 'error' })
+        return
+    end
+    if kind == 'tire' then
+        Game.FixTires(veh)
+        Game.Notify({ title = 'Tire Pack', description = 'Fitted a fresh set of tyres.', type = 'success' })
+    else
+        Game.RepairVehicle(veh)
+        Game.Notify({ title = 'Repair Kit', description = 'Patched the vehicle up.', type = 'success' })
+    end
+end)
+
 -- The server offered a repair invoice. Ask the customer to accept before any
 -- charge; only a positive dialog fires the accept back to the server.
 RegisterNetEvent('palm6_mechanic:confirmInvoice', function(_mechSrc, amount)

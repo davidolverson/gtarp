@@ -9,6 +9,57 @@ Format: newest first. Dates are EDT.
 
 ---
 
+## 2026-07-15 - Economy coherence pass: crime unlocked, gangs unified, seasons pay out
+
+A big pass over the whole economy — turning on content that was built but
+unreachable, making the gang systems agree with each other, giving the season a
+real payoff, and closing a few money loopholes.
+
+**Tracking (internal):**
+- 🆕 **Black Market** (`ox_inventory_overrides`) — a gated vendor selling meth
+  precursors (pseudo/acid/red phosphorus) and counterfeiting supply
+  (printer/paper/ink), all priced with a real cost basis. Both the **meth cook**
+  and **counterfeit** verticals were shipped + enabled but had **no in-game input
+  source**, so they teased dead stations; they are now fully playable, still
+  bounded by the existing dirty-cash daily cap / rank gate / fence quota / heat.
+- 🔗 **Gang identity unified** — turf ownership, the `/ganginfo` directory, the
+  season ladders, and reputation now all key on the **player-run gang**
+  (`palm6_gangs`) instead of a mix of that and the static qbx gang. `Turf held`
+  finally shows real numbers; holding turf pays (protection racket) and earns
+  **reputation** on a genuine takeover (persisted anti-farm cooldown).
+- 🏆 **Season 1 is live and rewarding** — auto-opens on boot; `/season`,
+  `/seasontop`, and end-of-season **cash prizes** claimed with **`/seasonclaim`**
+  (offline-safe, one-time). Five boards: Top Crews (rep, display-only), **Turf
+  Held**, Drug Empire, Dirtiest Hustler, and **City Pulse** (most check-ins).
+  Gang prizes pay the crew leader.
+- 🔧 **`repair_kit` / `tirepack` now work** — use a Repair Kit from your
+  inventory to fix the nearest vehicle, or a Tire Pack to fit fresh tyres
+  (self-service, no mechanic needed; complements the mechanic invoice job).
+- 🚚 **Courier runs require the pickup** — deliveries now make you visit the
+  pickup before the dropoff will pay (was dropoff-only).
+- 🛒 Grind tools (fishing rod / pickaxe / hunting knife) now also stocked at the
+  **24/7 General Store** so a fresh spawn can start earning in-city.
+- 🎥 **Going live needs a Streamer Phone** — clout streaming now requires a
+  `streamer_phone` (General Store, $2500), so it isn't free money-printing.
+- 🚔 **Warrants bite harder** — you can't launder dirty money while you have an
+  active warrant, and **posting bail now protects you from instant re-arrest**
+  for a short grace window.
+- 🧪 Shipped across 7 commits, each boot-verified; three multi-agent adversarial
+  review passes caught and closed five issues (incl. a rep-farm→cash exploit and
+  a gang-prize name-reuse exploit) before they reached players.
+
+**📣 Public:** Huge economy update dropped. **Meth cooking and counterfeiting are
+now fully playable** — grab your supplies from the new **Black Market**. **Gangs
+got real**: hold turf, run protection, climb the reputation board. **Season 1 is
+live** with leaderboards and **cash prizes** you claim with `/seasonclaim` — top
+the Drug Empire, Dirtiest Hustler, Turf, or City Pulse boards. **Repair Kits and
+Tire Packs finally work** — fix your own ride from your inventory. Plus: grind
+tools sold in the city now, going live needs a Streamer Phone, and skipping bail
+or laundering while wanted just got riskier. Type `/season` and `/help` to see
+what's new.
+
+---
+
 ## 2026-07-13 - Prison economy (`palm6_yard`)
 
 Jail stops being dead time. Inside Bolingbroke you can now **work to shave your

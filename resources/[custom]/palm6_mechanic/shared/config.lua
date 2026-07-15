@@ -27,3 +27,14 @@ Config.EngineHealthThreshold = 900.0
 Config.BodyHealthThreshold = 900.0
 
 Config.ProgressMs = 6000
+
+-- Self-serve vehicle kits (usable ox_inventory items) — makes the already-sold
+-- repair_kit / tirepack actually do something. Complementary to the mechanic
+-- invoice job (self-service, no mechanic needed). The item is consumed
+-- server-side BEFORE the repair; using a kit away from a vehicle spends it.
+Config.Kits = {
+    Enabled    = true,
+    RepairItem = 'repair_kit',   -- full engine/body/deformation repair
+    TireItem   = 'tirepack',     -- replaces all tyres
+    Radius     = 5.0,            -- how close a vehicle must be to work on it
+}

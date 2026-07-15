@@ -91,6 +91,21 @@ function Game.RepairVehicle(veh)
     SetVehicleBodyHealth(veh, 1000.0)
 end
 
+-- Replace all of a vehicle's tyres (tirepack). Requests network control first
+-- so the fix syncs, same as Game.RepairVehicle.
+function Game.FixTires(veh)
+    if not NetworkHasControlOfEntity(veh) then
+        NetworkRequestControlOfEntity(veh)
+        local deadline = GetGameTimer() + 1000
+        while not NetworkHasControlOfEntity(veh) and GetGameTimer() < deadline do
+            Wait(0)
+        end
+    end
+    for i = 0, 7 do
+        SetVehicleTyreFixed(veh, i)
+    end
+end
+
 -- Notify the local player.
 function Game.Notify(opts)
     lib.notify(opts)
