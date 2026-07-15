@@ -23,6 +23,7 @@ Config.Events = {
     -- palm6 custom layer events
     ['palm6_courier:post']     = { calls = 5,  window_seconds = 60  },
     ['palm6_courier:accept']   = { calls = 10, window_seconds = 60  },
+    ['palm6_courier:pickup']   = { calls = 20, window_seconds = 60  },
     ['palm6_courier:complete'] = { calls = 20, window_seconds = 60  },
     ['palm6_courier:cancel']   = { calls = 10, window_seconds = 60  },
 

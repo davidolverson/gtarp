@@ -97,6 +97,7 @@ local function acceptPosting(src, id)
     end
     TriggerClientEvent('palm6_courier:onAccepted', src, {
         id = id,
+        pickup = { x = row.pickup_x, y = row.pickup_y, z = row.pickup_z },
         dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z },
         label = row.label,
     })
@@ -104,6 +105,44 @@ end
 
 RegisterNetEvent('palm6_courier:accept', function(id)
     acceptPosting(source, id)
+end)
+
+-- Pickup leg: the courier must physically visit the pickup before the delivery
+-- can be completed. Sets a persisted picked_up flag (server-verified proximity),
+-- then routes the client to the dropoff. Mirrors :complete's guards.
+local lastPickup = {}  -- [src] = ts — per-source rate limit (anti-DoS)
+
+RegisterNetEvent('palm6_courier:pickup', function(id)
+    local src = source
+    local citizenid = Bridge.GetCitizenId(src)
+    if not citizenid then return end
+    local nid = tonumber(id)
+    if not nid then return end
+    local ctNow = os.time()
+    if ctNow - (lastPickup[src] or 0) < 1 then return end
+    lastPickup[src] = ctNow
+    local row = MySQL.single.await('SELECT * FROM courier_postings WHERE id=?', { nid })
+    if not row or row.status ~= 'taken' or row.courier_citizenid ~= citizenid then
+        return Bridge.Notify(src, 'Courier', 'Not your active delivery', 'error')
+    end
+    -- Already collected (e.g. a client re-sync) — just point them at the dropoff.
+    if tonumber(row.picked_up) == 1 then
+        return TriggerClientEvent('palm6_courier:onPickedUp', src, {
+            id = nid, dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z }, label = row.label })
+    end
+    -- Server-authoritative proximity to the pickup (client distance is presentation).
+    local here = Bridge.GetCoords(src)
+    local pickup = { x = row.pickup_x, y = row.pickup_y, z = row.pickup_z }
+    if not here or Bridge.Distance(here, pickup) > (Config.DeliveryRadiusMeters + Config.DeliveryArrivalSlack) then
+        return Bridge.Notify(src, 'Courier', 'You are not at the pickup yet.', 'error')
+    end
+    -- Atomic set; picked_up=0 guard means a race can only flip it once.
+    MySQL.update.await(
+        "UPDATE courier_postings SET picked_up=1 WHERE id=? AND status='taken' AND courier_citizenid=? AND picked_up=0",
+        { nid, citizenid })
+    TriggerClientEvent('palm6_courier:onPickedUp', src, {
+        id = nid, dropoff = { x = row.dropoff_x, y = row.dropoff_y, z = row.dropoff_z }, label = row.label })
+    Bridge.Notify(src, 'Courier', 'Package picked up. Head to the dropoff.', 'success')
 end)
 
 local lastComplete = {}  -- [src] = ts — per-source rate limit on :complete (anti-DoS)
@@ -139,8 +178,14 @@ RegisterNetEvent('palm6_courier:complete', function(id)
         return Bridge.Notify(src, 'Courier', 'You are not at the dropoff yet.', 'error')
     end
 
+    -- Must have collected the package first (server-verified at the pickup). A
+    -- modified client that skips straight to :complete is stopped here.
+    if tonumber(row.picked_up) ~= 1 then
+        return Bridge.Notify(src, 'Courier', 'You never picked up the package — collect it first.', 'error')
+    end
+
     local paid = MySQL.update.await(
-        "UPDATE courier_postings SET status='complete', completed_at=NOW() WHERE id=? AND status='taken' AND courier_citizenid=?",
+        "UPDATE courier_postings SET status='complete', completed_at=NOW() WHERE id=? AND status='taken' AND courier_citizenid=? AND picked_up=1",
         { nid, citizenid }
     ) == 1
     if not paid then

@@ -43,8 +43,13 @@ Config.DiscordFeed    = 'live'
 
 -- Ladder registry. key -> { title, subject }. subject is 'gang' or 'citizen'.
 -- The matching SQL builder for each key lives in server/main.lua.
+-- noPrize ladders are DISPLAY-ONLY (leaderboard bragging rights, no cash prize).
+-- 'rep' is noPrize because gang rep is minted per turf-takeover and is therefore
+-- farmable by two gangs trading zones; paying it a prize would turn that farm
+-- into a clean-cash exploit. Turf HELD is the paying gang ladder instead — it is
+-- zero-sum (one owner per zone) and contested, so it can't be co-farmed.
 Config.Ladders = {
-    rep   = { title = 'Top Crews (reputation)', subject = 'gang'    },
+    rep   = { title = 'Top Crews (reputation)', subject = 'gang',    noPrize = true },
     turf  = { title = 'Turf Held',              subject = 'gang'    },
     drugs = { title = 'Drug Empire',            subject = 'citizen' },
     dirty = { title = 'Dirtiest Hustler',       subject = 'citizen' },

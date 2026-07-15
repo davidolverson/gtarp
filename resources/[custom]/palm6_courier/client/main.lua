@@ -12,31 +12,61 @@
 
 local activeId = nil
 local activeBlip = nil
+local activePickup = nil
 local activeDropoff = nil
+local phase = nil          -- 'pickup' | 'dropoff'
 
 local function clearActive()
     Game.RemoveBlip(activeBlip)
-    activeBlip, activeId, activeDropoff = nil, nil, nil
+    activeBlip, activeId, activePickup, activeDropoff, phase = nil, nil, nil, nil, nil
 end
 
 RegisterNetEvent('palm6_courier:onAccepted', function(payload)
     clearActive()
     activeId = payload.id
+    activePickup = payload.pickup
     activeDropoff = payload.dropoff
-    activeBlip = Game.CreateRouteBlip(payload.dropoff, payload.label, Config.DeliveryBlipColor or 5)
+    -- Route to the PICKUP first; the dropoff blip appears after the server
+    -- confirms the package was collected (palm6_courier:onPickedUp).
+    if activePickup then
+        phase = 'pickup'
+        activeBlip = Game.CreateRouteBlip(activePickup, (payload.label or 'Package') .. ' (pickup)',
+            Config.PickupBlipColor or 3)
+        Game.Notify({ title = 'Courier',
+            description = ('Delivery #%d accepted. Collect the package at the pickup.'):format(payload.id),
+            type = 'success' })
+    else
+        -- Legacy fallback (no pickup coords): behave as before.
+        phase = 'dropoff'
+        activeBlip = Game.CreateRouteBlip(activeDropoff, payload.label, Config.DeliveryBlipColor or 5)
+        Game.Notify({ title = 'Courier',
+            description = ('Delivery #%d accepted. Follow the GPS to the dropoff.'):format(payload.id),
+            type = 'success' })
+    end
+end)
 
-    Game.Notify({
-        title = 'Courier',
-        description = ('Delivery #%d accepted. Follow the GPS to the dropoff.'):format(payload.id),
-        type = 'success',
-    })
+RegisterNetEvent('palm6_courier:onPickedUp', function(payload)
+    if payload.id ~= activeId then return end
+    Game.RemoveBlip(activeBlip)
+    activeDropoff = payload.dropoff or activeDropoff
+    phase = 'dropoff'
+    activeBlip = Game.CreateRouteBlip(activeDropoff, (payload.label or 'Package') .. ' (dropoff)',
+        Config.DeliveryBlipColor or 5)
+    Game.Notify({ title = 'Courier',
+        description = 'Package collected. Follow the GPS to the dropoff.', type = 'success' })
 end)
 
 CreateThread(function()
     while true do
-        if activeId and activeDropoff then
-            local d = Game.DistanceBetween(Game.GetPlayerCoords(), activeDropoff)
-            if d <= (Config.DeliveryRadiusMeters or 8.0) then
+        if activeId and phase == 'pickup' and activePickup then
+            if Game.DistanceBetween(Game.GetPlayerCoords(), activePickup) <= (Config.DeliveryRadiusMeters or 8.0) then
+                TriggerServerEvent('palm6_courier:pickup', activeId)
+                Wait(2000)  -- debounce until the server flips us to 'dropoff'
+            else
+                Wait(1500)
+            end
+        elseif activeId and phase == 'dropoff' and activeDropoff then
+            if Game.DistanceBetween(Game.GetPlayerCoords(), activeDropoff) <= (Config.DeliveryRadiusMeters or 8.0) then
                 local id = activeId
                 clearActive()
                 TriggerServerEvent('palm6_courier:complete', id)

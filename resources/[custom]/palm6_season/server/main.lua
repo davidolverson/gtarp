@@ -537,7 +537,8 @@ local function cmdSeasonClose(src)
                 -- are keyed to the gang LEADER's citizenid (immutable) — never
                 -- the gang name (reusable on disband, mutable on /rename), which
                 -- would let a name-squatter steal it or a rename forfeit it.
-                local prize = Config.Rewards and Config.Rewards[pos]
+                -- noPrize ladders (e.g. rep — farmable) archive but never pay.
+                local prize = (not meta.noPrize) and Config.Rewards and Config.Rewards[pos] or nil
                 if prize and prize > 0 and r.subject_id and tostring(r.subject_id) ~= '' then
                     local subjType, subjId = meta.subject, tostring(r.subject_id)
                     if subjType == 'gang' then

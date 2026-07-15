@@ -38,3 +38,5 @@ Config.AcceptedLifetimeMinutes = 60
 
 -- Blip colour for accepted delivery destination on the courier's map.
 Config.DeliveryBlipColor = 5
+-- Blip colour for the pickup leg (courier routes to pickup before dropoff).
+Config.PickupBlipColor = 3

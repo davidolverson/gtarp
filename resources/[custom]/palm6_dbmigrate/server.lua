@@ -148,6 +148,12 @@ UPDATE `palm6_turf`
    SET `owner_gang` = NULL, `captured_by` = NULL, `captured_at` = NULL
  WHERE `owner_gang` IS NOT NULL
    AND `owner_gang` NOT IN (SELECT `name` FROM `palm6_gangs`)]] },
+    -- 0050: pickup-visited flag for courier (see sql/0050). Idempotent ALTER.
+    { name = '0050 courier picked_up column', sql = [[
+ALTER TABLE `courier_postings` ADD COLUMN IF NOT EXISTS `picked_up` TINYINT NOT NULL DEFAULT 0]] },
+    -- 0051: persist turf rep-mint cooldown (see sql/0051). Idempotent ALTER.
+    { name = '0051 turf rep_at column', sql = [[
+ALTER TABLE `palm6_turf` ADD COLUMN IF NOT EXISTS `rep_at` BIGINT NOT NULL DEFAULT 0]] },
 }
 
 CreateThread(function()
