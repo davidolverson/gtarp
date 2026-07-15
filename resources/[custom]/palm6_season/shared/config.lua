@@ -22,6 +22,19 @@ Config.CmdCooldownSec = 5       -- per-player cooldown on /season and /seasontop
 -- A human grants this after review, e.g. add_ace group.admin command.season allow.
 Config.AdminAce       = 'command.season'
 
+-- Auto-open a default season at boot if none is active, so the ladders and
+-- rewards are live out-of-box (no admin /seasonopen required for the system to
+-- do anything). Names the auto-opened season Config.DefaultSeasonName.
+Config.AutoOpenDefaultSeason = true
+Config.DefaultSeasonName     = 'Season 1'
+
+-- Season-close prize ladder. When a season closes, the archived top finishers
+-- of each ladder earn a CLAIMABLE clean-cash reward (banked on /seasonclaim,
+-- so it is offline-safe and can never double-pay). Amounts are per finishing
+-- position [1]=winner. Citizen ladders pay the person; gang ladders pay the
+-- gang's #1-ranked member (leader) on their behalf. Set Rewards = {} to disable.
+Config.Rewards        = { [1] = 50000, [2] = 20000, [3] = 10000 }
+
 -- Optional Discord tie-in. OFF by default and never a hard dependency: with
 -- DiscordEnable = false nothing is ever posted. DiscordFeed reuses an EXISTING
 -- palm6_discord feed key ('live') so no edit to palm6_discord is required.

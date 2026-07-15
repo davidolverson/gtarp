@@ -105,6 +105,12 @@ local function cmdLaunder(src)
         return
     end
 
+    if Config.BlockWhileWanted and Bridge.HasActiveWarrant(cid) then
+        Bridge.Notify(src, 'Laundromat',
+            "The front won't touch a wanted man's cash — clear your warrant first.", 'error')
+        return
+    end
+
     local held = Bridge.CountItem(src, Config.DirtyItem)
     if held <= 0 then
         Bridge.Notify(src, 'Laundromat', 'You have no dirty money to wash.', 'error')

@@ -48,6 +48,9 @@ ExtraShops = {
             P('fishing_rod',   250),
             P('pickaxe',       350),
             P('hunting_knife', 300),
+            -- palm6_clout go-live gate: a one-time cost basis so streaming for
+            -- clean donations/brand deals isn't free money-printing.
+            P('streamer_phone', 2500, 10),
         },
         locations = {
             vector3(24.47, -1346.62, 29.50),     -- Innocence Blvd
@@ -201,6 +204,37 @@ ExtraShops = {
         locations = {
             vector3(1391.5, 3605.5, 38.9),   -- Sandy Shores (VERIFY IN-GAME)
             vector3(2001.5, 4636.5, 41.0),   -- Grapeseed nursery (VERIFY IN-GAME)
+        },
+    },
+
+    -- ---------------------------------------------------------------------
+    -- Black Market — illicit reagents + counterfeiting supply. This is the
+    -- input source that makes the meth (palm6_drugs §9) and counterfeit
+    -- (palm6_counterfeit) verticals actually playable: both were shipped +
+    -- enabled but had NO in-game source for their inputs, so the stations
+    -- teased a dead affordance. Entry is gated only by price + a discreet
+    -- location; real production stays gated downstream (meth cooking needs
+    -- drug rank 4; counterfeiting needs a placed printer with heat/fence caps).
+    -- ⚠️ coords are placeholders — VERIFY IN-GAME (on-ground/reachable).
+    -- Prices are a starting cost basis — tune vs. feel + the dirty daily cap.
+    -- ---------------------------------------------------------------------
+    black_market = {
+        name = 'Black Market',
+        groups = nil, -- public; entry price-gated, production gated downstream
+        inventory = {
+            -- meth cook precursors (1 of each per cook). pseudo grade 1 =
+            -- Standard quality floor; grade 2 (Premium) is deliberately NOT sold.
+            P('pseudo',         80, 50, nil, { grade = 1 }),
+            P('acid',           45, 50),
+            P('red_phosphorus', 55, 50),
+            -- counterfeiting supply. The printer is the capital investment
+            -- (one placed per character); paper/ink are per-cycle consumables.
+            P('counterfeit_printer', 6000, 5),
+            P('counterfeit_paper',     50, 100),
+            P('counterfeit_ink',      150, 100),
+        },
+        locations = {
+            vector3(717.0, -962.0, 24.9),   -- warehouse district (VERIFY IN-GAME)
         },
     },
 }

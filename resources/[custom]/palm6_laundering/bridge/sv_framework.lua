@@ -144,6 +144,18 @@ function Bridge.ResourceStarted(name)
     return GetResourceState(name) == 'started'
 end
 
+-- Does this citizen have an active warrant? Soft cross-read of palm6_mdt
+-- (same export loanshark uses); false if palm6_mdt is absent. Used to gate the
+-- wash so a WANTED player can't cash dirty money out while the law is after
+-- them (gives the loanshark default warrant real teeth + makes 'wanted' matter).
+function Bridge.HasActiveWarrant(citizenid)
+    if GetResourceState('palm6_mdt') ~= 'started' then return false end
+    local ok, has = pcall(function()
+        return exports.palm6_mdt:HasActiveWarrant(citizenid)
+    end)
+    return ok and has == true
+end
+
 -- Unrestricted chat command (all gating is server-side in the handler).
 function Bridge.RegisterCommand(name, handler)
     RegisterCommand(name, handler, false)

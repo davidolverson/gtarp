@@ -139,6 +139,15 @@ CREATE TABLE IF NOT EXISTS `palm6_pulse_streaks` (
     last_window_id  INT         NOT NULL DEFAULT 0,
     updated_at      BIGINT      NOT NULL DEFAULT 0
 )]] },
+    -- 0049: reconcile turf ownership after the gang-identity change (turf now
+    -- keys on palm6_gangs.name). Idempotent — only nulls turf whose owner_gang
+    -- is NOT a current palm6_gangs name, so it is safe to re-run every boot and
+    -- also auto-releases turf held by a since-disbanded gang. See sql/0049.
+    { name = '0049 palm6_turf identity reset', sql = [[
+UPDATE `palm6_turf`
+   SET `owner_gang` = NULL, `captured_by` = NULL, `captured_at` = NULL
+ WHERE `owner_gang` IS NOT NULL
+   AND `owner_gang` NOT IN (SELECT `name` FROM `palm6_gangs`)]] },
 }
 
 CreateThread(function()

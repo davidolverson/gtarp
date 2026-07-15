@@ -38,11 +38,14 @@ function Bridge.GetPlayerName(src)
     return GetPlayerName(src) or ('player %d'):format(src)
 end
 
--- The character's gang name, or nil (palm6_turf "verified" badge synergy).
+-- The character's PLAYER-RUN gang name, or nil (palm6_turf "verified" badge
+-- synergy). Keyed on palm6_gangs so it matches palm6_turf.owner_gang, which now
+-- stores palm6_gangs.name. Soft dep — pcall-guarded (no gang => unverified).
 function Bridge.GetGangName(src)
-    local p = getPlayer(src)
-    local g = p and p.PlayerData and p.PlayerData.gang
-    if not g or not g.name or g.name == 'none' then return nil end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return nil end
+    local ok, g = pcall(function() return exports.palm6_gangs:GetGang(cid) end)
+    if not ok or not g or not g.name then return nil end
     return g.name
 end
 

@@ -139,6 +139,7 @@ Config.Categories = {
             { cmd = '/pulse',     blurb = 'Check the live city Pulse; /pulse checkin at an active event to bank points.' },
             { cmd = '/season',    blurb = 'See the current season and its theme.' },
             { cmd = '/seasontop', blurb = 'Season leaderboard: /seasontop [board].' },
+            { cmd = '/seasonclaim', blurb = 'Bank any season prizes you won when a season ends.' },
             { cmd = '/lottery',   blurb = 'Buy into the city lottery: /lottery [tickets].' },
             { cmd = '/rules',     blurb = 'Re-read the server rules at any time.' },
         },

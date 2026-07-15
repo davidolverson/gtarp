@@ -28,6 +28,11 @@ ExtraItems = {
     -- Hardware
     repair_kit      = { label = 'Repair Kit',      weight = 1200, stack = true },
     flashlight      = { label = 'Flashlight',      weight = 300,  stack = false },
+
+    -- Streamer rig — the gate item for palm6_clout /golive (a one-time cost
+    -- basis; re-checked every tick, so selling it mid-stream ends the stream).
+    streamer_phone  = { label = 'Streamer Phone',  weight = 250,  stack = false,
+                        description = 'A content-creator rig. Required to go live (/golive).' },
     tirepack        = { label = 'Tire Pack',       weight = 2500, stack = true },
 
     -- Grind tools (palm6_grind) — buyable at the Hardware Store.

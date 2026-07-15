@@ -22,13 +22,17 @@ function Bridge.GetCitizenId(src)
     return p.PlayerData.citizenid
 end
 
--- { name, grade } for the source's current gang, or nil if they have none
--- ('none' is qbx_core's default — treated as "no gang").
+-- { id, name, label } for the source's PLAYER-RUN gang (palm6_gangs), or nil.
+-- Turf keys on the player-run gang layer (not qbx's static PlayerData.gang) so
+-- ownership, /ganginfo "turf held", the season ladder, and gang reputation all
+-- share ONE gang identity (palm6_gangs.name/id). Soft dependency — pcall-guarded
+-- so turf degrades gracefully (no tagging) if palm6_gangs isn't running.
 function Bridge.GetGang(src)
-    local p = getPlayer(src)
-    local gang = p and p.PlayerData and p.PlayerData.gang
-    if not gang or gang.name == 'none' then return nil end
-    return { name = gang.name, label = gang.label or gang.name }
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return nil end
+    local ok, g = pcall(function() return exports.palm6_gangs:GetGang(cid) end)
+    if not ok or not g or not g.name then return nil end
+    return { id = g.id, name = g.name, label = g.tag or g.name }
 end
 
 -- Notify a player.

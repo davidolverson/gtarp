@@ -68,6 +68,16 @@ function Bridge.ResourceStarted(name)
     return GetResourceState(name) == 'started'
 end
 
+-- Credit CLEAN funds to an online player's bank (season prize payout). Returns
+-- AddMoney's real result (not a blind true) so the caller reverts the claim if
+-- the credit didn't land — a prize must never be marked claimed but unpaid.
+function Bridge.AddBank(src, amount, reason)
+    local p = getPlayer(src)
+    if not p or not p.Functions then return false end
+    local ok, res = pcall(function() return p.Functions.AddMoney('bank', amount, reason or 'season-prize') end)
+    return ok and res ~= false
+end
+
 -- Unrestricted chat command; all gating happens server-side in the handler.
 function Bridge.RegisterCommand(name, handler)
     RegisterCommand(name, handler, false)

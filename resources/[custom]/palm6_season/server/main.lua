@@ -69,6 +69,23 @@ CREATE TABLE IF NOT EXISTS `palm6_season_archive` (
     INDEX idx_palm6_season_archive_season (season_id, ladder, rank_pos)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ]])
+        MySQL.query.await([[
+CREATE TABLE IF NOT EXISTS `palm6_season_rewards` (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    season_id INT UNSIGNED NOT NULL,
+    ladder VARCHAR(32) NOT NULL,
+    rank_pos TINYINT UNSIGNED NOT NULL,
+    subject_type VARCHAR(16) NOT NULL,
+    subject_id VARCHAR(64) NOT NULL,
+    amount BIGINT NOT NULL,
+    claimed TINYINT(1) NOT NULL DEFAULT 0,
+    claimed_by VARCHAR(64) NULL,
+    claimed_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_palm6_season_reward (season_id, ladder, rank_pos),
+    INDEX idx_palm6_season_rewards_subject (subject_type, subject_id, claimed)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+]])
     end)
     if not ok then
         print(('[palm6_season] table ensure FAILED -> %s'):format(tostring(err)))
@@ -426,6 +443,21 @@ local function cmdSeasonOpen(src, args)
     announceSeason('Season opened', ('A new season has begun: %s'):format(name), nil)
 end
 
+-- Resolve a player-run gang NAME to its leader's citizenid — the IMMUTABLE key
+-- a gang prize is paid to. Gang names are reusable (freed on disband) and
+-- mutable (/rename), so a prize must NEVER be keyed to a name. Soft cross-read
+-- of palm6_gangs; nil if the gang is gone or the table is absent → no prize row.
+local function resolveGangLeaderCid(gangName)
+    if type(gangName) ~= 'string' or gangName == '' then return nil end
+    if GetResourceState('palm6_gangs') ~= 'started' then return nil end
+    local cid
+    pcall(function()
+        cid = MySQL.scalar.await('SELECT leader_cid FROM palm6_gangs WHERE name = ? LIMIT 1', { gangName })
+    end)
+    if cid and cid ~= '' then return cid end
+    return nil
+end
+
 -- /seasonclose (admin): snapshots each ladder into the archive, then stamps
 -- ends_at and deactivates. The only writes here target this resource's tables.
 local function cmdSeasonClose(src)
@@ -472,6 +504,30 @@ local function cmdSeasonClose(src)
                         .. 'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         { s.id, key, pos, meta.subject, tostring(r.subject_id), r.label, r.score })
                 end)
+                -- Claimable prize for a top finisher (offline-safe: paid on
+                -- /seasonclaim). INSERT IGNORE on the unique (season,ladder,pos)
+                -- so a re-run can never double-post a prize. Gang-ladder prizes
+                -- are keyed to the gang LEADER's citizenid (immutable) — never
+                -- the gang name (reusable on disband, mutable on /rename), which
+                -- would let a name-squatter steal it or a rename forfeit it.
+                local prize = Config.Rewards and Config.Rewards[pos]
+                if prize and prize > 0 and r.subject_id and tostring(r.subject_id) ~= '' then
+                    local subjType, subjId = meta.subject, tostring(r.subject_id)
+                    if subjType == 'gang' then
+                        local leaderCid = resolveGangLeaderCid(subjId)
+                        subjType = leaderCid and 'citizen' or nil  -- unresolvable gang → no prize
+                        subjId = leaderCid
+                    end
+                    if subjType then
+                        pcall(function()
+                            MySQL.insert.await(
+                                'INSERT IGNORE INTO palm6_season_rewards '
+                                .. '(season_id, ladder, rank_pos, subject_type, subject_id, amount) '
+                                .. 'VALUES (?, ?, ?, ?, ?, ?)',
+                                { s.id, key, pos, subjType, subjId, prize })
+                        end)
+                    end
+                end
             end
             if rows[1] then
                 recapFields[#recapFields + 1] = {
@@ -488,9 +544,62 @@ local function cmdSeasonClose(src)
     announceSeason(('Season "%s" closed'):format(s.name), 'Final standings archived.', recapFields)
 end
 
+-- /seasonclaim — bank any unclaimed season prizes the caller is owed. Every
+-- prize is keyed to a citizenid (gang prizes are paid to the leader's citizenid,
+-- resolved at close), so a prize matches its owner by an immutable identity.
+-- Each pays exactly once — an atomic claimed-flag flip gates the bank credit,
+-- and a failed credit reverts the flip so nothing is ever marked paid-but-unpaid.
+local function cmdSeasonClaim(src)
+    if not cooldown(src) then return end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+
+    local ok, rows = pcall(function()
+        return MySQL.query.await(
+            "SELECT id, amount FROM palm6_season_rewards "
+            .. "WHERE claimed = 0 AND subject_type = 'citizen' AND subject_id = ?",
+            { cid }) or {}
+    end)
+    if not ok then
+        Bridge.Notify(src, 'Season', 'Could not check your prizes — try again.', 'error'); return
+    end
+
+    local paid, total = 0, 0
+    for _, row in ipairs(rows) do
+        -- Atomically claim THIS row before paying (rows == 1 guard prevents a
+        -- concurrent second claim from double-paying).
+        local claimedOk = false
+        pcall(function()
+            claimedOk = MySQL.update.await(
+                'UPDATE palm6_season_rewards SET claimed = 1, claimed_by = ?, claimed_at = NOW() '
+                .. 'WHERE id = ? AND claimed = 0', { cid, row.id }) == 1
+        end)
+        if claimedOk then
+            if Bridge.AddBank(src, row.amount, 'season-prize') then
+                paid = paid + 1
+                total = total + (tonumber(row.amount) or 0)
+            else
+                -- Credit did not land — revert so the prize stays claimable.
+                pcall(function()
+                    MySQL.update.await(
+                        'UPDATE palm6_season_rewards SET claimed = 0, claimed_by = NULL, claimed_at = NULL '
+                        .. 'WHERE id = ? AND claimed_by = ?', { row.id, cid })
+                end)
+            end
+        end
+    end
+
+    if paid > 0 then
+        Bridge.Notify(src, 'Season', ('Claimed %d season prize(s): $%s banked.'):format(paid, total), 'success')
+    else
+        Bridge.Notify(src, 'Season', 'You have no season prizes to claim.', 'inform')
+    end
+end
+
 local function registerCommands()
     Bridge.RegisterCommand('season',      function(source) cmdSeason(source) end)
     Bridge.RegisterCommand('seasontop',   function(source, args) cmdSeasonTop(source, args) end)
+    Bridge.RegisterCommand('seasonclaim', function(source) cmdSeasonClaim(source) end)
     Bridge.RegisterCommand('seasonopen',  function(source, args) cmdSeasonOpen(source, args) end)
     Bridge.RegisterCommand('seasonclose', function(source) cmdSeasonClose(source) end)
 end
@@ -503,6 +612,20 @@ AddEventHandler('onResourceStart', function(resource)
     ensureTables()
     registerCommands()
     local s = GetCurrentSeason()
+    -- Auto-open a default season so the ladders/rewards are live out-of-box.
+    if not s and Config.AutoOpenDefaultSeason then
+        local ok, newId = pcall(function()
+            return MySQL.insert.await(
+                'INSERT INTO palm6_seasons (name, starts_at, active) VALUES (?, NOW(), 1)',
+                { Config.DefaultSeasonName })
+        end)
+        if ok and newId then
+            invalidate()
+            s = GetCurrentSeason()
+            print(('[palm6_season] auto-opened default season "%s" (id %s)'):format(
+                Config.DefaultSeasonName, tostring(newId)))
+        end
+    end
     print(('[palm6_season] online: %s'):format(
         s and ('season "%s" active since %s'):format(s.name, tostring(s.starts_at))
           or 'no active season (open one with /seasonopen <name>)'))

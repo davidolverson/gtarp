@@ -59,6 +59,12 @@ Config.MaxPerRun  = 25000   -- most dirty $ a single run will take
 Config.DailyCap   = 75000   -- most dirty $ a character can wash per calendar day
 Config.CooldownSec = 45     -- per-character, between runs
 
+-- Refuse to wash for a player with an ACTIVE warrant (palm6_mdt). Closes the
+-- loanshark "borrow dirty, default, launder it clean while wanted" cash-out and
+-- makes wanted status meaningful: settle the law before you wash. Soft — if
+-- palm6_mdt is absent the check is a no-op. Set false to disable.
+Config.BlockWhileWanted = true
+
 -- ---------------------------------------------------------------------------
 -- Heat / risk. Washing warms the front. There is NO custom client here (this
 -- is a server-only resource) — so heat never draws a map blip; instead it

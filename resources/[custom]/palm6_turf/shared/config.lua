@@ -31,3 +31,10 @@ Config.BlipSprite = 84
 Config.UnclaimedColour = 0   -- white
 Config.ClaimedColour = 1     -- red-ish; per-gang colour is deferred to v2
 Config.BlipScale = 0.8
+
+-- Reputation (palm6_gangs) awarded for a genuine turf TAKEOVER — capturing a
+-- zone that a DIFFERENT player-run gang currently holds. Not granted for
+-- claiming unowned turf. Bounded per-zone by RepCooldownSec so two gangs can't
+-- ping-pong a single zone to farm rep. Set RepPerCapture = 0 to disable.
+Config.RepPerCapture = 10
+Config.RepCooldownSec = 600   -- a given zone can mint rep at most once / 10 min

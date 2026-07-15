@@ -20,13 +20,16 @@ function Bridge.GetCitizenId(src)
     return p and p.PlayerData and p.PlayerData.citizenid or nil
 end
 
--- The caller's GANG (qbx_core's first-class gang primitive — distinct from
--- job), or nil if unaffiliated. Same shape palm6_turf's own bridge reads.
+-- The caller's PLAYER-RUN gang (palm6_gangs), or nil if unaffiliated. Keyed on
+-- the player-run gang layer so this matches palm6_turf.owner_gang, which now
+-- stores palm6_gangs.name (see palm6_turf/bridge/sv_framework.lua). Soft dep —
+-- pcall-guarded so /shakedown degrades gracefully if palm6_gangs is absent.
 function Bridge.GetGang(src)
-    local p = getPlayer(src)
-    local gang = p and p.PlayerData and p.PlayerData.gang
-    if not gang or gang.name == 'none' then return nil end
-    return { name = gang.name, label = gang.label or gang.name }
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return nil end
+    local ok, g = pcall(function() return exports.palm6_gangs:GetGang(cid) end)
+    if not ok or not g or not g.name then return nil end
+    return { id = g.id, name = g.name, label = g.tag or g.name }
 end
 
 -- Which gang controls a turf zone right now, or nil. SOFT cross-read of the

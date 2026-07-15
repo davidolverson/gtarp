@@ -12,6 +12,7 @@
 
 local zones   = {}  -- [id] = { label, coords, owner_gang, captured_by, captured_at }
 local pending = {}  -- [src] = { zoneId, gangName, holdUntil }
+local zoneRepAt = {}  -- [zoneId] = os.time() of last rep-minting takeover (anti-farm)
 
 local function ensureZones()
     for _, z in ipairs(Config.Zones) do
@@ -113,6 +114,7 @@ RegisterNetEvent('palm6_turf:complete', function(zoneId)
     end
 
     local cid = Bridge.GetCitizenId(src)
+    local prevOwner = z.owner_gang   -- capture before the flip for takeover check
     z.owner_gang = gang.name
     z.captured_by = cid
     pcall(function()
@@ -120,6 +122,21 @@ RegisterNetEvent('palm6_turf:complete', function(zoneId)
             'UPDATE palm6_turf SET owner_gang = ?, captured_by = ?, captured_at = NOW() WHERE zone_id = ?',
             { gang.name, cid, zoneId })
     end)
+
+    -- Reputation for a genuine takeover: the zone was held by a DIFFERENT
+    -- player-run gang, and this zone hasn't minted rep within RepCooldownSec
+    -- (anti-farm — stops two gangs ping-ponging one zone). Claiming unowned
+    -- turf grants nothing. Rep is a meta stat (no cash); AddRep is soft/pcall.
+    if Config.RepPerCapture and Config.RepPerCapture > 0 and gang.id
+        and prevOwner and prevOwner ~= 'none' and prevOwner ~= gang.name then
+        local lastAt = zoneRepAt[zoneId] or 0
+        if now - lastAt >= (Config.RepCooldownSec or 600) then
+            zoneRepAt[zoneId] = now
+            pcall(function()
+                exports.palm6_gangs:AddRep(gang.id, Config.RepPerCapture, 'turf_takeover')
+            end)
+        end
+    end
 
     Bridge.Notify(src, 'Turf', ('%s tagged for %s.'):format(z.label, gang.name), 'success')
     syncAll()
