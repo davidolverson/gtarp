@@ -104,7 +104,8 @@ RegisterNetEvent('palm6_onboarding:acceptRules', function()
                     { cid })
             end)
             Bridge.Notify(src, 'Welcome to Palm6',
-                ('Your starter vehicle is parked at the %s garage.'):format(Config.StarterVehicle.garage),
+                ('Your starter vehicle is parked at the %s garage.'):format(
+                    Config.StarterVehicle.garageLabel or Config.StarterVehicle.garage),
                 'success')
         end
     end

@@ -43,6 +43,11 @@ ExtraShops = {
             P('bandage',       40),
             P('painkillers',   60),
             P('flashlight',    150),
+            -- palm6_grind starter tools (also stocked at Hardware Store) so a
+            -- fresh spawn can start the fishing/mining/hunting loop in-city.
+            P('fishing_rod',   250),
+            P('pickaxe',       350),
+            P('hunting_knife', 300),
         },
         locations = {
             vector3(24.47, -1346.62, 29.50),     -- Innocence Blvd

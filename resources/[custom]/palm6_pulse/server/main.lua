@@ -112,7 +112,8 @@ end
 -- ---------------------------------------------------------------------------
 local function announce(w)
     if Config.Toast then
-        Bridge.Broadcast(('PULSE — %s'):format(w.label), w.blurb, 'inform')
+        Bridge.Broadcast(('PULSE — %s'):format(w.label),
+            ('%s  ·  /pulse checkin at the action to bank points.'):format(w.blurb), 'inform')
     end
     local hook = Bridge.GetConvar(Config.DiscordConvar)
     if hook then

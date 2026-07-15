@@ -61,6 +61,9 @@ Config.StarterVehicle = {
     enabled = true,
     model = 'blista',
     garage = 'motelgarage',
+    -- Player-facing name for the garage in the tour message (the internal
+    -- `garage` key is not friendly). Purely cosmetic.
+    garageLabel = 'motel',
     reason = 'onboarding-starter-vehicle',
 }
 

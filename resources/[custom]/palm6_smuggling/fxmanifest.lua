@@ -6,9 +6,18 @@ author 'EvThatGuy'
 version '0.1.0'
 description 'palm6 smuggling — standalone multi-modal contraband runs (dirty payout)'
 
+shared_scripts {
+    '@ox_lib/init.lua',
+    'shared/config.lua',
+}
+
+client_scripts {
+    'bridge/cl_game.lua',   -- game adapter — must load before client logic
+    'client/main.lua',
+}
+
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
-    'shared/config.lua',
     'bridge/sv_framework.lua',  -- framework adapter — before server logic
     'server/main.lua',
 }

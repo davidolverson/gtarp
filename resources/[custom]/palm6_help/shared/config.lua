@@ -136,6 +136,7 @@ Config.Categories = {
         blurb = 'Public read-outs on the city, the season and the lottery.',
         commands = {
             { cmd = '/citystats', blurb = 'Live city stats: gangs, economy, warrants: /citystats [hours].' },
+            { cmd = '/pulse',     blurb = 'Check the live city Pulse; /pulse checkin at an active event to bank points.' },
             { cmd = '/season',    blurb = 'See the current season and its theme.' },
             { cmd = '/seasontop', blurb = 'Season leaderboard: /seasontop [board].' },
             { cmd = '/lottery',   blurb = 'Buy into the city lottery: /lottery [tickets].' },
