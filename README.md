@@ -74,3 +74,20 @@ Phases 1-10 of the build (see `docs/BUILD-ROADMAP.md`) ship:
 7. Start the server.
 
 See `docs/SETUP.md` for the full walkthrough.
+
+## Palm6 Creative System (Governance)
+
+This repository is aligned with the approved **Palm6 Creative System**. Creative,
+brand, and structural decisions follow the governance defined there.
+
+- **Start here:** [`00-START-HERE.md`](00-START-HERE.md)
+- **Foundation docs:** [`00-FOUNDATION/`](00-FOUNDATION/) — Design Manifesto,
+  Dual Visual System, Brand Pyramid, Quality Standards, Color System, Design Bible.
+- **Decisions are logged:** [`00-FOUNDATION/09-DECISION-LOG.md`](00-FOUNDATION/09-DECISION-LOG.md)
+  and entries in [`00-FOUNDATION/DECISION-LOG/`](00-FOUNDATION/DECISION-LOG/).
+
+Non-trivial creative/brand changes go through the RFC + Decision Log process.
+Nothing is treated as final/production-ready without an **Approved** status in the
+Decision Log. This governance layer is additive — it does not change how the server
+resources above are built, deployed, or run.
+
