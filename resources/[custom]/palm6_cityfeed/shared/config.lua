@@ -71,13 +71,14 @@ Config.EmitArrests = true
 --
 -- Defaults (when the convar is unset) are baked into each producer:
 --   * court is ON  — its payload shape is documented below and stable.
---   * ems / heist are OFF — their payload field names are a best-effort guess
---     until confirmed against palm6-bot/src/events/types.ts. Flip the convar
---     to "true" once the bot side is verified; a wrong shape only drops the
---     post (fail-soft), it never breaks gameplay.
+--   * ems / heist are OFF by default (a conservative rollout switch), but their
+--     payloads are now CONFIRMED against palm6-bot/src/events/types.ts
+--     (2026-07-16): ems carries the required `incident_type`; heist's fields are
+--     all optional. Flip the convar to "true" to enable them — a wrong shape
+--     would only drop the post (fail-soft), never break gameplay.
 --
--- Known/assumed payloads (public facts only — no citizenid/license/take):
+-- Verified payloads (public facts only — no citizenid/license/take):
 --   court_date : { type='court_date', case_ref='Petition #N', hearing_date='today' }
---   ems        : { type='ems', character_name=<patient>, agency='Palm Medical' }
---   heist      : { type='heist', location=<ATM label>, agency='Palm6 Bay Police Department' }
+--   ems        : { type='ems', incident_type='medical call', outcome=..., case_ref='EMS-N' }
+--   heist      : { type='heist', location=<ATM label> }   -- agency is stripped by the bot
 -- ---------------------------------------------------------------------------

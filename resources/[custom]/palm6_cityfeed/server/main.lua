@@ -62,6 +62,16 @@ local function emit(event)
         print(('[palm6_cityfeed] emit rejected — unknown event type "%s"'):format(tostring(event.type)))
         return false
     end
+    -- The bot's schema requires every text field to be non-empty (zod min(1)),
+    -- so an empty-string value would enqueue only to be 400-dropped after a
+    -- wasted POST. Reject it here (before the feed-off check, so it surfaces in
+    -- dev too) — a producer bug becomes visible at the source, not a silent drop.
+    for k, v in pairs(event) do
+        if type(v) == 'string' and v == '' then
+            print(('[palm6_cityfeed] emit(%s) rejected — empty "%s" field'):format(event.type, tostring(k)))
+            return false
+        end
+    end
     local url = endpoint()
     if not url then
         if not warnedNoConfig then
@@ -114,7 +124,11 @@ CreateThread(function()
                 Bridge.HttpPostJson(url, msg.body, headers, function(status, _, respHeaders)
                     if status == 429 and Config.Retry429Once and not msg.retried then
                         msg.retried = true
-                        local after = tonumber(respHeaders['Retry-After'] or respHeaders['retry-after'] or 5)
+                        -- Retry-After may be delta-seconds OR an HTTP-date; keep
+                        -- the `or 5` OUTSIDE tonumber so a non-numeric value
+                        -- falls back to 5 instead of yielding nil (which would
+                        -- error math.min below).
+                        local after = tonumber(respHeaders['Retry-After'] or respHeaders['retry-after']) or 5
                         dbg(('429 — retrying in %ds'):format(after))
                         SetTimeout(math.min(after, 30) * 1000, function()
                             table.insert(queue, 1, msg)
