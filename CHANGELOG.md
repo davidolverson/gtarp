@@ -9,6 +9,26 @@ Format: newest first. Dates are EDT.
 
 ---
 
+## 2026-07-17 - City Lottery kiosk
+
+The lottery is now a place you go, not a command you have to know. Walk up to
+the new **City Lottery** clerk (map blip) and the menu shows the **live
+jackpot** (what the winner takes), your tickets, time to the next draw,
+quick-buy 1/5/10 or a custom amount, and a **recent winners** board.
+
+**Tracking (internal):** new client layer for `palm6_lottery` (was server-only)
+— clerk NPC + blip + ox_lib menu (mirrors the insurance agent). Presentation
+only: `kiosk:buy` routes to the existing server-authoritative `cmdBuy` (rate
+limit, open-draw, bank charge, per-draw cap); `kiosk:data` is a read-only
+snapshot; both DoS-budgeted in `palm6_eventguard`. Ultracode-verified (0
+confirmed / 6 refuted). Kiosk coord is a placeholder near the Davis 24/7.
+
+**📣 Public:** The **City Lottery** now has a kiosk — find the ticket blip, check
+the live jackpot, and grab tickets right there. Draws pay a random ticket holder
+the whole pot (minus the house cut). Recent winners are on the board.
+
+---
+
 ## 2026-07-16 - Insurance agent NPC + plan tiers
 
 Mors Mutual is now a person you talk to, not a slash command. Walk up to the
