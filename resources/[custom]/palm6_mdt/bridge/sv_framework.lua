@@ -27,7 +27,12 @@ function Bridge.GetPlayerName(src)
         local ci = p.PlayerData.charinfo
         return ('%s %s'):format(ci.firstname or '', ci.lastname or ''):gsub('^%s+', ''):gsub('%s+$', '')
     end
-    return GetPlayerName(src) or ('player %d'):format(src)
+    -- charinfo missing (partial load / disconnecting): return an IC-neutral
+    -- placeholder, NEVER the FiveM native GetPlayerName(src) — that is the OOC
+    -- account/gamertag, and this name flows into IC output (MDT notifications,
+    -- the Discord police blotter, the cityfeed arrest character_name). Leaking a
+    -- real gamertag into an IC channel breaks the IC/OOC wall.
+    return 'Unknown citizen'
 end
 
 -- Is this source an on-duty police officer right now? (palm6_evidence's

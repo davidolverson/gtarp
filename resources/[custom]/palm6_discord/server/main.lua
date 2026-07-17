@@ -88,15 +88,18 @@ local function announce(feed, payload)
             feed, Config.PerFeedPerMinute))
         return false
     end
-    if #queue >= Config.MaxQueue then
-        table.remove(queue, 1)
-        droppedTotal = droppedTotal + 1
-        print('[palm6_discord] queue full — dropped oldest message')
-    end
+    -- Build+encode BEFORE any eviction: a malformed/unencodable payload must
+    -- never cost a good queued message (fail-soft — a bad post drops at worst
+    -- the bad post, never a valid one already in flight).
     local ok, body = pcall(buildBody, feed, payload)
     if not ok then
         print(('[palm6_discord] announce(%s) rejected — unencodable payload'):format(feed))
         return false
+    end
+    if #queue >= Config.MaxQueue then
+        table.remove(queue, 1)
+        droppedTotal = droppedTotal + 1
+        print('[palm6_discord] queue full — dropped oldest message')
     end
     queue[#queue + 1] = { url = url, body = body, feed = feed, retried = false }
     markSent(feed)
@@ -125,7 +128,9 @@ CreateThread(function()
             Bridge.HttpPostJson(msg.url, msg.body, function(status, _, headers)
                 if status == 429 and Config.Retry429Once and not msg.retried then
                     msg.retried = true
-                    local after = tonumber(headers['Retry-After'] or headers['retry-after'] or 5)
+                    -- `or 5` OUTSIDE tonumber: a non-numeric HTTP-date Retry-After
+                    -- must fall back to 5, not yield nil and error math.min below.
+                    local after = tonumber(headers['Retry-After'] or headers['retry-after']) or 5
                     dbg(('429 on feed "%s" — retrying in %ds'):format(msg.feed, after))
                     SetTimeout(math.min(after, 30) * 1000, function()
                         table.insert(queue, 1, msg)
