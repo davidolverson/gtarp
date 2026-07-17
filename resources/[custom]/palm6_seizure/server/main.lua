@@ -89,10 +89,13 @@ local function cmdSeizeDirty(src)
     end)
 
     seizeLock[suspectCid] = nil
-    -- Hype: a police win on the case desk (suspect kept vague — no identity leak).
+    -- Hype: a police win on the case desk. Suspect kept vague AND the exact
+    -- amount is omitted — the raw forfeited figure is a private on-hand balance
+    -- (a "take"), so it stays in the officer/suspect Notify + the DB ledger,
+    -- never in the public Discord feed.
     Bridge.Announce('police', {
         title = 'Assets forfeited',
-        description = ('LSPD seized **$%d** in dirty money from a wanted suspect and booked it into evidence.'):format(held),
+        description = 'LSPD forfeited dirty money from a wanted suspect and booked it into evidence.',
     })
     Bridge.Notify(src, 'Forfeiture', ('Seized $%d in dirty money — booked into evidence.'):format(held), 'success')
     Bridge.Notify(target.src, 'Forfeiture', ('Police forfeited $%d in dirty money from you.'):format(held), 'error')

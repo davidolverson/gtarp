@@ -192,9 +192,12 @@ Ladders.drugs = { subject = 'citizen', run = function(startsAt, limit)
         local units = tonumber(r.units) or 0
         out[#out + 1] = {
             subject_id = r.subject_id,
-            label      = r.subject_id or '?',
+            -- Resolve to an IC character name, never the raw citizenid; and show
+            -- UNITS moved (a volume metric), never the raw dirty-cash TAKE — both
+            -- reach a player-facing board and the Discord recap.
+            label      = Bridge.GetCitizenName(r.subject_id),
             score      = tonumber(r.score) or 0,
-            display    = ('$%d / %du'):format(dirty, units),
+            display    = ('%d units'):format(units),
         }
     end
     return out
@@ -206,7 +209,7 @@ Ladders.dirty = { subject = 'citizen', run = function(startsAt, limit)
     local rows
     pcall(function()
         rows = MySQL.query.await(
-            'SELECT subject_id, SUM(v) AS score FROM ( '
+            'SELECT subject_id, SUM(v) AS score, COUNT(*) AS runs FROM ( '
             .. 'SELECT citizenid AS subject_id, dirty_in AS v FROM palm6_laundering_runs WHERE created_at >= ? '
             .. 'UNION ALL '
             .. 'SELECT seller_citizenid AS subject_id, payout AS v FROM palm6_chopshop_sales WHERE sold_at >= ? '
@@ -216,11 +219,14 @@ Ladders.dirty = { subject = 'citizen', run = function(startsAt, limit)
     local out = {}
     for _, r in ipairs(rows or {}) do
         local score = tonumber(r.score) or 0
+        local runs = tonumber(r.runs) or 0
         out[#out + 1] = {
             subject_id = r.subject_id,
-            label      = r.subject_id or '?',
+            -- IC character name, never the raw citizenid; RUNS count, never the
+            -- raw laundering/chop TAKE ($score stays the internal ranking key).
+            label      = Bridge.GetCitizenName(r.subject_id),
             score      = score,
-            display    = ('$%d'):format(score),
+            display    = ('%d runs'):format(runs),
         }
     end
     return out
@@ -245,7 +251,9 @@ Ladders.pulse = { subject = 'citizen', run = function(startsAt, limit)
         local score = tonumber(r.score) or 0
         out[#out + 1] = {
             subject_id = r.subject_id,
-            label      = r.subject_id or '?',
+            -- IC character name, never the raw citizenid (check-in count is a
+            -- benign aggregate and stays).
+            label      = Bridge.GetCitizenName(r.subject_id),
             score      = score,
             display    = ('%d check-ins'):format(score),
         }

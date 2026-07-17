@@ -114,6 +114,33 @@ function Bridge.GetSourceByCitizenId(citizenid)
     return nil
 end
 
+-- Resolve a citizenid to an IC CHARACTER name (firstname lastname) for
+-- leaderboards/recaps: a raw citizenid must never appear in a player-facing
+-- board or the Discord recap (it is an identity key, and the gang ladders
+-- already show a name). Online -> charinfo off the loaded player; offline ->
+-- the players.charinfo DB row. Never returns the raw citizenid or an OOC name;
+-- an IC-neutral 'A resident' otherwise.
+function Bridge.GetCitizenName(citizenid)
+    if not citizenid or citizenid == '' then return 'A resident' end
+    local function fromCharinfo(ci)
+        if type(ci) ~= 'table' then return nil end
+        local name = ('%s %s'):format(ci.firstname or '', ci.lastname or ''):gsub('^%s+', ''):gsub('%s+$', '')
+        return name ~= '' and name or nil
+    end
+    local src = Bridge.GetSourceByCitizenId(citizenid)
+    if src then
+        local p = getPlayer(src)
+        local name = p and p.PlayerData and fromCharinfo(p.PlayerData.charinfo)
+        if name then return name end
+    end
+    local name
+    pcall(function()
+        local row = MySQL.single.await('SELECT charinfo FROM players WHERE citizenid = ?', { citizenid })
+        if row and row.charinfo then name = fromCharinfo(json.decode(row.charinfo)) end
+    end)
+    return name or 'A resident'
+end
+
 -- Unrestricted chat command; all gating happens server-side in the handler.
 function Bridge.RegisterCommand(name, handler)
     RegisterCommand(name, handler, false)
