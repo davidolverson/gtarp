@@ -212,4 +212,16 @@ Config.Events = {
     -- reasoning as ox_inventory:openInventory above — normal gunfire can
     -- legitimately fire this often, so the budget is sized generously.
     ['evidence:server:CreateCasing'] = { calls = 60, window_seconds = 60 },
+
+    -- palm6_insurance — the Mors Mutual agent NPC menu. `agent:quote`/`claimList`/
+    -- `policies` are read-only DB snapshots; `agent:buy` charges the tier premium
+    -- and `agent:fileclaim` opens a claim (money). All re-run the exact server
+    -- authority (rate limit, at-office, ownership, server-side price recompute) —
+    -- these budgets are blunt defense-in-depth against a modified-client flood.
+    -- ensure palm6_eventguard before palm6_insurance so these register first.
+    ['palm6_insurance:agent:quote']     = { calls = 20, window_seconds = 60 },
+    ['palm6_insurance:agent:buy']       = { calls = 10, window_seconds = 60 },
+    ['palm6_insurance:agent:fileclaim'] = { calls = 10, window_seconds = 60 },
+    ['palm6_insurance:agent:policies']  = { calls = 15, window_seconds = 60 },
+    ['palm6_insurance:agent:claimList'] = { calls = 15, window_seconds = 60 },
 }

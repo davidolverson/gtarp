@@ -339,6 +339,10 @@ ALTER TABLE `palm6_ransom_cases` ADD COLUMN IF NOT EXISTS `payout_credited` TINY
 ALTER TABLE `palm6_lottery_draws` ADD COLUMN IF NOT EXISTS `paid` TINYINT NOT NULL DEFAULT 1]] },
     { name = '0061 season_rewards.paid', sql = [[
 ALTER TABLE `palm6_season_rewards` ADD COLUMN IF NOT EXISTS `paid` TINYINT NOT NULL DEFAULT 1]] },
+    -- 0064: insurance plan tier (see sql/0064). DEFAULT 'standard' backfills
+    -- pre-tier policies to the plan that reproduces the old flat behaviour.
+    { name = '0064 insurance policies.tier', sql = [[
+ALTER TABLE `palm6_insurance_policies` ADD COLUMN IF NOT EXISTS `tier` VARCHAR(16) NOT NULL DEFAULT 'standard']] },
 }
 
 CreateThread(function()

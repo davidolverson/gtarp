@@ -43,6 +43,13 @@ local function normPlate(plate)
     return tostring(plate or ''):upper():gsub('%s+', '')
 end
 
+-- Resolve a policy's plan tier config, defaulting to Standard for any unknown /
+-- missing tier (pre-tier policies backfill to 'standard' via sql/0064, but this
+-- guards a bad value too).
+local function tierCfg(key)
+    return Config.Tiers[key] or Config.Tiers[Config.DefaultTier]
+end
+
 -- Owned vehicle row for (cid, plate), or nil. Plate comparison is
 -- whitespace-insensitive (GTA pads plates to 8).
 local function ownedVehicle(cid, plate)
@@ -59,7 +66,7 @@ local function activePolicy(plate)
     local row
     pcall(function()
         row = MySQL.single.await(
-            "SELECT id, citizenid, coverage, deductible, created_at, expires_at, UNIX_TIMESTAMP(created_at) AS created_ts FROM palm6_insurance_policies WHERE REPLACE(UPPER(plate), ' ', '') = ? AND status = 'active' AND expires_at > NOW() LIMIT 1",
+            "SELECT id, citizenid, coverage, deductible, vehicle_value, tier, created_at, expires_at, UNIX_TIMESTAMP(created_at) AS created_ts FROM palm6_insurance_policies WHERE REPLACE(UPPER(plate), ' ', '') = ? AND status = 'active' AND expires_at > NOW() LIMIT 1",
             { plate })
     end)
     return row
@@ -154,7 +161,29 @@ end
 -- ---------------------------------------------------------------------------
 -- /insure <plate>
 -- ---------------------------------------------------------------------------
-local function cmdInsure(src, args)
+-- Clamp a model's catalog value into the underwritable band.
+local function clampedValue(model)
+    local U = Config.Underwriting
+    local value = Bridge.GetVehicleValue(model) or U.MinValue
+    if value < U.MinValue then value = U.MinValue end
+    if value > U.MaxValue then value = U.MaxValue end
+    return value
+end
+
+-- Premium / coverage / deductible for a clamped value at a given tier. Shared by
+-- the quote (display) and the buy (charge) paths so a quote can never disagree
+-- with what is actually charged.
+local function quoteFor(value, tier)
+    local premium    = math.max(Config.Underwriting.MinPremium, math.floor(value * tier.PremiumPct))
+    local coverage   = math.floor(value * tier.CoveragePct)
+    local deductible = math.floor(coverage * tier.DeductibleP)
+    return premium, coverage, deductible
+end
+
+-- doInsure — the authoritative underwrite. `tierKey` is the plan CHOICE; the
+-- price is always recomputed server-side from the resolved tier, so a modified
+-- client can never buy a richer plan than it pays for. Returns true on success.
+local function doInsure(src, plate, tierKey)
     if src == 0 then return end
     if not rl(src, 'insure') then return end
     local cid = Bridge.GetCitizenId(src)
@@ -163,11 +192,12 @@ local function cmdInsure(src, args)
         Bridge.Notify(src, 'Mors Mutual', 'You need to be at the insurance desk.', 'error')
         return
     end
-    local plate = normPlate(args[1])
+    plate = normPlate(plate)
     if plate == '' then
-        Bridge.Notify(src, 'Mors Mutual', 'Usage: /insure [plate]', 'error')
+        Bridge.Notify(src, 'Mors Mutual', 'Usage: /insure [plate] [basic|standard|premium]', 'error')
         return
     end
+    local tier = tierCfg(tierKey)  -- unknown/absent -> Standard (never a free upgrade)
 
     local veh = ownedVehicle(cid, plate)
     if not veh then
@@ -214,32 +244,27 @@ local function cmdInsure(src, args)
               AND status IN ('processing', 'paid', 'flagged_paid')
               AND filed_at > NOW() - INTERVAL ? HOUR
             LIMIT 1
-        ]], { plate, Config.Underwriting.TermHours })
+        ]], { plate, Config.Underwriting.ReinsureLockHours })
     end)
     if recentDamage then
         Bridge.Notify(src, 'Mors Mutual', 'A recent damage claim is on file for that plate. Get it repaired and come back once the claim window resets.', 'error')
         return
     end
 
-    local U = Config.Underwriting
-    local value = Bridge.GetVehicleValue(veh.vehicle) or U.MinValue
-    if value < U.MinValue then value = U.MinValue end
-    if value > U.MaxValue then value = U.MaxValue end
-    local premium = math.max(U.MinPremium, math.floor(value * U.PremiumPct))
-    local coverage = math.floor(value * U.CoveragePct)
-    local deductible = math.floor(coverage * U.DeductibleP)
+    local value = clampedValue(veh.vehicle)
+    local premium, coverage, deductible = quoteFor(value, tier)
 
     if not Bridge.ChargeBank(src, premium, 'insurance-premium') then
-        Bridge.Notify(src, 'Mors Mutual', ('The premium is $%d (bank).'):format(premium), 'error')
+        Bridge.Notify(src, 'Mors Mutual', ('The %s premium is $%d (bank).'):format(tier.label, premium), 'error')
         return
     end
 
     local ok, policyId = pcall(function()
         return MySQL.insert.await([[
             INSERT INTO palm6_insurance_policies
-                (plate, citizenid, vehicle_model, vehicle_value, premium_paid, coverage, deductible, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW() + INTERVAL ? HOUR)
-        ]], { veh.plate, cid, veh.vehicle, value, premium, coverage, deductible, U.TermHours })
+                (plate, citizenid, vehicle_model, vehicle_value, premium_paid, coverage, deductible, tier, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW() + INTERVAL ? HOUR)
+        ]], { veh.plate, cid, veh.vehicle, value, premium, coverage, deductible, tier.key, tier.TermHours })
     end)
     if not ok or not policyId then
         Bridge.CreditBankByCitizenId(cid, premium, 'insurance-premium-refund')
@@ -247,10 +272,17 @@ local function cmdInsure(src, args)
         return
     end
 
-    dbg(('policy #%d %s (%s) value=%d premium=%d'):format(policyId, veh.plate, veh.vehicle, value, premium))
+    dbg(('policy #%d %s (%s) tier=%s value=%d premium=%d'):format(policyId, veh.plate, veh.vehicle, tier.key, value, premium))
     Bridge.Notify(src, 'Mors Mutual',
-        ('Policy issued for %s: $%d coverage, $%d deductible, %dh term. Premium $%d paid.')
-        :format(plate, coverage, deductible, U.TermHours, premium), 'success')
+        ('%s policy issued for %s: $%d coverage, $%d deductible, %dh term. Premium $%d paid.')
+        :format(tier.label, plate, coverage, deductible, tier.TermHours, premium), 'success')
+end
+
+-- /insure [plate] [tier] — bare command path; defaults to the Standard tier so
+-- pre-agent muscle memory still works exactly as before.
+local function cmdInsure(src, args)
+    local tierKey = (args[2] and tostring(args[2]) ~= '') and tostring(args[2]):lower() or Config.DefaultTier
+    doInsure(src, args[1], tierKey)
 end
 
 -- ---------------------------------------------------------------------------
@@ -297,6 +329,7 @@ local function cmdFileClaim(src, args)
     local kind, assessed, vehCoords
     local coverage = tonumber(policy.coverage) or 0
     local deductible = tonumber(policy.deductible) or 0
+    local tier = tierCfg(policy.tier)  -- payout speed + theft % come from the policy's plan
 
     if declared == 'theft' then
         -- Stolen means: the city thinks it's out AND it isn't anywhere in
@@ -310,7 +343,7 @@ local function cmdFileClaim(src, args)
             return
         end
         kind = 'theft'
-        assessed = math.floor(coverage * Config.Claims.TheftPayoutPct) - deductible
+        assessed = math.floor(coverage * tier.TheftPayoutPct) - deductible
     else
         local entity = Bridge.FindVehicleByPlate(plate)
         if not entity then
@@ -325,7 +358,17 @@ local function cmdFileClaim(src, args)
             return
         end
         kind = frac >= Config.Claims.TotalLossFrac and 'total_loss' or 'damage'
-        assessed = math.floor(coverage * frac) - deductible
+        -- Repairable DAMAGE keeps the car, so cap its payout basis at
+        -- DamageCoverageCapPct of vehicle value — a damage payout must not scale
+        -- with the plan tier (Premium's higher cap only pays out on a CONSUMED
+        -- car: theft / total-loss). Basic/Standard are unchanged (their coverage
+        -- is already <= the cap). See config.lua Config.Claims.DamageCoverageCapPct.
+        local basis = coverage
+        if kind == 'damage' then
+            local cap = math.floor((tonumber(policy.vehicle_value) or 0) * Config.Claims.DamageCoverageCapPct)
+            if cap > 0 and cap < basis then basis = cap end
+        end
+        assessed = math.floor(basis * frac) - deductible
         vehCoords = Bridge.GetVehicleCoords(entity)
     end
 
@@ -348,7 +391,7 @@ local function cmdFileClaim(src, args)
                 (policy_id, plate, citizenid, kind, assessed, risk_score, risk_factors, status, due_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', NOW() + INTERVAL ? SECOND)
         ]], { policy.id, veh.plate, cid, kind, assessed, score,
-              json.encode(factors), Config.Claims.ProcessingSec })
+              json.encode(factors), tier.ProcessingSec })
     end)
     if not ok or not claimId then
         Bridge.Notify(src, 'Mors Mutual', 'Claim system is down — nothing was filed.', 'error')
@@ -392,7 +435,7 @@ local function cmdFileClaim(src, args)
 
     Bridge.Notify(src, 'Mors Mutual',
         ('Claim #%d filed (%s, $%d). Payout lands in your bank in ~%d minutes.')
-        :format(claimId, kind, assessed, math.ceil(Config.Claims.ProcessingSec / 60)), 'success')
+        :format(claimId, kind, assessed, math.ceil(tier.ProcessingSec / 60)), 'success')
 end
 
 -- ---------------------------------------------------------------------------
@@ -407,7 +450,7 @@ local function cmdPolicy(src)
     local pols, claims = {}, {}
     pcall(function()
         pols = MySQL.query.await(
-            "SELECT plate, coverage, deductible, TIMESTAMPDIFF(HOUR, NOW(), expires_at) AS hrs FROM palm6_insurance_policies WHERE citizenid = ? AND status = 'active' AND expires_at > NOW()",
+            "SELECT plate, coverage, deductible, tier, TIMESTAMPDIFF(HOUR, NOW(), expires_at) AS hrs FROM palm6_insurance_policies WHERE citizenid = ? AND status = 'active' AND expires_at > NOW()",
             { cid }) or {}
         claims = MySQL.query.await(
             "SELECT id, plate, assessed FROM palm6_insurance_claims WHERE citizenid = ? AND resolved_at IS NULL",
@@ -420,8 +463,8 @@ local function cmdPolicy(src)
     end
     for _, p in ipairs(pols) do
         Bridge.Notify(src, 'Mors Mutual',
-            ('%s — $%d coverage, $%d deductible, %dh left'):format(
-                normPlate(p.plate), p.coverage, p.deductible, math.max(0, tonumber(p.hrs) or 0)), 'inform')
+            ('%s [%s] — $%d coverage, $%d deductible, %dh left'):format(
+                normPlate(p.plate), tierCfg(p.tier).label, p.coverage, p.deductible, math.max(0, tonumber(p.hrs) or 0)), 'inform')
     end
     for _, c in ipairs(claims) do
         Bridge.Notify(src, 'Mors Mutual',
@@ -537,6 +580,90 @@ end)
 Bridge.RegisterCommand('insure', function(source, args) cmdInsure(source, args) end)
 Bridge.RegisterCommand('fileclaim', function(source, args) cmdFileClaim(source, args) end)
 Bridge.RegisterCommand('policy', function(source) cmdPolicy(source) end)
+
+-- ---------------------------------------------------------------------------
+-- Agent NPC net events. The client menu is presentation only — every handler
+-- re-runs the exact server-side authority (rate limit, at-office, ownership,
+-- and, for buy, the full underwrite that recomputes the price from the resolved
+-- tier). A modified client can only ever choose WHICH plan/plate to act on; it
+-- can never set a price, forge ownership, or skip a guard. Rate-limited here AND
+-- registered in palm6_eventguard (DoS budget).
+-- ---------------------------------------------------------------------------
+
+-- Quote the three tiers for the vehicle the player drove up in (display only;
+-- the authoritative charge happens in doInsure on buy).
+RegisterNetEvent('palm6_insurance:agent:quote', function(plate)
+    local src = source
+    if src == 0 then return end
+    if not rl(src, 'quote') then return end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    if not atOffice(src) then
+        Bridge.Notify(src, 'Mors Mutual', 'You need to be at the insurance desk.', 'error')
+        return
+    end
+    plate = normPlate(plate)
+    local veh = ownedVehicle(cid, plate)
+    if not veh then
+        Bridge.Notify(src, 'Mors Mutual', 'Get in a vehicle registered to you, then talk to me.', 'error')
+        return
+    end
+    if activePolicy(plate) then
+        Bridge.Notify(src, 'Mors Mutual', 'That vehicle already carries an active policy.', 'error')
+        return
+    end
+    local value = clampedValue(veh.vehicle)
+    local quotes = {}
+    for _, key in ipairs(Config.TierOrder) do
+        local tier = Config.Tiers[key]
+        local premium, coverage, deductible = quoteFor(value, tier)
+        quotes[#quotes + 1] = {
+            key = key, label = tier.label, blurb = tier.blurb,
+            premium = premium, coverage = coverage, deductible = deductible,
+            termHours = tier.TermHours, payoutMin = math.ceil(tier.ProcessingSec / 60),
+            theftPct = math.floor(tier.TheftPayoutPct * 100),
+        }
+    end
+    TriggerClientEvent('palm6_insurance:agent:quoteData', src, { plate = plate, quotes = quotes })
+end)
+
+-- Buy a policy at the chosen tier. doInsure re-validates everything and
+-- recomputes the premium server-side from the resolved tier.
+RegisterNetEvent('palm6_insurance:agent:buy', function(plate, tierKey)
+    doInsure(source, plate, tostring(tierKey or ''):lower())
+end)
+
+-- File a claim (damage|theft) on the given plate — same pipeline as /fileclaim.
+RegisterNetEvent('palm6_insurance:agent:fileclaim', function(plate, declared)
+    cmdFileClaim(source, { plate, tostring(declared or ''):lower() })
+end)
+
+-- Show the caller their active policies + pending claims — same as /policy.
+RegisterNetEvent('palm6_insurance:agent:policies', function()
+    cmdPolicy(source)
+end)
+
+-- Structured list of the caller's active-policy plates, for the "File a claim"
+-- menu (theft claims can't use the vehicle you're sitting in — the car is gone —
+-- so the player picks the plate). Display only; the actual claim re-validates.
+RegisterNetEvent('palm6_insurance:agent:claimList', function()
+    local src = source
+    if src == 0 then return end
+    if not rl(src, 'claimlist') then return end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    local rows = {}
+    pcall(function()
+        rows = MySQL.query.await(
+            "SELECT plate, tier, coverage FROM palm6_insurance_policies WHERE citizenid = ? AND status = 'active' AND expires_at > NOW()",
+            { cid }) or {}
+    end)
+    local policies = {}
+    for _, p in ipairs(rows) do
+        policies[#policies + 1] = { plate = normPlate(p.plate), tier = tierCfg(p.tier).label, coverage = tonumber(p.coverage) or 0 }
+    end
+    TriggerClientEvent('palm6_insurance:agent:claimListData', src, { policies = policies })
+end)
 
 AddEventHandler('onResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
