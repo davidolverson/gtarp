@@ -1,25 +1,31 @@
-# Palm6 Department Emblems (System B)
+# Palm6 Government Department Emblems (System B)
 
 Version: v0.9.0-rc.1 (Release Candidate)
-Status: **Candidate.** Received in Phase 2 (2026-07-17); registered in
-`17-ASSET-REGISTRY/ASSET-REGISTRY.md`. Not Approved (no Decision Log promotion yet).
+Status: **Candidate.** Registered in `17-ASSET-REGISTRY/ASSET-REGISTRY.md`. Not Approved
+(no Decision Log promotion yet). Received via the Palm6 Discord bot DMs, 2026-07-14…17.
 
-A coherent set of Palm6 government-department crest emblems. These are **System B**
-(marketing / faction identity) assets — decorative department badges for in-game use
-(MDT headers, department signage, EUP/livery reference) and marketing. They are **not**
-the **System A** core Palm6 identity mark, which is still outstanding (see CD-001).
-
-| File | Department | Palette |
-|---|---|---|
-| `palm6-dept-motor-vehicles.png` | Department of Motor Vehicles | steel / gold / teal |
-| `palm6-dept-environmental-protection.png` | Environmental Protection | green / teal / gold |
-| `palm6-dept-emergency-management.png` | Emergency Management | red / steel / navy |
-| `palm6-dept-animal-control.png` | Animal Control | teal / gold |
-| `palm6-dept-elections-commission.png` | Elections Commission | red / white / blue |
-| `palm6-dept-business-licensing.png` | Business Licensing | purple / copper |
+A coherent set of Palm6 city government department crests — **System B** (marketing /
+faction identity) art for in-world use (MDT headers, department signage, EUP/livery
+reference, website). These are department crests, **not** the **System A** core Palm6
+identity mark (still outstanding, CD-001). State-level seals live in `../state/`.
 
 **Ownership:** Original work — PALM6 owns (generated in ChatGPT by David Olverson).
-**Commercial:** N (in-world / brand use, not sold).
-**Format note:** 1024×1024 PNG with transparent background, emblem style. If in-world
-use needs specific sizes/formats (e.g. MDT header strips, small EUP badges), derive
-sized exports rather than editing these masters.
+**Commercial:** N. **Format:** ~1024–1254px transparent-background PNG emblems.
+
+## Departments (24)
+Public safety: `police`, `fire-rescue`, `emergency-medical-services`, `national-guard`,
+`emergency-management`, `corrections`.
+Civic / infrastructure: `motor-vehicles` (badge) + `motor-vehicles-plate` (variant),
+`transportation`, `public-works`, `water-sewer-authority`, `sanitation`,
+`building-zoning`, `housing-authority`, `port-authority`, `aviation-authority`.
+Community / admin: `parks-recreation`, `public-library-system`, `tourism-visitors-bureau`,
+`animal-control`, `environmental-protection`, `elections-commission`, `revenue`,
+`business-licensing`.
+
+> **DMV has two variants** on purpose: `palm6-dept-motor-vehicles.png` (round badge) and
+> `palm6-dept-motor-vehicles-plate.png` (license-plate style). Pick one as canonical during
+> Phase 3, or keep both for different placements.
+
+**Note:** these are a strong keeper set. The separate *private-business* logo tier
+(Apex Motors, Bayside Realty, Verano Air, etc.) was rejected and is being redone — see
+`01-BRAND/BUSINESS-BRAND-BRIEF.md`. It is NOT in this folder.

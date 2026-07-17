@@ -12,18 +12,27 @@ Status values: Open · In Progress · Resolved · Accepted (a deliberate, owned 
 
 ## Register
 
-### CD-001 — Brand art: System B emblems placed; System A core mark still pending
-- **Severity:** Medium (was High) · **Status:** In Progress · **Owner:** David Olverson
-- **Detail:** Phase 2 created the `01-BRAND/` scaffold + guidelines. David sent a batch
-  of **6 Palm6 government-department emblems** (System B) on 2026-07-17 — these are now
-  placed in `01-BRAND/logos/departments/` and registered (Candidate) in the Asset
-  Registry. **Still missing:** the **System A core identity mark** (the primary ownable
-  Palm6 logo), which is a different asset class from the department crests.
-- **Resolution:** (a) DONE — 6 department emblems placed + registered. (b) OPEN — supply
-  the System A core mark, place in `01-BRAND/logos/`, register it, and fill the System A
-  specifics in `BRAND-GUIDELINES.md`. Confirm the emblems' intended home is gtarp
-  `01-BRAND` (canonical) vs the website repo. The brand half of the Phase 2 gate closes
-  when the System A core mark lands.
+### CD-001 — Brand art: department + state art placed; System A core mark still pending
+- **Severity:** Medium · **Status:** In Progress · **Owner:** David Olverson
+- **Detail:** Full keeper set pulled from the Palm6 Discord bot DMs and placed:
+  **24 Palm6 department crests** (`01-BRAND/logos/departments/`) + **2 Verano state seals**
+  (`01-BRAND/logos/state/`), all registered Candidate. **Still missing:** the **System A
+  core identity mark** (the primary ownable Palm6/Verano logo) — a different asset class
+  from the department crests and state seals.
+- **Resolution:** (a) DONE — 24 departments + 2 state seals placed + registered.
+  (b) OPEN — supply the System A core mark, place in `01-BRAND/logos/`, register it, and
+  fill the System A specifics in `BRAND-GUIDELINES.md`. The brand half of the Phase 2 gate
+  closes when the System A core mark lands.
+
+### CD-006 — Private-business logo tier rejected, being redone
+- **Severity:** Low · **Status:** In Progress · **Owner:** David Olverson
+- **Detail:** The first private-business logo batch (Apex Motors, Bayside Realty, Verano
+  Air, Coastline Insurance, Harbor Freight, Palm Medical, Harbor Energy, PalmLink, Palm6
+  Garage, +more — the synthwave "P6" style) was rejected as too generic/"ugly". Those
+  assets are deliberately **NOT** committed to the repo.
+- **Resolution:** David regenerates in ChatGPT using the improved system in
+  `01-BRAND/BUSINESS-BRAND-BRIEF.md` (one palette, flat vector, one type family, one icon
+  each, consistent lockup). Register the approved set in the Asset Registry once done.
 
 ### CD-002 — `prop_spawn` dev resource is stopped, not removed
 - **Severity:** Medium · **Status:** Accepted (for now) · **Owner:** Dev Lead
