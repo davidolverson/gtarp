@@ -66,7 +66,7 @@ local function activePolicy(plate)
     local row
     pcall(function()
         row = MySQL.single.await(
-            "SELECT id, citizenid, coverage, deductible, vehicle_value, tier, created_at, expires_at, UNIX_TIMESTAMP(created_at) AS created_ts FROM palm6_insurance_policies WHERE REPLACE(UPPER(plate), ' ', '') = ? AND status = 'active' AND expires_at > NOW() LIMIT 1",
+            "SELECT id, citizenid, coverage, deductible, vehicle_value, premium_paid, tier, created_at, expires_at, UNIX_TIMESTAMP(created_at) AS created_ts FROM palm6_insurance_policies WHERE REPLACE(UPPER(plate), ' ', '') = ? AND status = 'active' AND expires_at > NOW() LIMIT 1",
             { plate })
     end)
     return row
@@ -375,6 +375,12 @@ local function cmdFileClaim(src, args)
                 math.floor(value * Config.Claims.DamageRepairPct * frac),
                 Config.Claims.DamageMaxPayout)
             assessed = repairBill - math.floor(repairBill * Config.Claims.DamageOwnerSharePct)
+            -- Never pay a damage claim more than a fraction of the premium paid, so
+            -- self-inflicting is net-negative at every tier/value (the car is kept,
+            -- so the payout must not exceed what they put in). Premium scales with
+            -- tier/value; this ceiling therefore scales too.
+            local premCap = math.floor((tonumber(policy.premium_paid) or 0) * Config.Claims.DamagePayoutVsPremiumPct)
+            if assessed > premCap then assessed = premCap end
         end
         vehCoords = Bridge.GetVehicleCoords(entity)
     end

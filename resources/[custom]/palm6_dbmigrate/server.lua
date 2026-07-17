@@ -343,6 +343,12 @@ ALTER TABLE `palm6_season_rewards` ADD COLUMN IF NOT EXISTS `paid` TINYINT NOT N
     -- pre-tier policies to the plan that reproduces the old flat behaviour.
     { name = '0064 insurance policies.tier', sql = [[
 ALTER TABLE `palm6_insurance_policies` ADD COLUMN IF NOT EXISTS `tier` VARCHAR(16) NOT NULL DEFAULT 'standard']] },
+    -- 0065: allow status='claimed' (see sql/0065). The retire-on-claim UPDATE
+    -- writes 'claimed', which the original ENUM('active','lapsed','cancelled')
+    -- rejected under strict SQL mode -> the retire silently failed and left a
+    -- repeatable claim faucet. Adding the member at the end is INSTANT + idempotent.
+    { name = '0065 insurance policies.status +claimed', sql = [[
+ALTER TABLE `palm6_insurance_policies` MODIFY COLUMN `status` ENUM('active','lapsed','cancelled','claimed') NOT NULL DEFAULT 'active']] },
 }
 
 CreateThread(function()

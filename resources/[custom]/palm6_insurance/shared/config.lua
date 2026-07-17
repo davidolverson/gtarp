@@ -93,6 +93,13 @@ Config.Claims = {
     DamageRepairPct     = 0.12,    -- a fully-wrecked car's repair bill ≈ this % of value
     DamageMaxPayout     = 15000,   -- absolute cap on a damage payout (repair bills are bounded)
     DamageOwnerSharePct = 0.20,    -- owner covers this share of the repair (their damage deductible)
+    -- Hard ceiling on a DAMAGE payout as a fraction of the PREMIUM THEY PAID. The
+    -- subsidy above is priced off vehicle value, but premium is only 3-8% of
+    -- value, so without this a self-inflicted damage claim could bank more than
+    -- the premium (a slow faucet, since the car is kept). Capping the payout below
+    -- the premium guarantees "wreck your own car and claim" is net-NEGATIVE at
+    -- every tier/value, with no reliance on the fraud/replay deny. < 1.0 always.
+    DamagePayoutVsPremiumPct = 0.80,
 }
 
 -- Fraud scoring. Signals sum; score >= FlagThreshold flags the claim and
