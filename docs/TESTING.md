@@ -618,7 +618,7 @@ via `qbx_properties` directly; there is nothing custom to verify here.
 | `/coords` "access denied" for admin | Missing `add_ace group.admin command.coords allow` (in `custom.cfg`) or principal not mapped to `group.admin`. |
 | Courier escrow not charged | oxmysql not connected, or `qbx_economy_overrides` not started before `palm6_courier`. |
 | A `[custom]` resource missing | Its `ensure` line missing from `custom.cfg`, or the folder wasn't copied into the live `resources/` tree. |
-| DB errors on boot | SQL migrations in `sql/` not applied — run `tools/apply-migrations.sh` (on a DB that pre-dates the tool, `--baseline` ONCE first; see DEPLOY.md). |
+| DB errors on boot | SQL migrations in `sql/` not applied — run `tools/apply-migrations.sh` (on a DB that pre-dates the tool, `--baseline` ONCE first; see `deploy/README.md`). |
 | Custom items "don't exist" / flashdrop self-disables | Deployed `ox_inventory/data/items.lua` missing the PALM6 block — run `tools/patch-ox-items.sh <resources-dir>` (CI does this for production deploys). |
 
 ## 32. Kidnapping ransom ledger — `palm6_ransom`

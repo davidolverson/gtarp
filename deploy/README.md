@@ -1,10 +1,14 @@
 # Deploy pipeline
 
+> **Deploy hub.** This folder is the deploy-documentation home for gtarp (Phase 2
+> structure). The CI itself stays in `../.github/workflows/` — GitHub requires workflows
+> to live under `.github/`, so they are referenced here, not moved.
+
 This repo auto-deploys the Qbox custom layer to the live FiveM server (RocketNode /
 ApolloPanel, FiveM + txAdmin, Qbox lean recipe).
 
 The pipeline is the GitHub Actions workflow
-[`.github/workflows/deploy-custom-layer.yml`](.github/workflows/deploy-custom-layer.yml).
+[`../.github/workflows/deploy-custom-layer.yml`](../.github/workflows/deploy-custom-layer.yml).
 
 ## What it does
 

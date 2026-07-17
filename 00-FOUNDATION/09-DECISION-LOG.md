@@ -7,6 +7,23 @@
 
 This document records major decisions, the reasoning behind them, and their status. It exists to prevent repeated discussions and to maintain long-term consistency.
 
+Full entries live in [`DECISION-LOG/`](./DECISION-LOG/). The registry below is the
+at-a-glance index; it is updated in the same change that adds or alters an entry.
+
+---
+
+### Decision Registry (gtarp)
+
+| ID | Date | Decision | Status | Entry |
+|----|------|----------|--------|-------|
+| DEC-001 | 2026-07-14 | Start restructuring — gtarp Phase 1 (Foundation) | Approved (process) | [001](./DECISION-LOG/DECISION-LOG-ENTRY-001.md) |
+| DEC-002 | 2026-07-15 | Phase 1 post-execution audit + open-blocker registration (a/b) | Partially Approved — a/b open | [002](./DECISION-LOG/DECISION-LOG-ENTRY-002.md) |
+| DEC-003 | 2026-07-17 | Execute gtarp Phase 2 (Organization); adopt RFC-001; stand up Asset Registry; reconcile DEC numbering | Approved — brand art open (CD-001) | [003](./DECISION-LOG/DECISION-LOG-ENTRY-003.md) |
+
+> Numbering note: gtarp's local `DEC-002` is the Phase 1 audit, **not** the Creative
+> System promotion the system package reserves `DEC-002` for (Phase 0 has not run in
+> gtarp). See DEC-003 and `14-OPERATIONS/README.md`.
+
 ---
 
 ### Decision Log Format

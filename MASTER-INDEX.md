@@ -5,7 +5,8 @@
 It is not the aspirational full-system index — it is the honest, current map so a
 new session is never sent to a file that does not exist.
 
-**Restructuring phase:** Phase 1 (Foundation) complete. See
+**Restructuring phase:** Phase 1 (Foundation) complete; **Phase 2 (Organization)
+substantially complete** (brand art placement open, CD-001). See
 `00-FOUNDATION/DECISION-LOG/` for the authoritative history.
 
 ---
@@ -29,9 +30,13 @@ Structure Guide, Design Bible. Status: Candidate (v0.9.0-rc.1) except
 - `DECISION-LOG-ENTRY-001.md` (DEC-001) — Phase 1 kickoff.
 - `DECISION-LOG-ENTRY-002.md` (DEC-002) — Phase 1 post-audit reconciliation +
   open blockers requiring an owner ruling.
+- `DECISION-LOG-ENTRY-003.md` (DEC-003) — Phase 2 execution (structure, RFC-001,
+  Asset Registry, deprecations, DEC-numbering reconciliation).
+- `09-DECISION-LOG.md` now carries an at-a-glance **Decision Registry** table.
 
 ### `19-RFC/` — the RFC process home
 - `README.md` (how to propose changes) + `RFC-TEMPLATE.md`.
+- `RFC-001-resource-and-asset-metadata-standard.md` (Approved) — the metadata standard.
 
 ### `15-VAULT/` — the Approved-only vault
 - `README.md` only. Empty by design: nothing enters until it earns **Approved**
@@ -39,14 +44,36 @@ Structure Guide, Design Bible. Status: Candidate (v0.9.0-rc.1) except
 
 ---
 
-## Planned (later phases — do NOT treat as errors if absent)
+## Present now (Phase 2 — Organization)
 
-The wider Creative System taxonomy (`01-BRAND/`, `14-OPERATIONS/`, `17-ASSET-REGISTRY/`,
-`18-ROADMAP/`, world-building and platform folders, plus `EXECUTIVE-SUMMARY.md` and
-`PHILOSOPHY-WHY-THIS-MATTERS.md`) is **not yet materialized in this repo**. It arrives
-in Phase 2 (Organization) and Phase 3 (Alignment) via the RFC process. Where the
-onboarding docs below reference those, read them as *intended* structure, not current
-state.
+### `01-BRAND/` — brand assets (scaffold)
+- `README.md` + `BRAND-GUIDELINES.md`; `logos/` empty pending David's art (CD-001).
+
+### `14-OPERATIONS/` — day-to-day governance
+- `README.md` (repo-local status + DEC-numbering note), `ASSET-LIFECYCLE.md`,
+  `RFC-PROCESS.md`, `VERSION-CONTROL.md`, `CREATIVE-DEBT-TRACKING.md` (CD-001…CD-005).
+
+### `17-ASSET-REGISTRY/` — the asset inventory
+- `README.md`, `ASSET-REGISTRY-TEMPLATE.md`, and the populated `ASSET-REGISTRY.md`.
+
+### `20-TEMPLATES/` — reusable governance templates
+- Decision-Log entry, RFC, and Phase-Completion-Report templates.
+
+### `deploy/` — deploy documentation hub
+- `README.md` (the deploy pipeline doc; CI stays in `.github/workflows/`).
+
+### `docs/RESTRUCTURING/` — phase working docs
+- `PHASE-2-INVENTORY-MAP.md`, `PHASE-2-DEPRECATIONS.md`.
+
+---
+
+## Planned (Phase 3 — do NOT treat as errors if absent)
+
+The remaining taxonomy (`02-WORLD/`…`13-MARKETING/`, `16-REFERENCE/`, `18-ROADMAP/`,
+`21-ARCHIVE/`, plus `EXECUTIVE-SUMMARY.md` and `PHILOSOPHY-WHY-THIS-MATTERS.md`) is
+**not yet materialized in this repo** — it is only added if/when gtarp genuinely needs
+it, via the RFC process, during Phase 3 (Alignment). Read references to those as
+*intended* structure, not current state.
 
 ---
 
