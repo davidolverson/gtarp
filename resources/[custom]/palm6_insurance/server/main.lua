@@ -358,17 +358,24 @@ local function cmdFileClaim(src, args)
             return
         end
         kind = frac >= Config.Claims.TotalLossFrac and 'total_loss' or 'damage'
-        -- Repairable DAMAGE keeps the car, so cap its payout basis at
-        -- DamageCoverageCapPct of vehicle value — a damage payout must not scale
-        -- with the plan tier (Premium's higher cap only pays out on a CONSUMED
-        -- car: theft / total-loss). Basic/Standard are unchanged (their coverage
-        -- is already <= the cap). See config.lua Config.Claims.DamageCoverageCapPct.
-        local basis = coverage
-        if kind == 'damage' then
-            local cap = math.floor((tonumber(policy.vehicle_value) or 0) * Config.Claims.DamageCoverageCapPct)
-            if cap > 0 and cap < basis then basis = cap end
+        if kind == 'total_loss' then
+            -- The car is a write-off (consumed below) — pay the full tier coverage.
+            assessed = math.floor(coverage * frac) - deductible
+        else
+            -- Repairable damage: the owner KEEPS the car, so this is a repair
+            -- SUBSIDY, not a slice of value. The insurer covers most of an
+            -- estimated repair bill (scales with damage + value, absolutely
+            -- capped), minus the owner's share. Makes a real accident worth
+            -- claiming but self-inflicted ram-and-claim unprofitable — each claim
+            -- retires the policy (re-buy premium to claim again) and the subsidy
+            -- never beats premium + owner share + the mechanic bill. Independent
+            -- of tier: a kept car doesn't earn more just because it's Premium.
+            local value = tonumber(policy.vehicle_value) or 0
+            local repairBill = math.min(
+                math.floor(value * Config.Claims.DamageRepairPct * frac),
+                Config.Claims.DamageMaxPayout)
+            assessed = repairBill - math.floor(repairBill * Config.Claims.DamageOwnerSharePct)
         end
-        assessed = math.floor(basis * frac) - deductible
         vehCoords = Bridge.GetVehicleCoords(entity)
     end
 

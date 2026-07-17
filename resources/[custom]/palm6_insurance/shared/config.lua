@@ -80,16 +80,19 @@ Config.Claims = {
     PerCitizenCdSec = 900,   -- one claim filed per citizen per this window
     MinDamageFrac   = 0.25,  -- below this combined damage the adjuster laughs you out
     TotalLossFrac   = 0.85,  -- at/above this combined damage a claim upgrades to total_loss
-    -- A DAMAGE claim leaves the (repairable) car with its owner, so it must not
-    -- pay out the full coverage cap — that basis is meant for a CONSUMED car
-    -- (theft / total-loss). Cap the damage-claim basis at this fraction of the
-    -- vehicle's value across ALL tiers, so a damage payout never scales with the
-    -- plan tier (Premium's higher cap only pays out when the car is actually
-    -- gone). This bounds the long-standing "keep the car AND bank a repair
-    -- claim" loop; it does NOT eliminate it (insurance fraud is a deliberate RP
-    -- hook here — flagged claims still pay and open a police case). 0.60 keeps
-    -- Basic/Standard damage payouts identical to before the tier change.
-    DamageCoverageCapPct = 0.60,
+    -- DAMAGE claims (repairable car, KEPT by the owner) are a REPAIR SUBSIDY —
+    -- the insurer covers most of an estimated repair bill, NOT a slice of the
+    -- car's market value. That keeps a real fender-bender / chase worth claiming
+    -- while making self-inflicted "ram and claim" unprofitable: every claim
+    -- retires the policy, so re-claiming means re-buying the premium, and a
+    -- subsidy-sized payout never beats premium + the owner's share + the actual
+    -- mechanic bill. Theft / total-loss (the car is GONE) still pay the full
+    -- tier coverage — that's the real protection you're buying.
+    --   repairBill = min(value * DamageRepairPct * damageFrac, DamageMaxPayout)
+    --   payout     = repairBill * (1 - DamageOwnerSharePct)
+    DamageRepairPct     = 0.12,    -- a fully-wrecked car's repair bill ≈ this % of value
+    DamageMaxPayout     = 15000,   -- absolute cap on a damage payout (repair bills are bounded)
+    DamageOwnerSharePct = 0.20,    -- owner covers this share of the repair (their damage deductible)
 }
 
 -- Fraud scoring. Signals sum; score >= FlagThreshold flags the claim and
