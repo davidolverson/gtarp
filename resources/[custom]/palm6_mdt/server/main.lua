@@ -532,12 +532,22 @@ local function cmdBook(src, args)
     -- In-world civic bulletin (public facts only) via the palm6-bot feed. The
     -- bot narrates this into #pbpd-bulletin; complementary to the case-desk
     -- webhook above. Soft-dep: never breaks a booking if cityfeed is absent.
-    if Bridge.ResourceStarted('palm6_cityfeed') then
+    if Bridge.ResourceStarted('palm6_cityfeed')
+        and GetConvar('palm6:cityfeed_arrest', 'true') == 'true' then
+        -- `charge` is operator free-text and reaches a WORLD-PUBLIC channel
+        -- (#pbpd-bulletin). The bot's sanitizer is structural-only, so it will
+        -- NOT strip a money figure typed into a value. Enforce the feed's own
+        -- "never a take figure" invariant here by redacting $-amounts, and bound
+        -- the length to the bot schema max (300) so a long charge list never
+        -- silently 400-drops the whole civic post. The full charge stays intact
+        -- in the booking record; only the public narration is scrubbed/capped.
+        local publicCharge = (charges:gsub('%$%s*%d[%d,%.]*', '[amount]'))
+        publicCharge = publicCharge:sub(1, 300)
         pcall(function()
             exports.palm6_cityfeed:Emit({
                 type = 'arrest',
                 case_ref = ('Booking #%d'):format(bookingId),
-                charge = charges,
+                charge = publicCharge,
                 character_name = citizenName,
                 agency = 'Palm6 Bay Police Department',
             })

@@ -53,8 +53,18 @@ Config.PlayerCap       = 48   -- advertised capacity, shown in the open embed
 -- arrest -> #pbpd-bulletin. A public "Booking recorded" narration, emitted by
 -- palm6_mdt on a successful /book via exports.palm6_cityfeed:Emit. This is the
 -- in-world bulletin, complementary to (not a replacement for) palm6_discord's
--- detailed "LSPD Case Desk" webhook post. Turn off here if the two read as
--- redundant for your community.
+-- detailed "LSPD Case Desk" webhook post.
+--
+-- TWO gates (arrests are produced cross-VM by palm6_mdt, so a single Config
+-- flag could not reach the producer — that was a dead toggle before 2026-07-16):
+--   * Config.EmitArrests below — the EMITTER-side master switch, now enforced
+--     in emit() (false = this resource drops every arrest event, whatever the
+--     producer sends).
+--   * convar `palm6:cityfeed_arrest` (default "true") read at the palm6_mdt emit
+--     site — the per-producer, live-toggleable gate (parity with ems/court/heist):
+--       set palm6:cityfeed_arrest "false"   # stop booking narrations, no restart
+-- NOTE: the emitted `charge` is operator free-text; palm6_mdt redacts $-amounts
+-- and caps it to the bot's 300-char schema max before it reaches the channel.
 Config.EmitArrests = true
 
 -- ---------------------------------------------------------------------------

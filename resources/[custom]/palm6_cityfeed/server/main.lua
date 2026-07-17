@@ -62,6 +62,13 @@ local function emit(event)
         print(('[palm6_cityfeed] emit rejected — unknown event type "%s"'):format(tostring(event.type)))
         return false
     end
+    -- Emitter-side master switch for arrests. The arrest producer lives in
+    -- palm6_mdt (a separate Lua VM that cannot read this Config), so without
+    -- this check Config.EmitArrests was a dead toggle — the boot banner said
+    -- "arrests:off" while /book kept posting. Enforce it here so the in-resource
+    -- flag is real; the per-producer convar (palm6:cityfeed_arrest) is the other,
+    -- live-toggleable gate.
+    if event.type == 'arrest' and not Config.EmitArrests then return false end
     -- The bot's schema requires every text field to be non-empty (zod min(1)),
     -- so an empty-string value would enqueue only to be 400-dropped after a
     -- wasted POST. Reject it here (before the feed-off check, so it surfaces in
@@ -85,15 +92,18 @@ local function emit(event)
         print(('[palm6_cityfeed] over %d events/min — dropping "%s"'):format(Config.PerMinute, event.type))
         return false
     end
-    if #queue >= Config.MaxQueue then
-        table.remove(queue, 1)
-        droppedTotal = droppedTotal + 1
-        print('[palm6_cityfeed] queue full — dropped oldest event')
-    end
+    -- Encode BEFORE any eviction: a malformed/unencodable payload must never
+    -- cost a good queued event (fail-soft contract — a bad post drops at worst
+    -- the bad post, never a valid one already in flight).
     local ok, body = pcall(json.encode, event)
     if not ok then
         print(('[palm6_cityfeed] emit(%s) rejected — unencodable payload'):format(event.type))
         return false
+    end
+    if #queue >= Config.MaxQueue then
+        table.remove(queue, 1)
+        droppedTotal = droppedTotal + 1
+        print('[palm6_cityfeed] queue full — dropped oldest event')
     end
     queue[#queue + 1] = { body = body, retried = false }
     sentTimes[#sentTimes + 1] = os.time()
