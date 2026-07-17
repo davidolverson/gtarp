@@ -230,6 +230,7 @@ Config.Events = {
     -- which re-runs the /lottery buy authority (rate limit, open-draw, bank
     -- charge, per-draw cap). Blunt DoS budgets; ensure palm6_eventguard before
     -- palm6_lottery so these register first.
-    ['palm6_lottery:kiosk:data'] = { calls = 20, window_seconds = 60 },
-    ['palm6_lottery:kiosk:buy']  = { calls = 15, window_seconds = 60 },
+    ['palm6_lottery:kiosk:data']    = { calls = 20, window_seconds = 60 },
+    ['palm6_lottery:kiosk:buy']     = { calls = 15, window_seconds = 60 },
+    ['palm6_lottery:kiosk:scratch'] = { calls = 20, window_seconds = 60 },
 }

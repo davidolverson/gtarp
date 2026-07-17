@@ -30,9 +30,28 @@ Config.AdminAce = 'command.lotterydraw'
 
 -- Per-source command cooldowns (seconds), mirroring palm6_ems.RateLimits.
 Config.RateLimits = {
-    buy    = 3,
-    status = 2,
-    draw   = 5,
+    buy     = 3,
+    status  = 2,
+    draw    = 5,
+    scratch = 2,   -- instant scratch card play
+}
+
+-- Instant scratch cards (bought at the kiosk). A pure server-side RNG money
+-- SINK: you pay Price, the server rolls a weighted prize, and the house keeps
+-- the difference. Expected payout is deliberately BELOW Price (a house edge), so
+-- over time it drains clean cash from the economy like the draw's rake. Each
+-- prize has a weight (relative odds) and a payout ($; 0 = no win). Tune freely —
+-- keep the summed weighted payout under Price to keep the edge. Current table:
+-- EV = (25*300 + 12*700 + 6*1500 + 2*5000)/100 = $349 vs $500 price (~30% edge).
+Config.Scratch = {
+    Price  = 500,
+    Prizes = {
+        { weight = 55, payout = 0,     label = 'No luck this time' },
+        { weight = 25, payout = 300,   label = 'Small win' },
+        { weight = 12, payout = 700,   label = 'Nice!' },
+        { weight = 6,  payout = 1500,  label = 'Big win!' },
+        { weight = 2,  payout = 5000,  label = '💎 JACKPOT!' },
+    },
 }
 
 -- The lottery kiosk: a clerk NPC + map blip you walk up to, so the lottery is a

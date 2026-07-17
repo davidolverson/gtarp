@@ -59,6 +59,14 @@ RegisterNetEvent('palm6_lottery:kiosk:dataResult', function(d)
             if n and n > 0 then TriggerServerEvent('palm6_lottery:kiosk:buy', n) end
         end,
     }
+    if d.scratchPrice then
+        opts[#opts + 1] = {
+            title = ('🎫 Scratch card — $%s'):format(comma(d.scratchPrice)),
+            description = 'Instant win — buy and reveal on the spot',
+            icon = 'fa-solid fa-wand-magic-sparkles',
+            onSelect = function() TriggerServerEvent('palm6_lottery:kiosk:scratch') end,
+        }
+    end
     if d.recent and #d.recent > 0 then
         opts[#opts + 1] = {
             title = '🏆 Recent winners',
@@ -79,6 +87,15 @@ RegisterNetEvent('palm6_lottery:kiosk:dataResult', function(d)
     end
 
     Game.OpenMenu('palm6_lottery_kiosk', 'City Lottery — Draw #' .. tostring(d.drawId or '?'), opts)
+end)
+
+RegisterNetEvent('palm6_lottery:kiosk:scratchResult', function(r)
+    if type(r) ~= 'table' then return end
+    if r.won then
+        Game.Notify({ title = 'Scratch Card', description = ('%s — you won $%s!'):format(r.label or 'Winner', comma(r.payout)), type = 'success' })
+    else
+        Game.Notify({ title = 'Scratch Card', description = ('%s (−$%s)'):format(r.label or 'No luck this time', comma(r.price)), type = 'inform' })
+    end
 end)
 
 CreateThread(function()

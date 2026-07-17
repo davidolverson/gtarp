@@ -565,11 +565,66 @@ RegisterNetEvent('palm6_lottery:kiosk:data', function()
         rakePct = Config.RakePercent, mine = mine, cap = Config.MaxTicketsPerDraw,
         ticketPrice = Config.TicketPrice, maxPerBuy = Config.MaxPerBuy,
         quickBuys = Config.QuickBuys, nextIn = nextIn, recent = recent,
+        scratchPrice = Config.Scratch and Config.Scratch.Price or nil,
     })
 end)
 
 RegisterNetEvent('palm6_lottery:kiosk:buy', function(n)
     cmdBuy(source, n)  -- validates count, rate-limits, charges, caps — server-authoritative
+end)
+
+-- Weighted server-side prize roll for a scratch card. The outcome is decided
+-- ENTIRELY here (client sees only the result), so it can't be forged.
+local function wt(p) return math.max(0, math.floor(tonumber(p.weight) or 0)) end  -- integer weight (math.random needs it)
+local function rollScratch()
+    local total = 0
+    for _, p in ipairs(Config.Scratch.Prizes) do total = total + wt(p) end
+    if total <= 0 then return { payout = 0, label = 'No luck this time' } end
+    local roll = math.random(1, total)
+    local acc = 0
+    for _, p in ipairs(Config.Scratch.Prizes) do
+        acc = acc + wt(p)
+        if roll <= acc then return { payout = math.max(0, math.floor(tonumber(p.payout) or 0)), label = tostring(p.label or '') } end
+    end
+    local last = Config.Scratch.Prizes[#Config.Scratch.Prizes] or { payout = 0, label = '' }
+    return { payout = math.max(0, math.floor(tonumber(last.payout) or 0)), label = tostring(last.label or '') }
+end
+
+-- Instant scratch card: pay the price, server rolls a weighted prize, credits a
+-- win. Charge-FIRST (consume-before-grant) so the worst a crash can do is a rare
+-- paid play with no reveal, never a free win. House edge = the sink.
+RegisterNetEvent('palm6_lottery:kiosk:scratch', function()
+    local src = source
+    if src == 0 then return end
+    if not Config.Scratch then return end
+    if not rl(src, 'scratch') then return end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+
+    local price = math.max(0, math.floor(tonumber(Config.Scratch.Price) or 0))
+    if price > 0 and not Bridge.ChargeBank(src, price, 'lottery-scratch') then
+        Bridge.Notify(src, 'Scratch Card', ('You need $%d in the bank.'):format(price), 'error')
+        return
+    end
+
+    local prize = rollScratch()
+    -- Only report a win once the credit actually lands. On a rare credit failure
+    -- the player was charged but nothing landed (house-favorable, not a mint);
+    -- log it for a manual settle rather than telling them they won money that
+    -- never arrived (mirrors the draw path's '[CREDIT FAILED]' log).
+    local landed = false
+    if prize.payout > 0 then
+        landed = Bridge.CreditBankByCitizenId(cid, prize.payout, 'lottery-scratch-win') and true or false
+        if not landed then
+            print(('[palm6_lottery] SCRATCH CREDIT FAILED - settle manually: cid=%s payout=%d'):format(cid, prize.payout))
+        end
+    end
+    TriggerClientEvent('palm6_lottery:kiosk:scratchResult', src, {
+        won = landed,
+        payout = landed and prize.payout or 0,
+        label = landed and prize.label or 'No luck this time',
+        price = price,
+    })
 end)
 
 -- Uses the palm6_dbmigrate Wait(3000) pattern so oxmysql is connected first.
