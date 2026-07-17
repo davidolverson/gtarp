@@ -34,3 +34,21 @@ Config.RateLimits = {
     status = 2,
     draw   = 5,
 }
+
+-- The lottery kiosk: a clerk NPC + map blip you walk up to, so the lottery is a
+-- discoverable destination (with a visible growing jackpot) instead of a hidden
+-- command. Purely presentation — every action fires a server event that re-runs
+-- the same authority as /lottery. PLACEHOLDER coords near the Innocence Blvd 24/7
+-- (Davis) — reposition in-game to taste.
+Config.Kiosk = {
+    model   = 'mp_m_shopkeep_01',
+    coords  = { x = 25.7, y = -1347.3, z = 29.5 },
+    heading = 270.0,
+    label   = 'City Lottery kiosk',
+    icon    = 'fa-solid fa-ticket',
+    blip    = { sprite = 279, color = 5, scale = 0.8, label = 'City Lottery' },
+}
+
+-- Quick-buy buttons shown in the kiosk menu (each is a ticket count). A custom
+-- amount is always available too, bounded by Config.MaxPerBuy / MaxTicketsPerDraw.
+Config.QuickBuys = { 1, 5, 10 }

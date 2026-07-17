@@ -224,4 +224,12 @@ Config.Events = {
     ['palm6_insurance:agent:fileclaim'] = { calls = 10, window_seconds = 60 },
     ['palm6_insurance:agent:policies']  = { calls = 15, window_seconds = 60 },
     ['palm6_insurance:agent:claimList'] = { calls = 15, window_seconds = 60 },
+
+    -- palm6_lottery — the City Lottery kiosk NPC menu. :data is a read-only
+    -- snapshot (pot / your tickets / recent winners); :buy routes to cmdBuy,
+    -- which re-runs the /lottery buy authority (rate limit, open-draw, bank
+    -- charge, per-draw cap). Blunt DoS budgets; ensure palm6_eventguard before
+    -- palm6_lottery so these register first.
+    ['palm6_lottery:kiosk:data'] = { calls = 20, window_seconds = 60 },
+    ['palm6_lottery:kiosk:buy']  = { calls = 15, window_seconds = 60 },
 }

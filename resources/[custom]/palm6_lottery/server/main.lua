@@ -493,6 +493,85 @@ end)
 
 -- ---------------------------------------------------------------------------
 -- Boot: create tables, ensure an open draw, register commands, print banner.
+-- ---------------------------------------------------------------------------
+-- Kiosk net events (the clerk NPC menu). Presentation only: :data is a
+-- read-only snapshot; :buy just routes to cmdBuy, which re-runs the exact
+-- authority as /lottery buy (rate limit, open-draw, bank charge, per-draw cap).
+-- A modified client can only choose how many tickets to REQUEST — the server
+-- prices and caps it. Rate-limited here AND budgeted in palm6_eventguard.
+-- ---------------------------------------------------------------------------
+RegisterNetEvent('palm6_lottery:kiosk:data', function()
+    local src = source
+    if src == 0 then return end
+    if not rl(src, 'status') then return end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+
+    local draw = currentOpenDraw()
+    if not draw then
+        TriggerClientEvent('palm6_lottery:kiosk:dataResult', src, { open = false })
+        return
+    end
+
+    local pot, cnt = drawPot(draw.id)
+    local rake = math.floor(pot * Config.RakePercent / 100)
+    local mine = 0
+    pcall(function()
+        local r = MySQL.single.await(
+            "SELECT COUNT(*) AS c FROM palm6_lottery_tickets WHERE draw_id = ? AND citizenid = ?",
+            { draw.id, cid })
+        mine = r and tonumber(r.c) or 0
+    end)
+
+    local secs = tonumber(draw.secs_left) or 0
+    local nextIn
+    if pot < Config.MinPotToDraw then
+        nextIn = ('draws once the pot reaches $%d'):format(Config.MinPotToDraw)
+    elseif secs > 0 then
+        nextIn = ('next draw in %dm %ds'):format(math.floor(secs / 60), secs % 60)
+    else
+        nextIn = 'drawing any moment now'
+    end
+
+    -- Recent jackpots (public — winners are announced on draw). Names resolved
+    -- from the players charinfo; a missing/offline name falls back to 'a citizen'.
+    local recent = {}
+    pcall(function()
+        local rows = MySQL.query.await([[
+            SELECT d.pot, d.rake, d.winner_citizenid,
+                   TIMESTAMPDIFF(MINUTE, d.drawn_at, NOW()) AS mins_ago, p.charinfo
+              FROM palm6_lottery_draws d
+              LEFT JOIN players p ON p.citizenid = d.winner_citizenid
+             WHERE d.status = 'drawn' AND d.winner_citizenid IS NOT NULL
+             ORDER BY d.id DESC LIMIT 5
+        ]]) or {}
+        for _, w in ipairs(rows) do
+            local amount = math.max(0, (tonumber(w.pot) or 0) - (tonumber(w.rake) or 0))
+            local name
+            if w.charinfo then
+                local okj, ci = pcall(function() return json.decode(w.charinfo) end)
+                if okj and type(ci) == 'table' and ci.firstname then
+                    name = (tostring(ci.firstname) .. ' ' .. tostring(ci.lastname or '')):gsub('%s+$', '')
+                end
+            end
+            local mins = tonumber(w.mins_ago) or 0
+            local ago = mins < 60 and (mins .. 'm ago') or (math.floor(mins / 60) .. 'h ago')
+            recent[#recent + 1] = { amount = amount, name = name, ago = ago }
+        end
+    end)
+
+    TriggerClientEvent('palm6_lottery:kiosk:dataResult', src, {
+        open = true, drawId = draw.id, pot = pot, cnt = cnt, net = pot - rake,
+        rakePct = Config.RakePercent, mine = mine, cap = Config.MaxTicketsPerDraw,
+        ticketPrice = Config.TicketPrice, maxPerBuy = Config.MaxPerBuy,
+        quickBuys = Config.QuickBuys, nextIn = nextIn, recent = recent,
+    })
+end)
+
+RegisterNetEvent('palm6_lottery:kiosk:buy', function(n)
+    cmdBuy(source, n)  -- validates count, rate-limits, charges, caps — server-authoritative
+end)
+
 -- Uses the palm6_dbmigrate Wait(3000) pattern so oxmysql is connected first.
 -- ---------------------------------------------------------------------------
 AddEventHandler('onResourceStart', function(resource)
