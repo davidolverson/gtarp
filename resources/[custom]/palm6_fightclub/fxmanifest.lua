@@ -17,6 +17,7 @@ server_scripts {
     'shared/config.lua',
     'bridge/sv_framework.lua',  -- framework adapter — before server logic
     'server/main.lua',
+    'server/debug.lua',         -- ace-gated /fcdebug harness — AFTER main (uses its exports)
 }
 
 dependencies {

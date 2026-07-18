@@ -65,5 +65,6 @@ Config.Fight = {
 Config.RateLimits = {
     fcbet     = 2,
     fcmatches = 2,
-    -- fcjoin/fcleave removed (queue deleted); fcdebug added by T4.
+    fcdebug   = 1,   -- dev harness throttle (per-src; console src==0 bypasses)
+    -- fcjoin/fcleave removed (queue deleted).
 }
