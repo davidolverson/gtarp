@@ -83,6 +83,7 @@ end)
 
 RegisterNetEvent('palm6_fc_combat:teardown', function(d)
     -- matchId==0 is the boot "abort any fight" broadcast — always unwind.
+    abortFinisherLocal()   -- T8: stop the synced scene + clear the handle BEFORE any unfreeze/timescale/cam (§11)
     Game.RestoreAppearance()
     myPick = nil
     pcall(function() lib.hideContext(false) end)
@@ -161,4 +162,124 @@ end)
 -- (ring-out drops invincibility the instant this arrives).
 AddEventHandler('palm6_fc_combat:teardown', function()
     stopHardening()
+end)
+
+-- ============================================================================
+-- Blazin finisher (T8) -- client half. Runs the scene on THIS client's OWN ped
+-- ONLY (§7): never drives the other ped. Interruptible -- abortFinisherLocal()
+-- stops the scene task + clears the handle BEFORE unfreeze/timescale/cam (§11),
+-- and is called at the TOP of the palm6_fc_combat:teardown handler (below). A
+-- per-client `finisherActive` flag stops a torn-down player from being re-frozen.
+-- ============================================================================
+local FinCfg = exports.palm6_fc_core:Config()
+
+local FINISHER_DICT        = 'mini@takedowns@front'
+local FINISHER_ANIM_VICTIM = 'victim_takedown_front'   -- role tag: this recipient is the mash-side victim
+local FINISHER_WINDUP_MS   = 800     -- MUST match the server constant (Fin server half)
+local FINISHER_TIMESCALE   = 0.4     -- participant slow-mo (feel-test)
+
+local finisherActive = false
+local finisherScene  = nil
+local finisherCam    = nil
+
+local function stopFinisherCam()
+    if finisherCam then
+        RenderScriptCams(false, true, 300, true, true)
+        DestroyCam(finisherCam, false)
+        finisherCam = nil
+    end
+end
+
+local function startFinisherCam(origin)
+    finisherCam = CreateCamWithParams('DEFAULT_SCRIPTED_CAMERA',
+        origin.x + 1.6, origin.y + 1.6, origin.z + 0.7, 0.0, 0.0, 0.0, 42.0, false, 2)
+    SetCamActive(finisherCam, true)
+    RenderScriptCams(true, false, 0, true, true)
+    -- slow dolly toward the action over the full lock
+    SetCamParams(finisherCam,
+        origin.x + 2.4, origin.y + 2.4, origin.z + 1.0, 0.0, 0.0, 0.0, 42.0,
+        FINISHER_WINDUP_MS + FinCfg.Blazin.SceneDurationMs)
+end
+
+-- Hard abort (KO / DC / void / resource-stop). Stops the scene task + clears the
+-- handle FIRST, then drops timescale/cam and unfreezes (belt-and-suspenders
+-- against a stranded frozen ped). GLOBAL so the T6 teardown handler can call it.
+function abortFinisherLocal()
+    if not finisherActive and not finisherScene then return end
+    finisherActive = false
+    finisherScene  = nil
+    local ped = PlayerPedId()
+    ClearPedTasksImmediately(ped)     -- kill the synced-scene task FIRST (§11 ordering)
+    stopFinisherCam()
+    SetTimeScale(1.0)
+    ClearTimecycleModifier()
+    FreezeEntityPosition(ped, false)
+    -- invincibility / CanRagdoll are re-asserted by the T7 LIVE hardening loop
+    -- (non-KO), or handled by the koRagdoll path (KO).
+end
+
+-- Soft end (non-KO scene finished): resume fighting, match still LIVE.
+local function endFinisherLocal()
+    if not finisherActive then return end
+    finisherActive = false
+    finisherScene  = nil
+    stopFinisherCam()
+    SetTimeScale(1.0)
+    ClearTimecycleModifier()
+    local ped = PlayerPedId()
+    ClearPedTasks(ped)
+    FreezeEntityPosition(ped, false)
+end
+
+RegisterNetEvent('palm6_fc_combat:finisher', function(d)
+    if type(d) ~= 'table' or type(d.origin) ~= 'table' then return end
+    if finisherActive then return end
+
+    RequestAnimDict(d.sceneDict)
+    local dl = GetGameTimer() + 2000
+    while not HasAnimDictLoaded(d.sceneDict) and GetGameTimer() < dl do Wait(10) end
+    if not HasAnimDictLoaded(d.sceneDict) then return end
+
+    finisherActive = true
+    local isVictim = (d.sceneAnim == FINISHER_ANIM_VICTIM)   -- role from the tailored clip
+
+    -- Telegraph + mash window (BEFORE impact). Victim mashes JUMP to shave damage.
+    PlaySoundFrontend(-1, 'CHECKPOINT_PERFECT', 'HUD_MINI_GAME_SOUNDSET', true)
+    if isVictim then
+        BeginTextCommandDisplayHelp('STRING')
+        AddTextComponentSubstringPlayerName('~INPUT_JUMP~ mash to break the finisher!')
+        EndTextCommandDisplayHelp(0, false, true, FINISHER_WINDUP_MS + FinCfg.Blazin.SceneDurationMs)
+        CreateThread(function()
+            while finisherActive do
+                if IsControlJustPressed(0, 22) then   -- 22 = JUMP
+                    TriggerServerEvent('palm6_fc_combat:break', { matchId = d.matchId })
+                end
+                Wait(0)
+            end
+        end)
+    end
+
+    Wait(FINISHER_WINDUP_MS)
+    if not finisherActive then return end     -- aborted mid-windup (teardown / KO)
+
+    local ped = PlayerPedId()
+    SetEntityCoordsNoOffset(ped, d.origin.x, d.origin.y, d.origin.z, false, false, false)
+    SetEntityHeading(ped, d.heading)
+    FreezeEntityPosition(ped, true)
+    SetEntityInvincible(ped, true)
+    SetPedCanRagdoll(ped, false)
+
+    finisherScene = CreateSynchronizedScene(d.origin.x, d.origin.y, d.origin.z, 0.0, 0.0, d.heading, 2)
+    SetSynchronizedSceneLooped(finisherScene, false)
+    TaskSynchronizedScene(ped, finisherScene, d.sceneDict, d.sceneAnim, 8.0, -8.0, 0, 0, 0, 0)
+
+    startFinisherCam(d.origin)
+    SetTimeScale(FINISHER_TIMESCALE)                 -- participant-only (spectators never got this event)
+    PlaySoundFrontend(-1, 'Bed', 'MP_LOBBY_SOUNDS', true)   -- finisher stinger (T11 finalizes the sound set)
+
+    -- Non-KO end: server applies damage at the SAME total; if it wasn't a KO, no
+    -- teardown arrives, so we self-restore and resume fighting.
+    SetTimeout(FinCfg.Blazin.SceneDurationMs, function()
+        if finisherActive then endFinisherLocal() end
+    end)
 end)

@@ -689,7 +689,7 @@ RegisterNetEvent('palm6_fc_combat:connect', function(data)
     tgt.hp = tgt.hp - dmg
     local cap = (BLZ and BLZ.FullThreshold) or 100
     att.blazin = math.min(cap, att.blazin + (MOM.PerLandedHit or 0))  -- both gain (Def Jam feel)
-    -- [T8 anchor] Fin.tryTrigger(matchId, attCid, tgtCid, move.moveId) inserts on the NEXT line
+    Fin.tryTrigger(matchId, attCid, tgtCid, move.moveId)             -- [T8] Blazin finisher trigger (heavy + full meter)
     tgt.blazin = math.min(cap, tgt.blazin + (MOM.PerTakenHit or 0))
     Dirty[matchId] = true
 
@@ -808,3 +808,179 @@ AddEventHandler('fc:match:resolved', function(d)
     end
     GlobalState[mkey(matchId)] = nil
 end)
+
+-- ============================================================================
+-- Blazin finisher (T8) — server half.
+-- Per-client OWN-ped synchronized scene (§7). The SERVER owns: the trigger (a
+-- LANDED HEAVY connect at a full meter), the shared scene origin/heading + a
+-- start stamp, the mash-to-reduce tally (palm6_fc_combat:break), and the
+-- finisher damage applied on scene end -- a NO-OP if the row already resolved
+-- (DC / ring-out / KO beat the finisher via the T6 `resolving` flag, §5/§11).
+--
+-- C2: binds to T7's REAL state model (NOT the draft's fightHp/fightMom/
+-- writeMatchState, which never existed). Blazin meter = Combat[ckey(m,cid)].blazin,
+-- HP = Combat[ckey(m,cid)].hp; the HUD statebag is pushed via flush(matchId) /
+-- Dirty[matchId]; the single teardown hub is resolveFight(matchId, winnerCid, method).
+-- All of Combat/ckey/flush/Dirty/matches/resolveFight are declared ABOVE in this
+-- same chunk (T6/T7), so this block reaches them directly.
+-- ============================================================================
+local FinCfg = exports.palm6_fc_core:Config()
+
+-- Prototype takedown clip (§7: base-game takedown first). David feel-tests the
+-- pose + swaps the clip / adds 180 to heading if it reads wrong (Step 12). The
+-- finisher MECHANIC (freeze / damage / mash / teardown) is clip-agnostic.
+local FINISHER_DICT          = 'mini@takedowns@front'
+local FINISHER_ANIM_ATTACKER = 'plyr_takedown_front'
+local FINISHER_ANIM_VICTIM   = 'victim_takedown_front'
+local FINISHER_WINDUP_MS      = 800    -- telegraph + mash window BEFORE impact (MUST match client Step 8)
+local FINISHER_MAX_REDUCE     = 0.85   -- mash shaves at most 85% off BaseFinisherDamage
+
+Fin = {}                     -- GLOBAL (Bridge/Game convention) so the T7 connect handler can reach Fin.tryTrigger
+local finishers = {}         -- [matchId] = { attCid, defCid, mash, done, startAt }
+
+local function headingFromVec(dx, dy)
+    -- GTA heading approximation; if fighters face away in feel-test, add 180.0.
+    return (math.deg(math.atan(-dx, dy))) % 360.0
+end
+
+-- Begins the finisher. Re-guards everything so tryTrigger / the debug command
+-- can call it freely. Sends EACH fighter a "run your half on your OWN ped" order
+-- at a shared origin (§7 step 1-2); spectators/opponent view the scene via normal
+-- ped-anim replication, never tasked here.
+function Fin.start(matchId, attCid, defCid)
+    local st = matches[matchId]
+    if not st or not st.roundStarted or st.resolving then return end
+    if finishers[matchId] then return end                     -- one finisher per match
+    if st.inFinisher[attCid] or st.inFinisher[defCid] then return end
+
+    local attSrc = (st.cidA == attCid) and st.srcA or st.srcB
+    local defSrc = (st.cidA == defCid) and st.srcA or st.srcB
+    if not attSrc or not defSrc then return end
+
+    -- C2: the Blazin meter lives on the attacker's T7 Combat record. Require it
+    -- (a live round always has one) so the spend is authoritative.
+    local att = Combat[ckey(matchId, attCid)]
+    if not att then return end
+
+    local ac = Bridge.GetCoords(attSrc)
+    local dc = Bridge.GetCoords(defSrc)
+    if not ac or not dc then return end
+
+    att.blazin = 0                                            -- C2: spend the Blazin meter (no instant re-chain)
+    st.inFinisher[attCid] = true
+    st.inFinisher[defCid] = true
+
+    local startAt = GetGameTimer()
+    finishers[matchId] = { attCid = attCid, defCid = defCid, mash = 0, done = false, startAt = startAt }
+
+    local origin  = { x = (ac.x + dc.x) * 0.5, y = (ac.y + dc.y) * 0.5, z = ac.z }
+    local heading = headingFromVec(dc.x - ac.x, dc.y - ac.y)
+
+    TriggerClientEvent('palm6_fc_combat:finisher', attSrc, {
+        matchId = matchId, cid = attCid, startAt = startAt,
+        origin = origin, heading = heading,
+        sceneDict = FINISHER_DICT, sceneAnim = FINISHER_ANIM_ATTACKER,
+    })
+    TriggerClientEvent('palm6_fc_combat:finisher', defSrc, {
+        matchId = matchId, cid = defCid, startAt = startAt,
+        origin = origin, heading = heading,
+        sceneDict = FINISHER_DICT, sceneAnim = FINISHER_ANIM_VICTIM,
+    })
+
+    flush(matchId)             -- C2: push the spent meter to the HUD (T9) immediately
+
+    -- Server-authoritative damage lands at scene end (after windup + scene).
+    SetTimeout(FINISHER_WINDUP_MS + FinCfg.Blazin.SceneDurationMs, function()
+        Fin.applyDamage(matchId)
+    end)
+end
+
+-- Called from the T7 connect handler (anchor, below) right after a LANDED connect
+-- adds momentum to the attacker. Fires only on a HEAVY move at a full meter.
+function Fin.tryTrigger(matchId, attCid, defCid, moveId)
+    if not FinCfg.Blazin.HeavyQualifies then return end
+    local move = exports.palm6_fc_core:GetMove(moveId)
+    if not move or move.kind ~= 'heavy' then return end
+    local att = Combat[ckey(matchId, attCid)]                 -- C2: meter = T7 Combat record .blazin
+    if not att or (att.blazin or 0) < FinCfg.Blazin.FullThreshold then return end
+    Fin.start(matchId, attCid, defCid)
+end
+
+function Fin.cleanup(matchId)
+    local st = matches[matchId]
+    local f  = finishers[matchId]
+    if st and f then
+        st.inFinisher[f.attCid] = nil
+        st.inFinisher[f.defCid] = nil
+    end
+    finishers[matchId] = nil
+end
+
+-- Applies the finisher damage authoritatively (§7 step 4). No-op if the match
+-- already resolved (DC-beats-finisher precedence, §5) -- never a double flip,
+-- never HP mutation on a dead row. C2: HP lives on the defender's T7 Combat record.
+function Fin.applyDamage(matchId)
+    local f = finishers[matchId]
+    if not f or f.done then return end
+    f.done = true
+
+    local st = matches[matchId]
+    if not st or st.resolving then
+        Fin.cleanup(matchId)          -- match already resolved (DC/ring-out/KO): clients already torn down
+        return
+    end
+
+    local reduce = math.min(FINISHER_MAX_REDUCE, (f.mash or 0) * FinCfg.Blazin.MashReducePerHit)
+    local dmg    = math.floor(FinCfg.Blazin.BaseFinisherDamage * (1.0 - reduce))
+
+    local dk = ckey(matchId, f.defCid)
+    local def = Combat[dk]
+    if not def then Fin.cleanup(matchId); return end          -- no defender combat state -> nothing to apply
+    def.hp = math.max(0, def.hp - dmg)                        -- C2: mutate the REAL HP the KO check reads
+    Dirty[matchId] = true
+
+    local attCid, defCid = f.attCid, f.defCid
+    Fin.cleanup(matchId)
+
+    if def.hp <= 0 then
+        -- KO: victim's OWN client ragdolls (T7 pattern; C6 RagdollSelf unfreezes
+        -- first), then the single resolveFight hub flips the row atomically. Do
+        -- NOT pre-set m.resolving -- resolveFight guards+sets it itself (C1).
+        local defSrc = (st.cidA == defCid) and st.srcA or st.srcB
+        if defSrc then
+            TriggerClientEvent('palm6_fc_combat:koRagdoll', defSrc, { matchId = matchId })
+        end
+        resolveFight(matchId, attCid, 'finisher')
+    else
+        flush(matchId)                                        -- non-KO: publish the HP swing to the HUD now
+    end
+end
+
+-- Victim mash -> reduces the pending finisher damage (§7 fairness). Only the
+-- CURRENT finisher's victim can accrue mashes. Combat-class eventguard budget
+-- (T11: drop-not-kick) sits in front of this net event.
+RegisterNetEvent('palm6_fc_combat:break', function(d)
+    local src = source
+    if type(d) ~= 'table' then return end
+    local matchId = tonumber(d.matchId)
+    if not matchId then return end
+    local f = finishers[matchId]
+    if not f or f.done then return end
+    if Bridge.GetCitizenId(src) ~= f.defCid then return end
+    f.mash = (f.mash or 0) + 1
+end)
+
+-- Dev: force a finisher on an already-LIVE in-memory match (skips grinding a
+-- full meter during a 2-client feel-test). Ace-gated like /fcdebug (T4) --
+-- Bridge.RegisterCommand hardcodes restricted=false, so gate IN-handler.
+RegisterCommand('fcfin', function(src, args)
+    if src ~= 0 and not IsPlayerAceAllowed(src, 'palm6_fc.debug') then return end
+    local matchId = tonumber(args[1])
+    local attCid  = args[2]
+    if not matchId or not attCid then return end
+    local st = matches[matchId]
+    if not st then return end
+    if attCid ~= st.cidA and attCid ~= st.cidB then return end
+    local defCid = (st.cidA == attCid) and st.cidB or st.cidA
+    Fin.start(matchId, attCid, defCid)
+end, false)
