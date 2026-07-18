@@ -32,32 +32,38 @@ Config.Queue = {
 -- Betting window. Spectators only — fighters cannot bet on their own match
 -- (checked server-side against both fighters' citizenids).
 Config.Betting = {
-    WindowSec = 60,
-    MinBet    = 50,
-    MaxBet    = 5000,
-    RakePct   = 0.10,   -- house cut of the total pool — an economy sink
+    WindowSec        = 60,
+    MinBet           = 50,
+    MaxBet           = 5000,
+    RakePct          = 0.10,    -- house cut of the betting pool — an economy sink
+    OddsBroadcastSec = 2,       -- tote-board throttle (T6 per-match timer cadence)
+    MaxPoolPerMatch  = 50000,   -- aggregate match-fix cap; folded into the atomic
+                                -- /fcbet insert (no TOCTOU); 0 disables the cap
 }
 
 -- The fight itself. Server-monitored, never client-trusted: health,
 -- position, and current weapon are all read off the live synced peds
 -- (same technique palm6_bounty's /capture uses).
 Config.Fight = {
-    -- GTA ped health is on a 100-200 scale (100 = dead/laststand, 200 =
-    -- full, see qbx_medical's SetEntityMaxHealth(ped, 200)). 110 means the
-    -- fighter is solidly knocked out — a notch more decisive than
-    -- palm6_bounty's 120 "beaten down" capture threshold.
-    KOHealth        = 110,
-    MaxDurationSec  = 180,   -- no KO by then = timeout draw, full refund
-    WinnerPursePct  = 0.15,  -- cut of the pool paid straight to the winner
-    PollSec         = 2,     -- sweep cadence for betting->live transitions + fight monitoring
-    RequireUnarmed  = true,  -- drawing any weapon is an instant forfeit
+    -- §10b two-layer paid fighter (self-funded ante on top of the betting pool).
+    EntryStake       = 500,   -- ante per fighter; 0 = for-rep-only (charge skipped, layer no-ops)
+    EntryRakePct     = 0.10,  -- sink on the entry pot (anti-collusion); 0 = zero-sum wash (still no mint)
+    EntryPotLoserPct = 0.0,   -- MVP off; boot-assert EntryRakePct+this<=1 AND this<0.5
+    WinnerPursePct   = 0.15,  -- UNCHANGED: winner's cut of the betting pool
+    -- Legacy combat knobs (lifecycle now owned by palm6_fc_combat / fc_core):
+    -- GTA ped health is on a 100-200 scale (100 = dead/laststand, 200 = full,
+    -- see qbx_medical's SetEntityMaxHealth(ped, 200)). Left in place to avoid
+    -- churn — no longer read by main.lua.
+    KOHealth         = 110,
+    MaxDurationSec   = 180,
+    PollSec          = 2,
+    RequireUnarmed   = true,
 }
 
 -- Per-source command cooldowns (seconds) — chat-command spam guard, distinct
 -- from the queue/betting rules above.
 Config.RateLimits = {
-    fcjoin    = 3,
-    fcleave   = 2,
     fcbet     = 2,
     fcmatches = 2,
+    -- fcjoin/fcleave removed (queue deleted); fcdebug added by T4.
 }

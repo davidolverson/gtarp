@@ -4,30 +4,19 @@
 -- Pure logic. Calls Bridge.* (bridge/sv_framework.lua) for all framework /
 -- native access. No direct framework / native calls here (§6 gate).
 --
--- The ring. Two citizens present at the ring queue up; the instant a second
--- one joins they're auto-paired into a match that opens a betting window.
--- Spectators wager cash on either fighter (parimutuel pool, house rake).
--- When betting closes the fight goes live: the sweep polls both fighters
--- every Config.Fight.PollSec off their live synced peds — health, position,
--- current weapon — and declares a winner on knockout, forfeits the fighter
--- who leaves the ring / draws a weapon / disconnects, and calls a full-
--- refund draw on a mutual forfeit or a timeout with no knockout.
---
--- Nothing here trusts the client: proximity, health, and weapon are all
--- server-derived off the live entity (palm6_bounty's /capture technique).
--- Every state transition that moves money or resolves a match is a guarded
--- UPDATE ... WHERE status = '<expected>' so a race between the sweep thread
--- and a player command (or two racing commands) can only ever let one path
--- through — the same idiom palm6_bounty's /capture and palm6_courier's
--- acceptPosting fix use. Betting itself is closed by an atomic
--- INSERT ... SELECT ... WHERE status = 'betting' guarded further by a
--- UNIQUE(match_id, citizenid) key, so double-betting can't slip through the
--- same in-memory-cache gap that bit palm6_pumpcoin's ticker-uniqueness bug —
--- here the database itself is the only source of truth for "is this bet
--- allowed to exist," not a Lua table that might be stale mid-yield.
+-- Def Jam Fight Club rewire (Phase 0). The queue + server-swept combat are
+-- GONE — the match lifecycle (challenge -> select -> betting -> live ->
+-- resolved) is owned by palm6_fc_combat. This resource is now the MONEY
+-- AUTHORITY only: it exposes guarded server exports that open/advance/resolve/
+-- void a match row and runs the recoverable, idempotent settlement (spectator
+-- parimutuel pool + the two-fighter entry-stake pot). Every money move is
+-- charge-before-grant / claim-before-credit, every state flip is a guarded
+-- UPDATE ... WHERE status='<expected>', and a crash mid-payout is re-driven by
+-- the boot reconcile with NO double-pay. NEVER a mint: the winner's entry cut
+-- is the RESIDUAL (entry_pot - entryRake - loserCut) so no config combo can
+-- create money (spec 10b).
 -- ============================================================================
 
-local queue = {}         -- ordered array of { citizenid, src, name, queuedAt }
 local lastAction = {}    -- [src] = { [key] = ts } — chat-command spam guard
 
 local function now() return os.time() end
@@ -45,158 +34,409 @@ local function rl(src, key)
     return true
 end
 
-local function atRing(src)
-    local c = Bridge.GetCoords(src)
-    if not c then return false end
-    return Bridge.Distance(c, Config.Ring.coords) <= Config.Ring.radius
+-- HARD prod gate. fc_core owns Config.Enabled (isolated Lua state -> reached
+-- via export). Missing/erroring fc_core => inert (false) so the feature never
+-- opens new matches or takes bets before it is proven. Settlement/reconcile/
+-- void are deliberately NOT gated so in-flight matches always finish paying
+-- out even after a mid-session cutover (spec 15).
+local function fcEnabled()
+    local ok, cfg = pcall(function() return exports.palm6_fc_core:Config() end)
+    return ok and cfg ~= nil and cfg.Enabled == true
 end
 
--- Does this citizen already have an open (betting/live) match? Prevents
--- queueing or being paired twice.
-local function activeMatchForCitizen(cid)
+-- Money-safety boot asserts (spec 10b). A failed assert stops the script — the
+-- intended fail-closed gate: never boot a config that could mint on the entry
+-- pot. entryRake + loserCut can never exceed the pot (winnerCut is the
+-- residual), and a loss must always sting.
+assert(Config.Fight.EntryRakePct + Config.Fight.EntryPotLoserPct <= 1,
+    '[palm6_fightclub] money-safety: Config.Fight.EntryRakePct + EntryPotLoserPct must be <= 1')
+assert(Config.Fight.EntryPotLoserPct < 0.5,
+    '[palm6_fightclub] money-safety: Config.Fight.EntryPotLoserPct must be < 0.5 (a loss must sting)')
+
+-- ---------------------------------------------------------------------------
+-- Server-side name / model resolution for a match row (never client-trusted).
+-- ---------------------------------------------------------------------------
+local function nameForCid(cid)
+    local s = Bridge.GetSourceByCitizenId(cid)
+    if s then return Bridge.GetPlayerName(s) end
+    return tostring(cid)
+end
+
+-- fighterId -> ped model, resolved through fc_core's data table; falls back to
+-- treating the passed value as a raw model string (display-only, never money).
+local function fighterModel(fighterId)
+    local ok, f = pcall(function() return exports.palm6_fc_core:GetFighter(fighterId) end)
+    if ok and f and f.model then return f.model end
+    return tostring(fighterId)
+end
+
+-- ---------------------------------------------------------------------------
+-- Idempotency claim helpers (claim-before-credit: WE flipped 0->1 iff true).
+-- ---------------------------------------------------------------------------
+local function claimBet(betId)
+    local claimed = false
+    pcall(function()
+        claimed = MySQL.update.await(
+            "UPDATE palm6_fightclub_bets SET paid = 1 WHERE id = ? AND paid = 0", { betId }) == 1
+    end)
+    return claimed
+end
+
+-- Claim one fighter's entry-pot payout flag. slot is a fixed 1|2 -> whitelisted
+-- column name (never client input), so the interpolation is injection-safe.
+local function claimEntry(matchId, slot)
+    local col = (slot == 1) and 'entry_paid1' or 'entry_paid2'
+    local claimed = false
+    pcall(function()
+        claimed = MySQL.update.await(
+            ("UPDATE palm6_fightclub_matches SET %s = 1 WHERE id = ? AND %s = 0"):format(col, col),
+            { matchId }) == 1
+    end)
+    return claimed
+end
+
+local function paidSnap(match, slot)
+    return tonumber((slot == 1) and match.entry_paid1 or match.entry_paid2) == 1
+end
+
+local function markSettled(matchId)
+    pcall(function()
+        MySQL.update.await(
+            "UPDATE palm6_fightclub_matches SET settled = 1 WHERE id = ? AND settled = 0", { matchId })
+    end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Recoverable, idempotent settlement. Every credit is claimed BEFORE the money
+-- moves; the entry-pot block runs BEFORE markSettled in BOTH branches so a
+-- crash mid-credit leaves status='resolved' AND settled=0 -> re-driven by
+-- reconcileUnsettled with no double-pay. entry_pot / entry_paid1 / entry_paid2
+-- are in the SELECT so a replay can skip already-credited antes.
+-- ---------------------------------------------------------------------------
+local function settleMatch(matchId, reasonLabel)
+    local match
+    pcall(function()
+        match = MySQL.single.await([[
+            SELECT winner_citizenid, purse_paid, entry_pot, entry_paid1, entry_paid2,
+                   fighter1_citizenid, fighter1_name,
+                   fighter2_citizenid, fighter2_name
+              FROM palm6_fightclub_matches WHERE id = ? AND status = 'resolved']],
+            { matchId })
+    end)
+    if not match then
+        dbg(('settle #%d skipped — resolved-row fetch failed; will retry on boot'):format(matchId))
+        return
+    end
+
+    local bets = {}
+    pcall(function()
+        bets = MySQL.query.await(
+            "SELECT id, citizenid, fighter, amount, paid FROM palm6_fightclub_bets WHERE match_id = ?", { matchId }) or {}
+    end)
+
+    local winnerCid = match.winner_citizenid  -- nil/NULL == draw / void
+    local entryPot  = tonumber(match.entry_pot) or 0
+
+    if not winnerCid then
+        -- Draw / void: full refund of every unpaid bet + unwind the entry pot.
+        for _, b in ipairs(bets) do
+            if tonumber(b.paid) ~= 1 and claimBet(b.id) then
+                Bridge.CreditBankByCitizenId(b.citizenid, tonumber(b.amount) or 0, 'fightclub-draw-refund')
+                local s = Bridge.GetSourceByCitizenId(b.citizenid)
+                if s then Bridge.Notify(s, 'Fight Club', ('Match #%d no contest — $%d refunded.'):format(matchId, b.amount), 'inform') end
+            end
+        end
+        -- Entry-pot unwind: refund each ante half (2*EntryStake is even -> no
+        -- dust). Claim-before-credit via entry_paid1/2; no-op when entry_pot==0.
+        if entryPot > 0 then
+            local half = math.floor(entryPot / 2)
+            if not paidSnap(match, 1) and claimEntry(matchId, 1) then
+                Bridge.CreditBankByCitizenId(match.fighter1_citizenid, half, 'fightclub-entry-refund')
+                local s1 = Bridge.GetSourceByCitizenId(match.fighter1_citizenid)
+                if s1 then Bridge.Notify(s1, 'Fight Club', ('Match #%d no contest — $%d entry refunded.'):format(matchId, half), 'inform') end
+            end
+            if not paidSnap(match, 2) and claimEntry(matchId, 2) then
+                Bridge.CreditBankByCitizenId(match.fighter2_citizenid, entryPot - half, 'fightclub-entry-refund')
+                local s2 = Bridge.GetSourceByCitizenId(match.fighter2_citizenid)
+                if s2 then Bridge.Notify(s2, 'Fight Club', ('Match #%d no contest — $%d entry refunded.'):format(matchId, entryPot - half), 'inform') end
+            end
+        end
+        markSettled(matchId)
+        dbg(('match #%d settled DRAW/VOID (%s) — %d bet(s), entry_pot=%d'):format(matchId, reasonLabel or '?', #bets, entryPot))
+        return
+    end
+
+    local winnerSlot = (match.fighter1_citizenid == winnerCid) and 1 or 2
+    local winnerName = (winnerSlot == 1 and match.fighter1_name) or match.fighter2_name or 'the winner'
+    local loserCid   = (winnerSlot == 1) and match.fighter2_citizenid or match.fighter1_citizenid
+
+    -- Parimutuel pool math from the FULL bet set (deterministic on replay).
+    local totalPool, winningSideTotal = 0, 0
+    for _, b in ipairs(bets) do
+        local amt = tonumber(b.amount) or 0
+        totalPool = totalPool + amt
+        if tonumber(b.fighter) == winnerSlot then winningSideTotal = winningSideTotal + amt end
+    end
+
+    local rake       = math.floor(totalPool * Config.Betting.RakePct)
+    local purse      = math.floor(totalPool * Config.Fight.WinnerPursePct)
+    local forBettors = math.max(0, totalPool - rake - purse)
+
+    -- Winner betting-purse — claimed once via matches.purse_paid.
+    if purse > 0 then
+        local claimedPurse = false
+        pcall(function()
+            claimedPurse = MySQL.update.await(
+                "UPDATE palm6_fightclub_matches SET purse_paid = 1 WHERE id = ? AND purse_paid = 0", { matchId }) == 1
+        end)
+        if claimedPurse then
+            Bridge.CreditBankByCitizenId(winnerCid, purse, 'fightclub-purse')
+            local ws = Bridge.GetSourceByCitizenId(winnerCid)
+            if ws then Bridge.Notify(ws, 'Fight Club', ('You won match #%d (%s) — $%d purse.'):format(matchId, reasonLabel or 'knockout', purse), 'success') end
+        end
+    end
+
+    if loserCid then
+        local ls = Bridge.GetSourceByCitizenId(loserCid)
+        if ls then Bridge.Notify(ls, 'Fight Club', ('You lost match #%d (%s vs %s) — %s.'):format(matchId, match.fighter1_name, match.fighter2_name, reasonLabel or 'knockout'), 'error') end
+    end
+
+    -- Parimutuel split: each bet claimed exactly once. Losing stakes + rounding
+    -- remainder are the sink ("buys round up, payouts round down").
+    for _, b in ipairs(bets) do
+        if tonumber(b.paid) ~= 1 and claimBet(b.id) then
+            if tonumber(b.fighter) == winnerSlot and winningSideTotal > 0 and forBettors > 0 then
+                local share = math.floor(forBettors * (tonumber(b.amount) or 0) / winningSideTotal)
+                if share > 0 then
+                    Bridge.CreditBankByCitizenId(b.citizenid, share, 'fightclub-bet-win')
+                    local s = Bridge.GetSourceByCitizenId(b.citizenid)
+                    if s then Bridge.Notify(s, 'Fight Club', ('Match #%d: %s won — you collected $%d.'):format(matchId, winnerName, share), 'success') end
+                end
+            end
+        end
+    end
+
+    -- Entry-pot payout (winner RESIDUAL — never a mint). winnerCut absorbs the
+    -- remainder so entryRake + loserCut + winnerCut == entry_pot exactly for ANY
+    -- config combo. Claim-before-credit via entry_paid<slot>. BEFORE markSettled
+    -- so a crash mid-credit is re-driven by the boot reconcile. No-op when
+    -- entry_pot == 0 (historical / for-rep-only / is_pve rows).
+    if entryPot > 0 then
+        local entryRake = math.floor(entryPot * Config.Fight.EntryRakePct)
+        local loserCut  = math.floor(entryPot * Config.Fight.EntryPotLoserPct)
+        local winnerCut = entryPot - entryRake - loserCut          -- residual
+        local loserSlot = (winnerSlot == 1) and 2 or 1
+        if not paidSnap(match, winnerSlot) and claimEntry(matchId, winnerSlot) then
+            Bridge.CreditBankByCitizenId(winnerCid, winnerCut, 'fightclub-entry')
+            local ws = Bridge.GetSourceByCitizenId(winnerCid)
+            if ws then Bridge.Notify(ws, 'Fight Club', ('Match #%d — $%d entry purse.'):format(matchId, winnerCut), 'success') end
+        end
+        if loserCut > 0 and loserCid then
+            if not paidSnap(match, loserSlot) and claimEntry(matchId, loserSlot) then
+                Bridge.CreditBankByCitizenId(loserCid, loserCut, 'fightclub-entry-consolation')
+                local ls2 = Bridge.GetSourceByCitizenId(loserCid)
+                if ls2 then Bridge.Notify(ls2, 'Fight Club', ('Match #%d — $%d consolation.'):format(matchId, loserCut), 'inform') end
+            end
+        end
+    end
+
+    markSettled(matchId)
+    dbg(('match #%d settled: winner=%s (%s), pool=%d rake=%d purse=%d forBettors=%d entry_pot=%d')
+        :format(matchId, winnerCid, reasonLabel or '?', totalPool, rake, purse, forBettors, entryPot))
+end
+
+-- Boot reconcile — re-drive any match flipped 'resolved' whose payout never
+-- finished (server died mid-settlement). Idempotent: settleMatch skips every
+-- already-claimed step. Delayed so palm6_dbmigrate's ALTERs (settled/paid/
+-- purse_paid/entry_paid1/2 columns) have landed first.
+local function reconcileUnsettled()
+    local pending = {}
+    pcall(function()
+        pending = MySQL.query.await(
+            "SELECT id FROM palm6_fightclub_matches WHERE status = 'resolved' AND settled = 0") or {}
+    end)
+    for _, row in ipairs(pending) do
+        settleMatch(row.id, 'recovered')
+    end
+    if #pending > 0 then
+        print(('[palm6_fightclub] boot reconcile settled %d interrupted payout(s)'):format(#pending))
+    end
+end
+
+-- Server-internal seam — fired AFTER settle so downstream (T5 rep, T10 arena)
+-- sees a fully-paid terminal row. TriggerEvent (NEVER a net event): unspoofable.
+local function fireResolved(matchId, winnerCid, method)
     local row
     pcall(function()
-        row = MySQL.single.await(
-            [[SELECT id FROM palm6_fightclub_matches
-              WHERE (fighter1_citizenid = ? OR fighter2_citizenid = ?)
-                AND status IN ('betting', 'live') LIMIT 1]],
-            { cid, cid })
+        row = MySQL.single.await([[
+            SELECT fighter1_citizenid, fighter2_citizenid,
+                   UNIX_TIMESTAMP(live_started_at) AS started_at,
+                   UNIX_TIMESTAMP(resolved_at)     AS ended_at,
+                   is_pve, cpu_tier
+              FROM palm6_fightclub_matches WHERE id = ?]], { matchId })
     end)
-    return row ~= nil
-end
-
-local function removeFromQueueBySrc(src)
-    for i = #queue, 1, -1 do
-        if queue[i].src == src then table.remove(queue, i) end
+    local loserCid = nil
+    if row and winnerCid then
+        loserCid = (row.fighter1_citizenid == winnerCid) and row.fighter2_citizenid or row.fighter1_citizenid
     end
+    TriggerEvent('fc:match:resolved', {
+        matchId   = matchId,
+        winnerCid = winnerCid,
+        loserCid  = loserCid,
+        method    = method,
+        startedAt = row and tonumber(row.started_at) or nil,
+        endedAt   = row and tonumber(row.ended_at) or nil,
+        isPve     = row and tonumber(row.is_pve) == 1 or false,
+        cpuTier   = row and row.cpu_tier or nil,
+    })
 end
 
-local function removeFromQueueByCitizenId(cid)
-    for i = #queue, 1, -1 do
-        if queue[i].citizenid == cid then table.remove(queue, i) end
+-- Atomic live->resolved flip (winnerCid=nil => draw). settled=0 + rep_awarded=0
+-- mark the row for settlement (this boot) and rep (T5). Reused by ResolveMatch.
+local function resolveLive(matchId, winnerCid, method)
+    local marked = false
+    pcall(function()
+        marked = MySQL.update.await([[
+            UPDATE palm6_fightclub_matches
+               SET status = 'resolved', winner_citizenid = ?, method = ?,
+                   resolved_at = NOW(), settled = 0, rep_awarded = 0
+             WHERE id = ? AND status = 'live']], { winnerCid, method, matchId }) == 1
+    end)
+    if not marked then return false end
+    settleMatch(matchId, method)
+    fireResolved(matchId, winnerCid, method)
+    return true
+end
+
+-- Parimutuel tote board broadcast (display-only; settlement is the pool truth).
+local function broadcastOdds(matchId)
+    local m
+    pcall(function()
+        m = MySQL.single.await([[
+            SELECT status, GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), betting_ends_at)) AS secs_left
+              FROM palm6_fightclub_matches WHERE id = ?]], { matchId })
+    end)
+    if not m then return end
+    local rows = {}
+    pcall(function()
+        rows = MySQL.query.await([[
+            SELECT fighter, COALESCE(SUM(amount),0) AS total, COUNT(*) AS n
+              FROM palm6_fightclub_bets WHERE match_id = ? GROUP BY fighter]], { matchId }) or {}
+    end)
+    local sideA, sideB, betCount = 0, 0, 0
+    for _, r in ipairs(rows) do
+        betCount = betCount + (tonumber(r.n) or 0)
+        if tonumber(r.fighter) == 1 then sideA = tonumber(r.total) or 0
+        elseif tonumber(r.fighter) == 2 then sideB = tonumber(r.total) or 0 end
     end
-end
-
--- Re-validate a queued entry is still the same character, still online, and
--- still at the ring right before pairing — the queue can go stale between
--- join and pairing (reconnect, walked off, swapped character).
-local function stillQueueable(entry)
-    if not entry or not entry.src then return false end
-    if Bridge.GetCitizenId(entry.src) ~= entry.citizenid then return false end
-    return atRing(entry.src)
+    local secsLeft = (m.status == 'betting') and (tonumber(m.secs_left) or 0) or 0
+    TriggerClientEvent('palm6_fightclub:oddsUpdate', -1, {
+        matchId = matchId, sideA = sideA, sideB = sideB, betCount = betCount, secsLeft = secsLeft,
+    })
 end
 
 -- ---------------------------------------------------------------------------
--- Match creation
+-- Server-only money / lifecycle exports (consumed by T4 debug + T6 combat).
 -- ---------------------------------------------------------------------------
--- Returns true on success. On DB failure both fighters are requeued and the
--- caller must NOT immediately retry pairing them again in the same pass —
--- see tryPairQueue's early `return` below. Without that, a persistently
--- failing DB would make tryPairQueue re-pop and re-fail the same pair in an
--- unbounded loop within a single /fcjoin invocation (each MySQL.insert.await
--- still yields, so it isn't a hard freeze, but it never terminates and
--- hammers the DB the whole time).
-local function createMatch(a, b)
+
+-- Open a betting-window match row. Does NOT charge antes (caller charges per
+-- spec 10b then unwinds on nil). Returns matchId on success, nil on gate/fail.
+exports('OpenMatch', function(aCid, bCid, styleA, styleB, fighterA, fighterB, entryStake)
+    if not fcEnabled() then return nil end
+    if not aCid or not bCid then return nil end
+    entryStake = math.floor(tonumber(entryStake) or 0)
+    if entryStake < 0 then return nil end
+    local entryPot     = 2 * entryStake
+    local aName, bName = nameForCid(aCid), nameForCid(bCid)
+    local mdlA, mdlB   = fighterModel(fighterA), fighterModel(fighterB)
     local ok, matchId = pcall(function()
         return MySQL.insert.await([[
             INSERT INTO palm6_fightclub_matches
                 (fighter1_citizenid, fighter1_name, fighter2_citizenid, fighter2_name,
-                 status, betting_ends_at)
-            VALUES (?, ?, ?, ?, 'betting', NOW() + INTERVAL ? SECOND)
-        ]], { a.citizenid, a.name, b.citizenid, b.name, Config.Betting.WindowSec })
+                 style1, style2, fighter1_model, fighter2_model,
+                 status, entry_pot, is_pve, betting_ends_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'betting', ?, 0, NOW() + INTERVAL ? SECOND)
+        ]], { aCid, aName, bCid, bName, styleA, styleB, mdlA, mdlB, entryPot, Config.Betting.WindowSec })
     end)
     if not ok or not matchId or matchId == 0 then
-        dbg('createMatch failed to insert — requeueing both')
-        queue[#queue + 1] = a
-        queue[#queue + 1] = b
-        return false
+        dbg('OpenMatch INSERT failed — caller must refund both antes')
+        return nil
     end
-    Bridge.Notify(a.src, 'Fight Club',
-        ('Match #%d: you vs %s. Betting is open for %ds — fight starts after.')
-        :format(matchId, b.name, Config.Betting.WindowSec), 'success')
-    Bridge.Notify(b.src, 'Fight Club',
-        ('Match #%d: you vs %s. Betting is open for %ds — fight starts after.')
-        :format(matchId, a.name, Config.Betting.WindowSec), 'success')
-    dbg(('match #%d created: %s vs %s'):format(matchId, a.citizenid, b.citizenid))
+    dbg(('OpenMatch #%d: %s vs %s (entry_pot=%d)'):format(matchId, aCid, bCid, entryPot))
+    return matchId
+end)
+
+-- betting -> live (guarded). Closes /fcbet by leaving the 'betting' state.
+exports('GoLive', function(matchId)
+    local moved = false
+    pcall(function()
+        moved = MySQL.update.await(
+            "UPDATE palm6_fightclub_matches SET status = 'live', live_started_at = NOW() WHERE id = ? AND status = 'betting'",
+            { matchId }) == 1
+    end)
+    if moved then dbg(('match #%d betting closed — fight is live'):format(matchId)) end
+    return moved
+end)
+
+-- live -> resolved (atomic) + settle + seam. winnerCid=nil => draw.
+exports('ResolveMatch', function(matchId, winnerCid, method)
+    return resolveLive(matchId, winnerCid, method or 'ko')
+end)
+
+-- betting -> resolved(void): abort a match that never went live. Refunds bets +
+-- both antes via settleMatch's draw branch.
+exports('VoidMatch', function(matchId)
+    local marked = false
+    pcall(function()
+        marked = MySQL.update.await([[
+            UPDATE palm6_fightclub_matches
+               SET status = 'resolved', winner_citizenid = NULL, method = 'void',
+                   resolved_at = NOW(), settled = 0, rep_awarded = 0
+             WHERE id = ? AND status = 'betting']], { matchId }) == 1
+    end)
+    if not marked then return false end
+    settleMatch(matchId, 'void')
+    fireResolved(matchId, nil, 'void')
     return true
-end
+end)
 
-local function tryPairQueue()
-    while #queue >= 2 do
-        local a = table.remove(queue, 1)
-        local b = table.remove(queue, 1)
-        local aOk, bOk = stillQueueable(a), stillQueueable(b)
-        if aOk and bOk then
-            if not createMatch(a, b) then
-                -- DB is failing right now; both are back in the queue, but
-                -- stop pairing this pass instead of looping forever on the
-                -- same insert. The next /fcjoin (or a future join) retries.
-                return
-            end
-        elseif aOk then
-            queue[#queue + 1] = a  -- requeue the still-valid one at the back
-            if b.src then Bridge.Notify(b.src, 'Fight Club', 'You left the queue.', 'inform') end
-        elseif bOk then
-            queue[#queue + 1] = b
-            if a.src then Bridge.Notify(a.src, 'Fight Club', 'You left the queue.', 'inform') end
-        end
-        -- neither valid: both silently dropped, loop continues in case more remain
-    end
-end
+-- live -> resolved(void): no-contest a LIVE row (boot strand / mid-match cutover
+-- / preempt). Refunds bets + both antes via the draw branch.
+exports('LiveVoidMatch', function(matchId)
+    local marked = false
+    pcall(function()
+        marked = MySQL.update.await([[
+            UPDATE palm6_fightclub_matches
+               SET status = 'resolved', winner_citizenid = NULL, method = 'void',
+                   resolved_at = NOW(), settled = 0, rep_awarded = 0
+             WHERE id = ? AND status = 'live']], { matchId }) == 1
+    end)
+    if not marked then return false end
+    settleMatch(matchId, 'void')
+    fireResolved(matchId, nil, 'void')
+    return true
+end)
+
+exports('BroadcastOdds', function(matchId)
+    broadcastOdds(matchId)
+end)
 
 -- ---------------------------------------------------------------------------
--- /fcjoin — queue up at the ring
--- ---------------------------------------------------------------------------
-local function cmdFcJoin(src)
-    if src == 0 then return end
-    if not rl(src, 'fcjoin') then return end
-    local cid = Bridge.GetCitizenId(src)
-    if not cid then return end
-
-    if not atRing(src) then
-        Bridge.Notify(src, 'Fight Club', ('You need to be at %s.'):format(Config.Ring.label), 'error')
-        return
-    end
-    for _, q in ipairs(queue) do
-        if q.citizenid == cid then
-            Bridge.Notify(src, 'Fight Club', "You're already in the queue.", 'error')
-            return
-        end
-    end
-    if activeMatchForCitizen(cid) then
-        Bridge.Notify(src, 'Fight Club', 'You already have a match in progress.', 'error')
-        return
-    end
-
-    queue[#queue + 1] = { citizenid = cid, src = src, name = Bridge.GetPlayerName(src), queuedAt = now() }
-    Bridge.Notify(src, 'Fight Club', 'Queued at the ring. Waiting for an opponent...', 'inform')
-    tryPairQueue()
-end
-
--- ---------------------------------------------------------------------------
--- /fcleave — leave the queue before being paired
--- ---------------------------------------------------------------------------
-local function cmdFcLeave(src)
-    if src == 0 then return end
-    if not rl(src, 'fcleave') then return end
-    local cid = Bridge.GetCitizenId(src)
-    if not cid then return end
-    removeFromQueueByCitizenId(cid)
-    Bridge.Notify(src, 'Fight Club', 'You left the queue.', 'inform')
-end
-
--- ---------------------------------------------------------------------------
--- /fcbet <matchid> <1|2> <amount> — spectator wager, guarded atomic claim
+-- /fcbet <matchid> <1|2> <amount> — spectator wager, guarded atomic claim.
 -- ---------------------------------------------------------------------------
 local function cmdFcBet(src, args)
     if src == 0 then return end
     if not rl(src, 'fcbet') then return end
+    if not fcEnabled() then
+        Bridge.Notify(src, 'Fight Club', 'Betting is closed.', 'error')
+        return
+    end
     local cid = Bridge.GetCitizenId(src)
     if not cid then return end
 
     local matchId = tonumber(args[1])
-    local slot = tonumber(args[2])
-    local amount = math.floor(tonumber(args[3]) or 0)
+    local slot    = tonumber(args[2])
+    local amount  = math.floor(tonumber(args[3]) or 0)
 
     if not matchId or (slot ~= 1 and slot ~= 2)
         or amount < Config.Betting.MinBet or amount > Config.Betting.MaxBet then
@@ -209,7 +449,7 @@ local function cmdFcBet(src, args)
     local m
     pcall(function()
         m = MySQL.single.await(
-            "SELECT fighter1_citizenid, fighter2_citizenid FROM palm6_fightclub_matches WHERE id = ? AND status = 'betting'",
+            "SELECT fighter1_citizenid, fighter2_citizenid FROM palm6_fightclub_matches WHERE id = ? AND status = 'betting' AND is_pve = 0",
             { matchId })
     end)
     if not m then
@@ -221,27 +461,29 @@ local function cmdFcBet(src, args)
         return
     end
 
-    -- Consume-before-grant: take the stake FIRST. If the row were inserted
-    -- before the charge, a crash in that window would leave an unpaid-for bet
-    -- that still gets honored at resolution (minted money). Charging first means
-    -- the worst a crash can do is take a stake with no bet recorded (a rare
-    -- self-inflicted player loss, not a faucet), and we refund on any failure below.
+    -- Consume-before-grant: take the stake FIRST; refunded on any insert failure.
     if not Bridge.ChargeBank(src, amount, 'fightclub-bet') then
         Bridge.Notify(src, 'Fight Club', ('You need $%d in the bank.'):format(amount), 'error')
         return
     end
 
-    -- Atomic claim: the row only inserts if the match is STILL in the betting
-    -- window at the exact instant of insert (WHERE status = 'betting' inside the
-    -- same statement, no read-then-write gap), and the schema's UNIQUE(match_id,
-    -- citizenid) key rejects a second bet outright — see the module header for why
-    -- this must be a DB constraint. On any failure the already-taken stake is refunded.
+    -- Atomic claim: inserts only if the match is STILL betting, is_pve=0, AND the
+    -- aggregate pool + this stake stays <= MaxPoolPerMatch — all folded into ONE
+    -- statement (no read-then-write TOCTOU). The pool sum reads the bets table
+    -- through a DERIVED table (materialized) so MySQL/MariaDB accepts the target
+    -- table inside an INSERT...SELECT subquery (a raw self-reference throws error
+    -- 1093). 0 disables the cap. UNIQUE(match_id,citizenid) rejects a double bet.
+    local maxPool = Config.Betting.MaxPoolPerMatch or 0
     local insOk, insId = pcall(function()
         return MySQL.insert.await([[
             INSERT INTO palm6_fightclub_bets (match_id, citizenid, fighter, amount)
             SELECT ?, ?, ?, ? FROM palm6_fightclub_matches
-            WHERE id = ? AND status = 'betting'
-        ]], { matchId, cid, slot, amount, matchId })
+            WHERE id = ? AND status = 'betting' AND is_pve = 0
+              AND (? = 0 OR (
+                    SELECT COALESCE(SUM(b.amount), 0)
+                    FROM (SELECT amount FROM palm6_fightclub_bets WHERE match_id = ?) AS b
+                  ) + ? <= ?)
+        ]], { matchId, cid, slot, amount, matchId, maxPool, matchId, amount, maxPool })
     end)
     if not insOk then
         Bridge.CreditBankByCitizenId(cid, amount, 'fightclub-bet-refund')
@@ -250,22 +492,22 @@ local function cmdFcBet(src, args)
     end
     if not insId or insId == 0 then
         Bridge.CreditBankByCitizenId(cid, amount, 'fightclub-bet-refund')
-        Bridge.Notify(src, 'Fight Club', 'Betting just closed on that match.', 'error')
+        Bridge.Notify(src, 'Fight Club', 'Betting just closed, or the match pool cap is full.', 'error')
         return
     end
 
     Bridge.Notify(src, 'Fight Club',
         ('Bet placed: $%d on fighter %d in match #%d.'):format(amount, slot, matchId), 'success')
     dbg(('bet %d on match #%d fighter %d by %s'):format(amount, matchId, slot, cid))
+    broadcastOdds(matchId)
 end
 
 -- ---------------------------------------------------------------------------
--- /fcmatches — open board (betting + live)
+-- /fcmatches — open board (betting + live), read-only.
 -- ---------------------------------------------------------------------------
 local function cmdFcMatches(src)
     if src == 0 then return end
     if not rl(src, 'fcmatches') then return end
-
     local rows = {}
     pcall(function()
         rows = MySQL.query.await([[
@@ -277,7 +519,7 @@ local function cmdFcMatches(src)
         ]]) or {}
     end)
     if #rows == 0 then
-        Bridge.Reply(src, { 'no open matches — /fcjoin at the ring to start one' })
+        Bridge.Reply(src, { 'no open matches — challenge someone at the ring to start one' })
         return
     end
     local lines = {}
@@ -294,276 +536,11 @@ local function cmdFcMatches(src)
 end
 
 -- ---------------------------------------------------------------------------
--- Resolution + recoverable settlement.
---
--- resolveMatch() flips a LIVE match to 'resolved' via a guarded UPDATE exactly
--- once (recording winner_citizenid; NULL means a draw), then hands off to
--- settleMatch(). settleMatch() is the RECOVERABLE, IDEMPOTENT payout: every
--- credit is claimed BEFORE the money moves via a per-step flag
--- (palm6_fightclub_bets.paid / palm6_fightclub_matches.purse_paid), and the
--- match is marked `settled=1` only once every payout landed. This makes the
--- payout re-drivable from a clean boot (see reconcileUnsettled) with NO
--- double-pay — an already-credited step's flag is 1 and is skipped.
---
--- Bias (matching /fcbet's consume-before-grant): a crash in the tiny window
--- between claiming a flag and the bank credit costs that one payout — a rare
--- self-inflicted shortfall, never a mint — while the common crash (before a
--- payout started, or between payouts) is fully recovered on the next boot.
--- The pool/share math is recomputed from the FULL bet set on every run, so a
--- replay is deterministic; only unpaid (paid=0) bets are actually credited.
--- Before this rework a crash after the 'resolved' flip stranded every
--- unpaid bet forever (deferred in the 2026-07-16 integrity audit).
+-- Commands + boot. /fcjoin, /fcleave, the sweep thread, and the playerDropped
+-- match-resolution are GONE — the lifecycle is owned by palm6_fc_combat (T6).
 -- ---------------------------------------------------------------------------
-
--- Claim one bet's payout flag atomically; true iff WE flipped it 0->1 (so
--- exactly one settlement run — live or boot-recovery — ever credits it).
-local function claimBet(betId)
-    local claimed = false
-    pcall(function()
-        claimed = MySQL.update.await(
-            "UPDATE palm6_fightclub_bets SET paid = 1 WHERE id = ? AND paid = 0", { betId }) == 1
-    end)
-    return claimed
-end
-
-local function markSettled(matchId)
-    pcall(function()
-        MySQL.update.await(
-            "UPDATE palm6_fightclub_matches SET settled = 1 WHERE id = ? AND settled = 0", { matchId })
-    end)
-end
-
-local function settleMatch(matchId, reasonLabel)
-    local match
-    pcall(function()
-        match = MySQL.single.await([[
-            SELECT winner_citizenid, purse_paid,
-                   fighter1_citizenid, fighter1_name,
-                   fighter2_citizenid, fighter2_name
-              FROM palm6_fightclub_matches WHERE id = ? AND status = 'resolved']],
-            { matchId })
-    end)
-    -- No resolved row, or the fetch failed: do NOT mark settled. A transient
-    -- DB failure here is retried by reconcileUnsettled on the next boot.
-    if not match then
-        dbg(('settle #%d skipped — resolved-row fetch failed; will retry on boot'):format(matchId))
-        return
-    end
-
-    local bets = {}
-    pcall(function()
-        bets = MySQL.query.await(
-            "SELECT id, citizenid, fighter, amount, paid FROM palm6_fightclub_bets WHERE match_id = ?", { matchId }) or {}
-    end)
-
-    local winnerCid = match.winner_citizenid  -- nil/NULL == draw
-
-    if not winnerCid then
-        -- Draw (mutual forfeit or timeout): full refund of every unpaid bet.
-        for _, b in ipairs(bets) do
-            if tonumber(b.paid) ~= 1 and claimBet(b.id) then
-                Bridge.CreditBankByCitizenId(b.citizenid, tonumber(b.amount) or 0, 'fightclub-draw-refund')
-                local s = Bridge.GetSourceByCitizenId(b.citizenid)
-                if s then Bridge.Notify(s, 'Fight Club', ('Match #%d ended in a draw — $%d refunded.'):format(matchId, b.amount), 'inform') end
-            end
-        end
-        markSettled(matchId)
-        dbg(('match #%d settled DRAW (%s) — %d bet(s)'):format(matchId, reasonLabel or '?', #bets))
-        return
-    end
-
-    local winnerSlot = (match.fighter1_citizenid == winnerCid) and 1 or 2
-    local winnerName = (winnerSlot == 1 and match.fighter1_name) or match.fighter2_name or 'the winner'
-
-    -- Pool math from the FULL bet set (deterministic on replay).
-    local totalPool, winningSideTotal = 0, 0
-    for _, b in ipairs(bets) do
-        local amt = tonumber(b.amount) or 0
-        totalPool = totalPool + amt
-        if tonumber(b.fighter) == winnerSlot then winningSideTotal = winningSideTotal + amt end
-    end
-
-    local rake = math.floor(totalPool * Config.Betting.RakePct)
-    local purse = math.floor(totalPool * Config.Fight.WinnerPursePct)
-    local forBettors = math.max(0, totalPool - rake - purse)
-
-    -- Winner purse — claimed once via matches.purse_paid so a replay never re-pays it.
-    if purse > 0 then
-        local claimedPurse = false
-        pcall(function()
-            claimedPurse = MySQL.update.await(
-                "UPDATE palm6_fightclub_matches SET purse_paid = 1 WHERE id = ? AND purse_paid = 0", { matchId }) == 1
-        end)
-        if claimedPurse then
-            Bridge.CreditBankByCitizenId(winnerCid, purse, 'fightclub-purse')
-            local ws = Bridge.GetSourceByCitizenId(winnerCid)
-            if ws then Bridge.Notify(ws, 'Fight Club', ('You won match #%d (%s) — $%d purse.'):format(matchId, reasonLabel or 'knockout', purse), 'success') end
-        end
-    end
-
-    local loserCid = (winnerSlot == 1) and match.fighter2_citizenid or match.fighter1_citizenid
-    if loserCid then
-        local ls = Bridge.GetSourceByCitizenId(loserCid)
-        if ls then Bridge.Notify(ls, 'Fight Club', ('You lost match #%d (%s vs %s) — %s.'):format(matchId, match.fighter1_name, match.fighter2_name, reasonLabel or 'knockout'), 'error') end
-    end
-
-    -- Parimutuel split: each bet is claimed exactly once. Winning bets get
-    -- their proportional share (rounded down); losing bets are just flagged
-    -- paid — losing stakes + rounding remainder are the sink, the same
-    -- "buys round up, payouts round down" honesty palm6_pumpcoin uses.
-    for _, b in ipairs(bets) do
-        if tonumber(b.paid) ~= 1 and claimBet(b.id) then
-            if tonumber(b.fighter) == winnerSlot and winningSideTotal > 0 and forBettors > 0 then
-                local share = math.floor(forBettors * (tonumber(b.amount) or 0) / winningSideTotal)
-                if share > 0 then
-                    Bridge.CreditBankByCitizenId(b.citizenid, share, 'fightclub-bet-win')
-                    local s = Bridge.GetSourceByCitizenId(b.citizenid)
-                    if s then Bridge.Notify(s, 'Fight Club', ('Match #%d: %s won — you collected $%d.'):format(matchId, winnerName, share), 'success') end
-                end
-            end
-        end
-    end
-
-    markSettled(matchId)
-    dbg(('match #%d settled: winner=%s (%s), pool=%d rake=%d purse=%d forBettors=%d')
-        :format(matchId, winnerCid, reasonLabel or '?', totalPool, rake, purse, forBettors))
-end
-
-local function resolveMatch(matchId, winnerCid, reasonLabel)
-    local marked = false
-    pcall(function()
-        -- settled=0 here (the column defaults to 1 to protect pre-deploy
-        -- history) marks THIS newly-resolved match as needing settlement, so a
-        -- crash mid-payout is recovered by reconcileUnsettled.
-        marked = MySQL.update.await(
-            "UPDATE palm6_fightclub_matches SET status = 'resolved', winner_citizenid = ?, resolved_at = NOW(), settled = 0 WHERE id = ? AND status = 'live'",
-            { winnerCid, matchId }) == 1
-    end)
-    if not marked then return end
-    settleMatch(matchId, reasonLabel)
-end
-
--- Boot reconcile — re-drive any match flipped 'resolved' whose payout never
--- finished (server died mid-settlement). Idempotent: settleMatch skips every
--- already-claimed (paid / purse_paid) step, so this only pays what a crash
--- left owing. Delayed so palm6_dbmigrate's 0054 ALTERs (the settled/paid/
--- purse_paid columns) have landed first — before that the WHERE settled=0
--- query would error (pcall-swallowed) and recover nothing.
-local function reconcileUnsettled()
-    local pending = {}
-    pcall(function()
-        pending = MySQL.query.await(
-            "SELECT id FROM palm6_fightclub_matches WHERE status = 'resolved' AND settled = 0") or {}
-    end)
-    for _, row in ipairs(pending) do
-        settleMatch(row.id, 'recovered')
-    end
-    if #pending > 0 then
-        print(('[palm6_fightclub] boot reconcile settled %d interrupted payout(s)'):format(#pending))
-    end
-end
-
--- ---------------------------------------------------------------------------
--- Sweep — queue timeout, betting->live transitions, live-match monitoring.
--- Runs every Config.Fight.PollSec (>=2s, never Wait(0)).
--- ---------------------------------------------------------------------------
-local function sweepQueueTimeouts()
-    local t = now()
-    for i = #queue, 1, -1 do
-        local q = queue[i]
-        if (t - q.queuedAt) >= Config.Queue.MaxWaitSec then
-            table.remove(queue, i)
-            if q.src then Bridge.Notify(q.src, 'Fight Club', 'No opponent found — dropped from the queue.', 'inform') end
-        end
-    end
-end
-
-local function sweepBettingToLive()
-    local due = {}
-    pcall(function()
-        due = MySQL.query.await(
-            "SELECT id FROM palm6_fightclub_matches WHERE status = 'betting' AND betting_ends_at <= NOW()") or {}
-    end)
-    for _, row in ipairs(due) do
-        local moved = false
-        pcall(function()
-            moved = MySQL.update.await(
-                "UPDATE palm6_fightclub_matches SET status = 'live', live_started_at = NOW() WHERE id = ? AND status = 'betting'",
-                { row.id }) == 1
-        end)
-        if moved then dbg(('match #%d betting closed — fight is live'):format(row.id)) end
-    end
-end
-
--- Server-derived check: is this fighter still eligible to keep fighting?
--- Returns (out, reason) — out=true means disqualified/forfeited/KO'd.
-local function checkFighter(citizenid)
-    local src = Bridge.GetSourceByCitizenId(citizenid)
-    if not src then return true, 'disconnected' end
-    local c = Bridge.GetCoords(src)
-    if not c or Bridge.Distance(c, Config.Ring.coords) > Config.Ring.radius then
-        return true, 'left the ring'
-    end
-    if Config.Fight.RequireUnarmed then
-        local wh = Bridge.GetCurrentWeaponHash(src)
-        if wh and wh ~= Bridge.UnarmedHash() then
-            return true, 'drew a weapon'
-        end
-    end
-    local health = Bridge.GetHealth(src)
-    if health and health <= Config.Fight.KOHealth then
-        return true, 'knocked out'
-    end
-    return false, nil
-end
-
-local function sweepLiveMatches()
-    local live = {}
-    pcall(function()
-        live = MySQL.query.await([[
-            SELECT id, fighter1_citizenid, fighter2_citizenid,
-                   TIMESTAMPDIFF(SECOND, live_started_at, NOW()) AS elapsed
-            FROM palm6_fightclub_matches WHERE status = 'live'
-        ]]) or {}
-    end)
-    for _, m in ipairs(live) do
-        local out1, reason1 = checkFighter(m.fighter1_citizenid)
-        local out2, reason2 = checkFighter(m.fighter2_citizenid)
-        if out1 and out2 then
-            resolveMatch(m.id, nil, ('double forfeit: %s / %s'):format(reason1, reason2))
-        elseif out1 then
-            resolveMatch(m.id, m.fighter2_citizenid, reason1)
-        elseif out2 then
-            resolveMatch(m.id, m.fighter1_citizenid, reason2)
-        elseif (tonumber(m.elapsed) or 0) >= Config.Fight.MaxDurationSec then
-            resolveMatch(m.id, nil, 'timeout')
-        end
-    end
-end
-
-CreateThread(function()
-    while true do
-        Wait(Config.Fight.PollSec * 1000)
-        sweepQueueTimeouts()
-        sweepBettingToLive()
-        sweepLiveMatches()
-    end
-end)
-
--- ---------------------------------------------------------------------------
--- Commands + boot + cleanup
--- ---------------------------------------------------------------------------
-Bridge.RegisterCommand('fcjoin', function(source) cmdFcJoin(source) end)
-Bridge.RegisterCommand('fcleave', function(source) cmdFcLeave(source) end)
 Bridge.RegisterCommand('fcbet', function(source, args) cmdFcBet(source, args) end)
 Bridge.RegisterCommand('fcmatches', function(source) cmdFcMatches(source) end)
-
-AddEventHandler('playerDropped', function()
-    removeFromQueueBySrc(source)
-    -- Live/betting matches involving a dropped fighter self-resolve on the
-    -- next sweep tick (checkFighter treats "not online" as a forfeit) —
-    -- nothing to do here beyond the queue, which has no DB row yet.
-end)
 
 AddEventHandler('onResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
@@ -573,18 +550,34 @@ AddEventHandler('onResourceStart', function(resource)
             "SELECT COUNT(*) AS n FROM palm6_fightclub_matches WHERE status IN ('betting', 'live')")
         openN = r and tonumber(r.n) or 0
     end)
-    print(('[palm6_fightclub] ring open — %d match(es) in progress'):format(openN))
-    -- Recover any payout interrupted by the last restart, once oxmysql +
-    -- palm6_dbmigrate (0054 columns) are up. Non-time-critical, so wait it out.
+    -- Open betting/live rows are NOT auto-resolved here; T6 owns the live-strand
+    -- no-contest (LiveVoidMatch) at its own boot. This only reports + recovers
+    -- interrupted payouts.
+    print(('[palm6_fightclub] money authority up — %d match(es) still open'):format(openN))
     CreateThread(function()
         Wait(8000)
         reconcileUnsettled()
+        -- C5 money-mirror drift guard: the HUD/sportsbook quotes odds off
+        -- fc_core's MIRRORED WinnerPursePct / Betting.RakePct, but settlement
+        -- pays off THIS resource's real values — if they ever drift, the board
+        -- lies about payouts. pcall-guarded so a not-yet-started fc_core (or a
+        -- late ensure order) degrades to a warning instead of a hard stop; a
+        -- real drift with fc_core up surfaces as a loud console error.
+        local ok, err = pcall(function()
+            local core = exports.palm6_fc_core:Config()
+            assert(math.abs(core.WinnerPursePct - Config.Fight.WinnerPursePct) < 1e-9
+                and math.abs(core.Betting.RakePct - Config.Betting.RakePct) < 1e-9,
+                '[palm6_fightclub] money-mirror drift')
+        end)
+        if not ok then
+            print(('[palm6_fightclub] WARN money-mirror check: %s'):format(tostring(err)))
+        end
     end)
 end)
 
----Open-match / queue counts for devtest and future consumers.
+---Open-match count for devtest and future consumers.
 exports('GetSummary', function()
-    local out = { openMatches = 0, queued = #queue }
+    local out = { openMatches = 0 }
     pcall(function()
         local r = MySQL.single.await(
             "SELECT COUNT(*) AS n FROM palm6_fightclub_matches WHERE status IN ('betting', 'live')")
