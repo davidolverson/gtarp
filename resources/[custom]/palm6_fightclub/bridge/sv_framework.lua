@@ -53,6 +53,11 @@ end
 
 -- Charge `amount` from bank. Returns true if the player could pay.
 function Bridge.ChargeBank(src, amount, reason)
+    -- §19.2 money-inert guard (defense-in-depth): the reserved '__' citizenid
+    -- prefix (the PvE CPU sentinel) can NEVER be charged. Reject before any
+    -- framework/DB call. A normal src is a number, so this never touches the
+    -- real (non-'__') path.
+    if type(src) == 'string' and src:sub(1, 2) == '__' then return false end
     local p = getPlayer(src)
     if not p or not p.Functions then return false end
     if (p.PlayerData.money.bank or 0) < amount then return false end
@@ -62,6 +67,12 @@ end
 -- Credit bank by citizenid, online or offline (pumpcoin/insurance/bounty's
 -- offline-safe pattern — payouts land even if the payee logged off).
 function Bridge.CreditBankByCitizenId(citizenid, amount, reason)
+    -- §19.2 money-inert guard (defense-in-depth): the reserved '__' citizenid
+    -- prefix (the PvE CPU sentinel) can NEVER be credited. Reject BEFORE the
+    -- online loop AND the offline `UPDATE players` fall-through (the fall-through
+    -- bypasses GetSourceByCitizenId, so the guard must live here). Real cids
+    -- never start with '__', so the normal path is unaffected.
+    if type(citizenid) == 'string' and citizenid:sub(1, 2) == '__' then return false end
     for _, src in ipairs(GetPlayers()) do
         src = tonumber(src)
         local p = getPlayer(src)
@@ -81,6 +92,8 @@ end
 
 -- Server source for an online character, or nil.
 function Bridge.GetSourceByCitizenId(citizenid)
+    -- §19.2 money-inert guard: the reserved '__' sentinel resolves to no source.
+    if type(citizenid) == 'string' and citizenid:sub(1, 2) == '__' then return nil end
     for _, src in ipairs(GetPlayers()) do
         src = tonumber(src)
         local p = getPlayer(src)

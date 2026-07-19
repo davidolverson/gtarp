@@ -389,6 +389,91 @@ exports('OpenMatch', function(aCid, bCid, styleA, styleB, fighterA, fighterB, en
     return matchId
 end)
 
+-- fc_core's Config.Pve block (fail-closed nil if fc_core is missing/erroring).
+local function pveCfg()
+    local ok, cfg = pcall(function() return exports.palm6_fc_core:Config() end)
+    if not ok or type(cfg) ~= 'table' then return nil end
+    return cfg.Pve
+end
+
+-- Resolve a dark-PvE house CPU fighter's display name + ped model from
+-- Config.Pve.CpuFighters by id. Display-only (never money), so a miss falls
+-- back to the raw id string — same philosophy as fighterModel above.
+local function cpuFighterInfo(pve, cpuId)
+    if pve and type(pve.CpuFighters) == 'table' then
+        for _, c in ipairs(pve.CpuFighters) do
+            if c.id == cpuId then return c.name or tostring(cpuId), c.model or tostring(cpuId) end
+        end
+    end
+    return tostring(cpuId), tostring(cpuId)
+end
+
+-- Open a MONEY-INERT PvE (solo/story) match row (spec §19). Charges NOTHING:
+-- entry_pot is pinned 0 (Config.Pve.EntryFee), no ante, no betting window (the
+-- fc_combat caller GoLives immediately). is_pve=1 so /fcbet rejects the row and
+-- the §10b entry-pot payout no-ops. fighter2 is the server-owned CPU; its
+-- fighter2_citizenid is the reserved per-match sentinel '__CPU__:<matchId>',
+-- which the '__' bank guard makes structurally incapable of ever touching the
+-- bank. INSERT failure returns nil — nothing was charged, so nothing to refund.
+-- Returns matchId on success, nil on gate/fail.
+exports('OpenPveMatch', function(humanCid, tier, styleH, fighterH, cpuFighter, cpuStyle)
+    if not fcEnabled() then return nil end
+    if moneyMirrorFailed then return nil end   -- F9: mirror drift -> refuse new matches
+    if not humanCid then return nil end
+    -- §19.4 gate: PvE ships dark; only open when fc_core's Config.Pve.Enabled is true.
+    local pve = pveCfg()
+    if not pve or pve.Enabled ~= true then return nil end
+    tier = math.floor(tonumber(tier) or 0)
+
+    -- §5 active-match guard: the human may not already be in a betting/live row.
+    local activeRow
+    pcall(function()
+        activeRow = MySQL.single.await([[
+            SELECT id FROM palm6_fightclub_matches
+             WHERE (fighter1_citizenid = ? OR fighter2_citizenid = ?)
+               AND status IN ('betting','live') LIMIT 1]], { humanCid, humanCid })
+    end)
+    if activeRow then
+        dbg('OpenPveMatch refused — human already has an active betting/live match (§5)')
+        return nil
+    end
+
+    local hName          = nameForCid(humanCid)
+    local hModel         = fighterModel(fighterH)
+    local cName, cModel  = cpuFighterInfo(pve, cpuFighter)
+
+    -- INSERT is_pve=1, entry_pot=0 (EntryFee pinned 0 — NO charge, no ante),
+    -- betting_ends_at=NOW() (no window). fighter2_citizenid is a placeholder
+    -- immediately replaced below with the per-match '__CPU__:<id>' sentinel.
+    local ok, matchId = pcall(function()
+        return MySQL.insert.await([[
+            INSERT INTO palm6_fightclub_matches
+                (fighter1_citizenid, fighter1_name, fighter2_citizenid, fighter2_name,
+                 style1, style2, fighter1_model, fighter2_model,
+                 status, entry_pot, is_pve, cpu_tier, cpu_fighter, betting_ends_at)
+            VALUES (?, ?, '__CPU__', ?, ?, ?, ?, ?, 'betting', 0, 1, ?, ?, NOW())
+        ]], { humanCid, hName, cName, styleH, cpuStyle, hModel, cModel, tier, cpuFighter })
+    end)
+    if not ok or not matchId or matchId == 0 then
+        dbg('OpenPveMatch INSERT failed — nothing charged, nothing to refund')
+        return nil
+    end
+
+    -- Per-match CPU sentinel (spec §19.2): reserved '__' prefix (caught by the
+    -- '__' bank guard) AND collision-free per match, so a future multi-ring can
+    -- run two CPU bouts without a shared '__CPU__' false-positiving the §5
+    -- active-match check. Set AFTER insert so it can key on the auto-increment id.
+    pcall(function()
+        MySQL.update.await(
+            "UPDATE palm6_fightclub_matches SET fighter2_citizenid = CONCAT('__CPU__:', id) WHERE id = ?",
+            { matchId })
+    end)
+
+    dbg(('OpenPveMatch #%d: %s vs CPU %s (tier=%d, is_pve=1, entry_pot=0, sentinel=__CPU__:%d)')
+        :format(matchId, tostring(humanCid), tostring(cpuFighter), tier, matchId))
+    return matchId
+end)
+
 -- betting -> live (guarded). Closes /fcbet by leaving the 'betting' state.
 exports('GoLive', function(matchId)
     local moved = false
