@@ -259,9 +259,8 @@ local function testShapes()
     if resourceUp('palm6_fightclub') then
         try('fightclub.GetSummary', function()
             local s = exports.palm6_fightclub:GetSummary()
-            check(type(s) == 'table' and type(s.openMatches) == 'number'
-                and type(s.queued) == 'number',
-                'fightclub.GetSummary returns {openMatches, queued}')
+            check(type(s) == 'table' and type(s.openMatches) == 'number',
+                'fightclub.GetSummary returns {openMatches}')
         end)
     else
         fail('fightclub — resource not started')

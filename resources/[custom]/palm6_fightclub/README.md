@@ -1,42 +1,48 @@
 # palm6_fightclub — the underground ring
 
-Two citizens queue at the ring, get auto-paired, and the crowd bets cash on
-who walks out. Bare knuckles only — the fight is unarmed, server-monitored,
-and ends in a real knockout, a forfeit, or a timeout draw. Payouts are a
-**parimutuel pool**: every spectator wager on both fighters is pooled, the
-house skims a rake, the winner gets a purse cut straight off the top, and
-whatever's left splits proportionally among everyone who bet on the winner.
+Two citizens meet at the ring, one challenges the other, the challenged
+fighter accepts, and the crowd bets cash on who walks out. Bare knuckles
+only — the fight is unarmed, server-monitored, and ends in a real knockout,
+a forfeit, or a timeout draw. Payouts are a **parimutuel pool**: every
+spectator wager on both fighters is pooled, the house skims a rake, the
+winner gets a purse cut straight off the top, and whatever's left splits
+proportionally among everyone who bet on the winner.
+
+**Architecture note (Def Jam Fight Club, Phase 0):** the match *lifecycle*
+(challenge → select → betting → live → resolved) and all combat now live in
+`palm6_fc_combat` / `palm6_fc_core`. This resource is the **money authority
+only** — it exposes guarded exports (`OpenMatch`/`GoLive`/`ResolveMatch`/
+`VoidMatch`/`LiveVoidMatch`) that open/advance/resolve a match row and runs
+the recoverable, idempotent settlement (spectator pool + two-fighter entry
+pot). There is no queue and no server-swept combat here anymore.
 
 ## Player surface
 
-All chat commands (server-only resource, no NUI/client script):
+This resource's own player surface is spectator betting (server-only, no
+NUI/client script). Fighters challenge/accept and pick a style through
+`palm6_fc_combat`'s client prompts — not through this resource.
 
-- `/fcjoin` — queue up at the ring (Elysian Island backlot). The instant a
-  second citizen queues, the two of you are paired into a match — queueing
-  IS the consent, same as `palm6_bounty`'s `/postbounty` needs no separate
-  accept step. Auto-dropped from the queue after 5 minutes with no
-  opponent.
-- `/fcleave` — leave the queue before you're paired.
 - `/fcbet [match #] [1 or 2] [$50-5000]` — spectator wager on fighter 1 or
   2. Fighters cannot bet on their own match. One bet per citizen per match.
 - `/fcmatches` — the open board: betting windows (with time left) and live
   fights.
 
-Betting runs for 60 seconds after a match is created. When it closes the
-fight goes live: both fighters must stay inside the ring, stay unarmed, and
-the first one at or below 110 HP (GTA's 100-200 ped scale — solidly
-knocked out, one notch past `palm6_bounty`'s 120 "beaten down" capture
-bar) loses. Leaving the ring, drawing any weapon, or disconnecting is an
-instant forfeit. No knockout inside 180 seconds is a draw.
+A match opens when a fighter challenges another at the ring and the target
+accepts (via `palm6_fc_combat`). Both fighters ante the entry stake, a
+betting window opens for `Config.Betting.WindowSec` (60s), and when it
+closes the fight goes live under `palm6_fc_combat`'s server-authoritative
+combat. Leaving the ring, drawing a weapon, or disconnecting is an instant
+forfeit; no knockout inside the round cap is a draw. A pre-live abort
+(disconnect during betting/countdown) is a no-contest — every bet and both
+antes are refunded, nobody is paid.
 
 ## Why this can't be gamed from the client
 
-- **Every fight-ending condition is server-derived.** Health, position, and
-  current weapon are all read straight off the live synced peds
-  (`GetEntityHealth`, `GetEntityCoords`, `GetSelectedPedWeapon` — same
-  technique `palm6_bounty`'s `/capture` uses for its proximity+health
-  check). A modified client claiming "I won" or "I'm unarmed" changes
-  nothing; the sweep thread only ever reads the real ped state.
+- **Every fight-ending condition is server-derived.** HP, stamina, position,
+  and the finisher are all server-owned per-match state in `palm6_fc_combat`
+  (never ped health, never client-trusted). A modified client claiming "I
+  won" or "I landed" changes nothing; the server validates every strike's
+  window, reach, and block before applying authoritative damage.
 - **Betting is a database-enforced atomic claim, not a Lua check.** The bet
   insert is `INSERT ... SELECT ... FROM palm6_fightclub_matches WHERE id=?
   AND status='betting'` — the row only lands if the match was still taking
@@ -50,8 +56,8 @@ instant forfeit. No knockout inside 180 seconds is a draw.
   insert just fails the constraint — caught and reported as "you already
   have a bet," no double charge possible.
 - **Resolution is a guarded `UPDATE ... WHERE status='live'`** before any
-  money moves, so a match can only be paid out once even if the sweep
-  logic somehow evaluated it twice in the same tick.
+  money moves, so a match can only be paid out once even if the resolver
+  somehow fired twice in the same tick.
 - **Fighters can't bet on themselves** — checked against both fighters'
   citizenids at bet time. (A fighter colluding with an *alt* to bet against
   themselves and intentionally throw the fight is an accepted economic/
@@ -78,15 +84,14 @@ instant forfeit. No knockout inside 180 seconds is a draw.
   round up, payouts round down" honesty `palm6_pumpcoin` documents. If
   nobody bet on the winning side, that remainder simply isn't paid to
   anyone (no winning bettors to pay).
-- A mutual forfeit (both fighters disqualified in the same sweep tick, e.g.
-  both leave the ring) or a 180s timeout with no knockout is a full refund
-  to every bettor — no rake, no purse.
-- The in-memory queue does not survive a resource/server restart (nothing
-  is written to the DB until a match exists) — a restart mid-queue just
-  means both citizens need to `/fcjoin` again. Open matches themselves
-  (`betting`/`live` rows) DO survive a restart; the sweep picks them back
-  up on the next tick.
-- Exports: `GetSummary() -> { openMatches, queued }`.
+- A no-contest (a disconnect during betting/countdown, or a timeout with no
+  knockout) is a full refund to every bettor and both antes — no rake, no
+  purse. A live disconnect / ring-out is a forfeit: the opponent is paid.
+- Open matches (`betting`/`live` rows) survive a resource/server restart:
+  `palm6_fc_combat` no-contests any stranded row at its boot, and this
+  resource's boot reconcile re-drives any interrupted payout with no
+  double-pay. There is no in-memory queue to lose.
+- Exports: `GetSummary() -> { openMatches }`.
 - `Config.Ring.coords` is a Tier-3 placeholder (see
   `docs/GTA6-READINESS.md` §2) — retune once a real MLO/prop is picked.
 
@@ -145,9 +150,10 @@ No external APIs, no keys, no custom assets — config coordinates only.
 
 ## Deferred to v2
 
-- No spectator UI/board blip — matches are chat-command only for now.
-- No fighter entry fee / ranked ladder — pure open queue.
-- No admin cancel command for a stuck match (a mutual forfeit or timeout
-  always resolves it within `Config.Fight.MaxDurationSec`, so nothing can
-  hang forever, but there's no manual override yet).
+- Spectator betting is chat-command only (`/fcbet` / `/fcmatches`); the
+  live board/HUD is `palm6_fc_hud`.
+- No admin cancel command for a stuck match (the round cap + ring-out /
+  disconnect forfeits always resolve a live match, and a betting/countdown
+  strand is no-contested at boot, so nothing hangs forever — but there's no
+  manual override yet).
 - Single global ring; no per-location rings.

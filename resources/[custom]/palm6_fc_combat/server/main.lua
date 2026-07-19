@@ -91,8 +91,10 @@ end
 local function getEntryStake()
     if entryStakeCache ~= nil then return entryStakeCache end
     local ok, v = pcall(function() return exports.palm6_fightclub:GetEntryStake() end)
-    entryStakeCache = (ok and tonumber(v)) or 0
-    return entryStakeCache
+    -- F8: cache ONLY a good read; leave the cache nil on a transient fail so the
+    -- NEXT match retries instead of latching $0 forever off one bad read.
+    if ok and tonumber(v) then entryStakeCache = tonumber(v) end
+    return entryStakeCache or 0
 end
 
 local function validPick(fighterId, styleId)
@@ -141,19 +143,28 @@ end
 
 -- The ONE resolve entry. winnerCid=nil => draw/void. method: ko/finisher/forfeit/draw/void.
 -- Idempotent via the resolving flag + fightclub's own atomic status-guarded UPDATEs.
---   roundStarted           -> ResolveMatch (live row pays a winner)
---   wentLive & !roundStarted (COUNTDOWN) -> LiveVoidMatch (no-contest, never pays — §5 pre-LIVE)
---   !wentLive (BETTING)    -> VoidMatch (betting-row draw refund)
+--   roundStarted   -> ResolveMatch (live row pays a winner)
+--   !roundStarted (BETTING or COUNTDOWN, §5 pre-LIVE) -> STATE-AGNOSTIC void:
+--     VoidMatch (betting-row draw refund); if that no-ops because GoLive already
+--     flipped the row to 'live', fall through to LiveVoidMatch. Either way a fight
+--     that never started refunds and never pays a winner (F1).
 function resolveFight(matchId, winnerCid, method)
     local m = matches[matchId]
     if not m or m.resolving then return end
     m.resolving = true
     if m.roundStarted then
         exports.palm6_fightclub:ResolveMatch(matchId, winnerCid, method or 'ko')
-    elseif m.wentLive then
-        exports.palm6_fightclub:LiveVoidMatch(matchId)
     else
-        exports.palm6_fightclub:VoidMatch(matchId)
+        -- F1: STATE-AGNOSTIC pre-LIVE void. GoLive flips the DB row to 'live'
+        -- BEFORE m.wentLive is set, so a DC in that window must NOT route off
+        -- m.wentLive (VoidMatch is guarded WHERE status='betting' and would no-op
+        -- on the now-'live' row -> no refund, ring bricked). Try the betting-guarded
+        -- VoidMatch first; if it no-ops (row already live -> returns false), fall
+        -- through to LiveVoidMatch. Both are idempotent, guarded, and resolve to
+        -- winner=NULL draw-refund, so a pre-roundStarted abort ALWAYS refunds.
+        if not exports.palm6_fightclub:VoidMatch(matchId) then
+            exports.palm6_fightclub:LiveVoidMatch(matchId)
+        end
     end
     teardownMatch(matchId)
 end
@@ -222,12 +233,33 @@ local function goLiveAndCountdown(matchId)
     -- T6 fires ONLY the countdown seam here (no squareUp send, no getFightMarks).
     TriggerEvent('fc:match:countdown', { matchId = matchId, cidA = m.cidA, cidB = m.cidB })  -- arena crowd/cam + square-up
     local cd = fcCore().Timers.CountdownSec
+    m.countdownStartedAt = now()
     if m.srcA then TriggerClientEvent('palm6_fc_combat:countdown', m.srcA, { matchId = matchId, seconds = cd }) end
     if m.srcB then TriggerClientEvent('palm6_fc_combat:countdown', m.srcB, { matchId = matchId, seconds = cd }) end
     dbg(('match #%d COUNTDOWN (%ds)'):format(matchId, cd))
+    -- F4: gate LIVE on BOTH clients ack'ing their preload (model + anims loaded)
+    -- via palm6_fc_combat:ready, OR a deadline (countdown + preload grace). The
+    -- 3-2-1 visual keeps firing above; enterLive only fires once the visual has
+    -- elapsed AND both readied. On deadline-without-both-ready, no-contest void
+    -- (state-agnostic refund, §5/§8) instead of entering LIVE half-loaded.
+    local graceSec = 5
     CreateThread(function()
-        Wait(cd * 1000)
-        enterLive(matchId)
+        local deadline = now() + cd + graceSec
+        while true do
+            Wait(250)
+            local mm = matches[matchId]
+            if not mm or mm.resolving or mm.roundStarted then return end
+            if now() >= deadline then
+                dbg(('match #%d preload gate TIMED OUT — voiding (no-contest)'):format(matchId))
+                resolveFight(matchId, nil, 'void')   -- F1 state-agnostic void: refund, never LIVE
+                return
+            end
+            local bothReady = mm.ready and mm.ready[mm.cidA] and mm.ready[mm.cidB]
+            if bothReady and now() >= (mm.countdownStartedAt or 0) + cd then
+                enterLive(matchId)
+                return
+            end
+        end
     end)
 end
 
@@ -296,9 +328,33 @@ local function beginAccepted(s)
     local styleB = s.selB.styleId
     local fighterA = s.selA.fighterId
     local fighterB = s.selB.fighterId
-    local matchId = exports.palm6_fightclub:OpenMatch(s.aCid, s.bCid, styleA, styleB, fighterA, fighterB, stake)
-    if not matchId or matchId == 0 then
-        if stake > 0 then   -- INSERT failed after both charges landed -> refund BOTH antes
+
+    -- F3: resolve EVERY framework-dependent value (fighter models + player names)
+    -- BEFORE the OpenMatch money commit, each pcall-guarded, so no unguarded call
+    -- can throw between the ante charge and the row INSERT (strand antes) OR between
+    -- the INSERT and startBettingTimer (orphan a paid-up betting row: no timer, ring
+    -- stuck). After OpenMatch the tail only builds tables + fires the timer.
+    local function safeFighter(id)
+        local okF, f = pcall(function() return exports.palm6_fc_core:GetFighter(id) end)
+        return (okF and f) or nil
+    end
+    local fA = safeFighter(fighterA) or safeFighter(cfg.DefaultFighter)
+    local fB = safeFighter(fighterB) or safeFighter(cfg.DefaultFighter)
+    local modelA = (fA and fA.model) or 'mp_m_freemode_01'
+    local modelB = (fB and fB.model) or 'mp_m_freemode_01'
+    local okNameA, nameA = pcall(function() return Bridge.GetPlayerName(aSrc) end)
+    local okNameB, nameB = pcall(function() return Bridge.GetPlayerName(bSrc) end)
+    nameA = (okNameA and nameA) or ('fighter %s'):format(tostring(s.aCid))
+    nameB = (okNameB and nameB) or ('fighter %s'):format(tostring(s.bCid))
+
+    -- F2: OpenMatch is a cross-resource call AFTER both antes are charged. A bare
+    -- call only catches a nil RETURN; a THROW (fightclub reloading) would strand both
+    -- antes. pcall-wrap it and treat ok=false OR nil/0 as the SINGLE failure branch.
+    local ok, matchId = pcall(function()
+        return exports.palm6_fightclub:OpenMatch(s.aCid, s.bCid, styleA, styleB, fighterA, fighterB, stake)
+    end)
+    if not ok or not matchId or matchId == 0 then
+        if stake > 0 then   -- INSERT failed / threw after both charges landed -> refund BOTH antes
             Bridge.CreditBankByCitizenId(s.aCid, stake, 'fightclub-entry-refund')
             Bridge.CreditBankByCitizenId(s.bCid, stake, 'fightclub-entry-refund')
         end
@@ -307,23 +363,23 @@ local function beginAccepted(s)
         return
     end
 
-    local fA = exports.palm6_fc_core:GetFighter(fighterA) or exports.palm6_fc_core:GetFighter(cfg.DefaultFighter)
-    local fB = exports.palm6_fc_core:GetFighter(fighterB) or exports.palm6_fc_core:GetFighter(cfg.DefaultFighter)
     matches[matchId] = {
         cidA = s.aCid, cidB = s.bCid, srcA = aSrc, srcB = bSrc,
         selA = s.selA, selB = s.selB,
-        nameA = Bridge.GetPlayerName(aSrc), nameB = Bridge.GetPlayerName(bSrc),
-        modelA = fA and fA.model or 'mp_m_freemode_01',
-        modelB = fB and fB.model or 'mp_m_freemode_01',
+        nameA = nameA, nameB = nameB,
+        modelA = modelA, modelB = modelB,
         roundStarted = false, resolving = false, inFinisher = {}, startedAt = 0,
         wentLive = false, bettingEndsAt = now() + cfg.Timers.BetWindowSec,
+        ready = {},   -- F4: per-match client preload acks (palm6_fc_combat:ready)
     }
     activeByCid[s.aCid] = matchId; activeByCid[s.bCid] = matchId
     activeBySrc[aSrc] = matchId; activeBySrc[bSrc] = matchId
-    TriggerEvent('fc:match:opened', { matchId = matchId, f1name = matches[matchId].nameA, f2name = matches[matchId].nameB, betWindowSec = cfg.Timers.BetWindowSec })
-    Bridge.Notify(aSrc, 'Fight Club', ('Match #%d opened vs %s — betting is live for %ds.'):format(matchId, matches[matchId].nameB, cfg.Timers.BetWindowSec), 'success')
-    Bridge.Notify(bSrc, 'Fight Club', ('Match #%d opened vs %s — betting is live for %ds.'):format(matchId, matches[matchId].nameA, cfg.Timers.BetWindowSec), 'success')
+    -- Arm the betting timer BEFORE any remaining trigger/notify so even a throw in
+    -- the announce tail leaves the ring on a live timer (F3), never a stuck orphan.
     startBettingTimer(matchId)
+    TriggerEvent('fc:match:opened', { matchId = matchId, f1name = nameA, f2name = nameB, betWindowSec = cfg.Timers.BetWindowSec })
+    Bridge.Notify(aSrc, 'Fight Club', ('Match #%d opened vs %s — betting is live for %ds.'):format(matchId, nameB, cfg.Timers.BetWindowSec), 'success')
+    Bridge.Notify(bSrc, 'Fight Club', ('Match #%d opened vs %s — betting is live for %ds.'):format(matchId, nameA, cfg.Timers.BetWindowSec), 'success')
     dbg(('match #%d BETTING opened'):format(matchId))
 end
 
@@ -431,6 +487,26 @@ RegisterNetEvent('palm6_fc_combat:select', function(payload)
     elseif src == s.bSrc then s.selB = { fighterId = fid, styleId = sid }; s.submittedB = true
     else return end
     if s.submittedA and s.submittedB then finalizeStaging(stgId) end
+end)
+
+-- F4: client preload ack. The client emits this AFTER it has loaded the fighter
+-- model + anim dicts (that half is the client batch). The server tracks which of
+-- the two fighters have ack'd so goLiveAndCountdown can GATE enterLive on both
+-- being ready. Validated: sender must be a participant of THIS pre-LIVE match
+-- (activeBySrc + srcA/srcB), so a spoofed ready for someone else's match no-ops.
+RegisterNetEvent('palm6_fc_combat:ready', function(payload)
+    local src = source
+    if not enabled() then return end
+    local matchId = activeBySrc[src]
+    if not matchId then return end
+    if type(payload) == 'table' and payload.matchId and tonumber(payload.matchId) ~= matchId then return end
+    local m = matches[matchId]
+    if not m or m.roundStarted or m.resolving then return end
+    local cid = (src == m.srcA and m.cidA) or (src == m.srcB and m.cidB) or nil
+    if not cid then return end
+    m.ready = m.ready or {}
+    m.ready[cid] = true
+    dbg(('match #%d: preload ready ack from %s'):format(matchId, tostring(cid)))
 end)
 
 -- DC handling. A participant drop maps through resolveFight (the single hub) by
@@ -709,7 +785,9 @@ end)
 CreateThread(function()
     while true do
         Wait(1000)
-        if MOVES then
+        if not enabled() then
+            Wait(5000)   -- F6: prod-inert idle — no 1s DB poll while the feature is disabled
+        elseif MOVES then
             local live = {}
             pcall(function()
                 live = MySQL.query.await("SELECT id FROM palm6_fightclub_matches WHERE status = 'live'") or {}
@@ -824,7 +902,18 @@ end)
 -- All of Combat/ckey/flush/Dirty/matches/resolveFight are declared ABOVE in this
 -- same chunk (T6/T7), so this block reaches them directly.
 -- ============================================================================
-local FinCfg = exports.palm6_fc_core:Config()
+-- F12: fc_core config for the finisher, read LAZILY + guarded (mirrors fcCore()).
+-- A bare top-level `exports.palm6_fc_core:Config()` throws at CHUNK LOAD if fc_core
+-- is momentarily unavailable (load-order race / reload), which would fail the whole
+-- server script registration. finCfg() returns the cached config or nil; every Fin
+-- function early-returns on nil so the finisher simply no-ops until fc_core is up.
+local FinCfgCache
+local function finCfg()
+    if FinCfgCache then return FinCfgCache end
+    local c = fcCore()
+    if c and c.Blazin then FinCfgCache = c end
+    return FinCfgCache
+end
 
 -- Prototype takedown clip (§7: base-game takedown first). David feel-tests the
 -- pose + swaps the clip / adds 180 to heading if it reads wrong (Step 12). The
@@ -848,6 +937,8 @@ end
 -- at a shared origin (§7 step 1-2); spectators/opponent view the scene via normal
 -- ped-anim replication, never tasked here.
 function Fin.start(matchId, attCid, defCid)
+    local fc = finCfg()                                       -- F12: guarded fc_core read
+    if not fc then return end
     local st = matches[matchId]
     if not st or not st.roundStarted or st.resolving then return end
     if finishers[matchId] then return end                     -- one finisher per match
@@ -890,7 +981,7 @@ function Fin.start(matchId, attCid, defCid)
     flush(matchId)             -- C2: push the spent meter to the HUD (T9) immediately
 
     -- Server-authoritative damage lands at scene end (after windup + scene).
-    SetTimeout(FINISHER_WINDUP_MS + FinCfg.Blazin.SceneDurationMs, function()
+    SetTimeout(FINISHER_WINDUP_MS + fc.Blazin.SceneDurationMs, function()
         Fin.applyDamage(matchId)
     end)
 end
@@ -898,11 +989,12 @@ end
 -- Called from the T7 connect handler (anchor, below) right after a LANDED connect
 -- adds momentum to the attacker. Fires only on a HEAVY move at a full meter.
 function Fin.tryTrigger(matchId, attCid, defCid, moveId)
-    if not FinCfg.Blazin.HeavyQualifies then return end
+    local fc = finCfg()                                       -- F12: guarded fc_core read
+    if not fc or not fc.Blazin.HeavyQualifies then return end
     local move = exports.palm6_fc_core:GetMove(moveId)
     if not move or move.kind ~= 'heavy' then return end
     local att = Combat[ckey(matchId, attCid)]                 -- C2: meter = T7 Combat record .blazin
-    if not att or (att.blazin or 0) < FinCfg.Blazin.FullThreshold then return end
+    if not att or (att.blazin or 0) < fc.Blazin.FullThreshold then return end
     Fin.start(matchId, attCid, defCid)
 end
 
@@ -930,8 +1022,10 @@ function Fin.applyDamage(matchId)
         return
     end
 
-    local reduce = math.min(FINISHER_MAX_REDUCE, (f.mash or 0) * FinCfg.Blazin.MashReducePerHit)
-    local dmg    = math.floor(FinCfg.Blazin.BaseFinisherDamage * (1.0 - reduce))
+    local fc = finCfg()                                       -- F12: guarded fc_core read
+    if not fc then Fin.cleanup(matchId); return end
+    local reduce = math.min(FINISHER_MAX_REDUCE, (f.mash or 0) * fc.Blazin.MashReducePerHit)
+    local dmg    = math.floor(fc.Blazin.BaseFinisherDamage * (1.0 - reduce))
 
     local dk = ckey(matchId, f.defCid)
     local def = Combat[dk]

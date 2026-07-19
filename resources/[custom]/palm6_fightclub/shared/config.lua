@@ -21,14 +21,6 @@ Config.Ring = {
     label = 'the fight ring (Vanilla Unicorn back lot)',
 }
 
--- Queueing. Two citizens present at the ring are auto-paired the instant a
--- second one joins — signing up IS the consent (palm6_bounty's /postbounty
--- precedent: no separate accept step to abuse or stall on).
-Config.Queue = {
-    JoinCooldownSec = 10,
-    MaxWaitSec      = 300,   -- auto-drop from the queue if nobody else joins
-}
-
 -- Betting window. Spectators only — fighters cannot bet on their own match
 -- (checked server-side against both fighters' citizenids).
 Config.Betting = {
@@ -50,14 +42,8 @@ Config.Fight = {
     EntryRakePct     = 0.10,  -- sink on the entry pot (anti-collusion); 0 = zero-sum wash (still no mint)
     EntryPotLoserPct = 0.0,   -- MVP off; boot-assert EntryRakePct+this<=1 AND this<0.5
     WinnerPursePct   = 0.15,  -- UNCHANGED: winner's cut of the betting pool
-    -- Legacy combat knobs (lifecycle now owned by palm6_fc_combat / fc_core):
-    -- GTA ped health is on a 100-200 scale (100 = dead/laststand, 200 = full,
-    -- see qbx_medical's SetEntityMaxHealth(ped, 200)). Left in place to avoid
-    -- churn — no longer read by main.lua.
-    KOHealth         = 110,
-    MaxDurationSec   = 180,
-    PollSec          = 2,
-    RequireUnarmed   = true,
+    -- (Legacy combat knobs KOHealth/MaxDurationSec/PollSec/RequireUnarmed removed —
+    -- the fight lifecycle + combat now live entirely in palm6_fc_combat / fc_core.)
 }
 
 -- Per-source command cooldowns (seconds) — chat-command spam guard, distinct

@@ -19,6 +19,13 @@
 
 local lastAction = {}    -- [src] = { [key] = ts } — chat-command spam guard
 
+-- F9: fail-closed money-mirror latch. Set true at boot if fc_core's mirrored
+-- pricing/betting-window drifts from this money authority (a real drift makes the
+-- HUD/sportsbook lie). While set, OpenMatch refuses to open NEW (mispriced) matches;
+-- settlement/void of in-flight rows still run off the real values below, so nothing
+-- strands. Declared here so OpenMatch (defined above the boot check) can read it.
+local moneyMirrorFailed = false
+
 local function now() return os.time() end
 
 local function dbg(msg)
@@ -343,7 +350,23 @@ end
 -- spec 10b then unwinds on nil). Returns matchId on success, nil on gate/fail.
 exports('OpenMatch', function(aCid, bCid, styleA, styleB, fighterA, fighterB, entryStake)
     if not fcEnabled() then return nil end
+    if moneyMirrorFailed then return nil end   -- F9: mirror drift -> refuse new matches (caller refunds antes)
     if not aCid or not bCid then return nil end
+    -- F7 §5 defense-in-depth: refuse if EITHER fighter is already in a betting/live
+    -- row (the same guard fc_combat enforces), so the money authority self-enforces
+    -- the one-match-per-fighter rule regardless of caller (e.g. /fcdebug). Caller
+    -- refunds both antes on nil.
+    local activeRow
+    pcall(function()
+        activeRow = MySQL.single.await([[
+            SELECT id FROM palm6_fightclub_matches
+             WHERE (fighter1_citizenid IN (?, ?) OR fighter2_citizenid IN (?, ?))
+               AND status IN ('betting','live') LIMIT 1]], { aCid, bCid, aCid, bCid })
+    end)
+    if activeRow then
+        dbg('OpenMatch refused — a fighter already has an active betting/live match (§5)')
+        return nil
+    end
     entryStake = math.floor(tonumber(entryStake) or 0)
     if entryStake < 0 then return nil end
     local entryPot     = 2 * entryStake
@@ -557,20 +580,32 @@ AddEventHandler('onResourceStart', function(resource)
     CreateThread(function()
         Wait(8000)
         reconcileUnsettled()
-        -- C5 money-mirror drift guard: the HUD/sportsbook quotes odds off
-        -- fc_core's MIRRORED WinnerPursePct / Betting.RakePct, but settlement
-        -- pays off THIS resource's real values — if they ever drift, the board
-        -- lies about payouts. pcall-guarded so a not-yet-started fc_core (or a
-        -- late ensure order) degrades to a warning instead of a hard stop; a
-        -- real drift with fc_core up surfaces as a loud console error.
-        local ok, err = pcall(function()
-            local core = exports.palm6_fc_core:Config()
-            assert(math.abs(core.WinnerPursePct - Config.Fight.WinnerPursePct) < 1e-9
-                and math.abs(core.Betting.RakePct - Config.Betting.RakePct) < 1e-9,
-                '[palm6_fightclub] money-mirror drift')
-        end)
-        if not ok then
-            print(('[palm6_fightclub] WARN money-mirror check: %s'):format(tostring(err)))
+        -- F5/F9 money-mirror drift guard, FAIL-CLOSED. The HUD/sportsbook quotes
+        -- odds off fc_core's MIRRORED WinnerPursePct / Betting.RakePct, and fc_combat
+        -- runs its betting-window close timer off fc_core's Timers.BetWindowSec while
+        -- the DB betting_ends_at + the HUD board run off THIS resource's real values
+        -- (Config.Fight.WinnerPursePct / Config.Betting.RakePct / Config.Betting.
+        -- WindowSec) — any drift makes the board lie about payouts or the clock.
+        -- A not-yet-started fc_core (late ensure order) is transient -> warn + skip;
+        -- a REAL drift with fc_core up is fatal -> latch OpenMatch inert + loud error.
+        local coreOk, core = pcall(function() return exports.palm6_fc_core:Config() end)
+        if not coreOk or type(core) ~= 'table' then
+            print('[palm6_fightclub] WARN money-mirror check skipped — fc_core not up yet')
+        else
+            local drift =
+                math.abs((tonumber(core.WinnerPursePct) or -1) - Config.Fight.WinnerPursePct) >= 1e-9
+                or math.abs((core.Betting and tonumber(core.Betting.RakePct) or -1) - Config.Betting.RakePct) >= 1e-9
+                or (tonumber(core.Timers and core.Timers.BetWindowSec) ~= tonumber(Config.Betting.WindowSec))
+            if drift then
+                moneyMirrorFailed = true   -- F9: block new matches (in-flight rows still settle)
+                print('[palm6_fightclub] FATAL money-mirror drift — fc_core mirror != money authority:')
+                print(('  WinnerPursePct core=%s money=%s | RakePct core=%s money=%s | BetWindowSec core=%s money=%s')
+                    :format(tostring(core.WinnerPursePct), tostring(Config.Fight.WinnerPursePct),
+                            tostring(core.Betting and core.Betting.RakePct), tostring(Config.Betting.RakePct),
+                            tostring(core.Timers and core.Timers.BetWindowSec), tostring(Config.Betting.WindowSec)))
+                print('[palm6_fightclub] OpenMatch is now INERT until the mirror is fixed — no new matches will open.')
+                error('[palm6_fightclub] money-mirror drift — refusing to open new matches (fix fc_core / fightclub config parity)')
+            end
         end
     end)
 end)

@@ -205,7 +205,9 @@ local function awardRep(matchId)
     local winnerCid = m.winner_citizenid
     local method    = m.method or ''
     -- (c) decisive-only: draw/void produce no winner; forfeit has a winner but
-    -- pays NO rep (spec §9c). Ledger win/loss is recorded for ko/finisher/forfeit.
+    -- pays NO rep (spec §9c) AND (F10) NO win/loss ledger bump — a forfeit is
+    -- uncapped (no pairing-cooldown / daily gate in front of it), so bumping the
+    -- ledger on it lets an alt/collusion forfeit-loop farm the win/loss stats.
     local decisive = winnerCid and (method == 'ko' or method == 'finisher' or method == 'forfeit')
     if not decisive then return end
     if isReserved(winnerCid) then
@@ -215,9 +217,12 @@ local function awardRep(matchId)
 
     local loserCid = (m.fighter1_citizenid == winnerCid) and m.fighter2_citizenid or m.fighter1_citizenid
 
-    -- ledger (rank is rep-derived, so a forfeit win never inflates rank)
-    bumpWin(winnerCid)
-    if loserCid and not isReserved(loserCid) then bumpLoss(loserCid) end
+    -- ledger: ONLY the clean decisive results (ko/finisher). Never forfeit (F10).
+    -- Rank is rep-derived, so skipping the forfeit bump keeps rank honest too.
+    if method == 'ko' or method == 'finisher' then
+        bumpWin(winnerCid)
+        if loserCid and not isReserved(loserCid) then bumpLoss(loserCid) end
+    end
 
     -- rep only on a clean decisive result (never forfeit/draw/void)
     if method == 'forfeit' or not loserCid or isReserved(loserCid) then return end
