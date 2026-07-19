@@ -9,7 +9,9 @@ Config = {}
 
 -- HARD prod gate. Every fc resource checks exports.palm6_fc_core:Config().Enabled
 -- before opening a match / running combat. Ships false = prod-inert.
-Config.Enabled = false
+-- TEST TOGGLE 2026-07-19 (uncommitted): flipped true to feel-test the fight club.
+-- REVERT to false before any merge to main — the committed branch must stay dark.
+Config.Enabled = true
 
 -- Canonical ring (combat/arena read THIS; palm6_fightclub keeps its own
 -- Config.Ring for atRing()). Coords retuned 2026-07-10 — VERIFY IN-GAME
@@ -99,7 +101,7 @@ Config.Betting = {
 -- policy-only (never HP/damage inflation). PveTierRepFrac = fraction of
 -- RepPerPvpWin (asserted "full day < one PvP win" at boot in exports.lua).
 Config.Pve = {
-    Enabled                 = false,
+    Enabled                 = true,   -- TEST TOGGLE 2026-07-19 (uncommitted): flipped true for PvE feel-test; REVERT before merge
     MaxPop                  = 6,
     RequireNoHumanAtRing    = true,
     PreemptOnHumanChallenge = true,
