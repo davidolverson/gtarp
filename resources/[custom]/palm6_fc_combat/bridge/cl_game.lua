@@ -249,11 +249,14 @@ end
 local cpuPed      = nil
 local cpuTarget   = nil   -- { x, y, z, heading }
 local cpuThreadOn = false
+local cpuDying    = false -- true while the KO ragdoll plays out (delete is deferred)
 
--- Delete the puppet + stop its render loop. Idempotent; the §19.6 no-orphan hook.
-function Game.CpuDespawn()
+-- Hard-delete the puppet immediately + stop its render loop. Used by resource-stop
+-- (must never leave an orphan) and by a fresh spawn. §19.6 no-orphan guarantee.
+function Game.CpuForceDelete()
     cpuThreadOn = false
     cpuTarget   = nil
+    cpuDying    = false
     if cpuPed and DoesEntityExist(cpuPed) then
         SetEntityAsMissionEntity(cpuPed, true, true)
         DeletePed(cpuPed)
@@ -261,11 +264,45 @@ function Game.CpuDespawn()
     cpuPed = nil
 end
 
+-- Teardown despawn. If the puppet is mid-KO-ragdoll, LEAVE it — CpuDown's timer
+-- deletes it so the ragdoll reads on screen. Otherwise delete now.
+function Game.CpuDespawn()
+    cpuThreadOn = false
+    cpuTarget   = nil
+    if cpuDying then return end            -- let the KO ragdoll + its timer finish
+    if cpuPed and DoesEntityExist(cpuPed) then
+        SetEntityAsMissionEntity(cpuPed, true, true)
+        DeletePed(cpuPed)
+    end
+    cpuPed = nil
+end
+
+-- KO: ragdoll the puppet where it stands, then delete it after a beat so you see
+-- it drop instead of vanish. Stops the chase loop first so it collapses in place.
+function Game.CpuDown()
+    if not cpuPed or not DoesEntityExist(cpuPed) then return end
+    cpuThreadOn = false
+    cpuDying    = true
+    local ped = cpuPed
+    SetEntityInvincible(ped, false)
+    SetPedCanRagdoll(ped, true)
+    SetPedToRagdoll(ped, 4000, 4000, 0, false, false, false)
+    ApplyForceToEntity(ped, 1, 0.0, -1.2, 0.35, 0.0, 0.0, 0.0, 0, false, true, true, false, true)
+    SetTimeout(3500, function()
+        if ped and DoesEntityExist(ped) then
+            SetEntityAsMissionEntity(ped, true, true)
+            DeletePed(ped)
+        end
+        if cpuPed == ped then cpuPed = nil end
+        cpuDying = false
+    end)
+end
+
 -- Spawn the puppet at `pos` facing `heading`. Streams the model with a deadline;
 -- a failed load simply leaves no puppet (the fight still runs server-side — the
 -- human just has nothing to see, never a crash). Replaces any prior puppet.
 function Game.CpuSpawn(model, pos, heading)
-    Game.CpuDespawn()
+    Game.CpuForceDelete()          -- clean slate, even if a prior puppet is mid-KO-ragdoll
     if type(model) ~= 'string' or type(pos) ~= 'table' then return end
     local hash = joaat(model)
     if not IsModelValid(hash) then return end

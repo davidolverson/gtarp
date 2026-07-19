@@ -1158,10 +1158,14 @@ RegisterNetEvent('palm6_fc_combat:connect', function(data)
     if tgt.hp <= 0 then
         -- KO. Route through the single resolveFight hub (C1): it guards+sets
         -- m.resolving itself (do NOT pre-set) and sends teardown to BOTH fighters
-        -- so the winner is restored out of the fighter ped/loadout (§8/§11). The
-        -- ragdoll order is skipped for a CPU victim (no src; its client puppet, P3,
-        -- plays its own KO), guarded so the PvP path is unchanged.
-        if tgt.src then TriggerClientEvent('palm6_fc_combat:koRagdoll', tgt.src, { matchId = matchId }) end
+        -- so the winner is restored out of the fighter ped/loadout (§8/§11).
+        if tgt.isCpu then
+            -- CPU victim: tell the attacker's client to ragdoll the local puppet
+            -- (sent BEFORE resolveFight so it lands before the teardown despawn).
+            TriggerClientEvent('palm6_fc_combat:cpuDown', att.src, { matchId = matchId })
+        elseif tgt.src then
+            TriggerClientEvent('palm6_fc_combat:koRagdoll', tgt.src, { matchId = matchId })
+        end
         resolveFight(matchId, attCid, 'ko')
     end
 end)

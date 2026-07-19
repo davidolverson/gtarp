@@ -105,7 +105,7 @@ AddEventHandler('onResourceStop', function(res)
     -- appearance restore, so no one is stranded invincible/frozen. abortFinisherLocal
     -- + Game.RestoreFighterPed are globals reachable from this earlier-declared handler.
     abortFinisherLocal()      -- stop the synced scene + clear the handle FIRST (§11 ordering)
-    Game.CpuDespawn()         -- §19.6: a mid-fight resource stop must not orphan the CPU puppet
+    Game.CpuForceDelete()     -- §19.6: a mid-fight resource stop must HARD-delete the CPU puppet (no orphan)
     Game.RestoreFighterPed()  -- reverse the hardening natives on the ped
     Game.RestoreAppearance()
 end)
@@ -119,12 +119,16 @@ local Fighter = { matchId = false, hardening = false }
 
 -- Clip name WITHIN the style's strike dict (server picks the dict; the clip is
 -- pure feel — tune/replace in David's feel-test, zero logic impact).
+-- Real unarmed melee attack clips from the style strike dict (melee@unarmed@
+-- streamed_core). The old 'plyr_takedown_front_lefthook' was not a real clip, so
+-- swings never animated. These are the core attack anims; David feel-tests + swaps
+-- any that read wrong (a bad name just no-ops the swing, damage still lands).
 local STRIKE_CLIP = {
-    jab      = 'plyr_takedown_front_lefthook',
-    cross    = 'plyr_takedown_front_lefthook',
-    hook     = 'plyr_takedown_front_lefthook',
-    uppercut = 'plyr_takedown_front_lefthook',
-    body     = 'plyr_takedown_front_lefthook',
+    jab      = 'short_0_attack',
+    cross    = 'long_0_attack',
+    hook     = 'walk_0_attack',
+    uppercut = 'run_0_attack',
+    body     = 'ground_attack_0_a',
 }
 
 -- Device-agnostic combat input poll (Xbox controller + keyboard via the DISABLED
@@ -198,8 +202,14 @@ end)
 
 RegisterNetEvent('palm6_fc_combat:cpuSwing', function(d)
     if type(d) ~= 'table' or type(d.animDict) ~= 'string' then return end
-    local clip = STRIKE_CLIP[d.moveId] or 'plyr_takedown_front_lefthook'
+    local clip = STRIKE_CLIP[d.moveId] or 'short_0_attack'
     Game.CpuSwing(d.animDict, clip)
+end)
+
+-- KO: ragdoll the local CPU puppet (P4 feel). No-op in PvP / when no puppet exists.
+RegisterNetEvent('palm6_fc_combat:cpuDown', function(d)
+    if type(d) ~= 'table' then return end
+    Game.CpuDown()
 end)
 
 -- Canonical teardown (net-registered by T6). A second AddEventHandler runs
