@@ -25,13 +25,13 @@ Config.Blip = { sprite = 491, color = 1, scale = 0.9, label = 'Fight Club Ring' 
 -- match (challenges stay player-to-player via ox_target at the ring). Spawned
 -- client-side only when exports.palm6_fc_core:Config().Enabled == true, so it is
 -- prod-inert like everything else here.
--- PLACEHOLDER coords: a few metres outside the ring (Ring.coords in palm6_fc_core
--- ≈ 108.0,-1305.0,29.19 · radius 15). VERIFY / retune IN-GAME (on-ground,
--- reachable, facing the ring) before the feel-test — same as the ring coords.
+-- A few metres from the ring center (Ring.coords in palm6_fc_core = 146.64,
+-- -1279.0,28.98 · radius 15) so it stands INSIDE the ring zone. VERIFIED spot
+-- 2026-07-19 (Vanilla Unicorn side lot, exterior/on-ground).
 Config.Promoter = {
     model   = 'a_m_m_business_01',
-    coords  = { x = 127.0, y = -1300.0, z = 29.19 },
-    heading = 105.0,
+    coords  = { x = 149.5, y = -1281.0, z = 28.98 },
+    heading = 235.0,
     label   = 'Talk to the fight promoter',
     icon    = 'fa-solid fa-hand-fist',
 }

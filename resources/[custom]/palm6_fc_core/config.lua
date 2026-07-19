@@ -17,9 +17,9 @@ Config.Enabled = true
 -- Config.Ring for atRing()). Coords retuned 2026-07-10 — VERIFY IN-GAME
 -- (on-ground / reachable) before the combat feel-test (T6/T10 gate).
 Config.Ring = {
-    coords = { x = 108.0, y = -1305.0, z = 29.19 },  -- Vanilla Unicorn back lot, Strawberry
+    coords = { x = 146.64, y = -1279.0, z = 28.98 },  -- Vanilla Unicorn side lot — VERIFIED in-game 2026-07-19 (exterior, on-ground)
     radius = 15.0,
-    label  = 'the fight ring (Vanilla Unicorn back lot)',
+    label  = 'the fight ring (Vanilla Unicorn lot)',
 }
 
 -- Fighter vitals (§6a). Server-owned per match; NEVER ped health.
