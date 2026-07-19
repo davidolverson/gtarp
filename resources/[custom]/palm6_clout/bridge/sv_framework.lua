@@ -221,6 +221,18 @@ end
 -- valid sender and reads THAT ped's coords server-side; the payload posX/Y/Z
 -- is only kept (for VOD placement) when it agrees with the sender's actual
 -- position within tolerance, otherwise the event is dropped as spoofed.
+--
+-- SECURITY CAVEAT (economy audit 2026-07-19, MED): this authenticates WHERE an
+-- explosion is claimed, but not THAT one occurred. FiveM's explosionEvent is
+-- client-emitted and cannot be server-authenticated, so a modded client can emit
+-- it at its own coords (passing the tolerance check) to farm viewer gain with no
+-- real explosion; MaxExplosionsPerTick caps the burst but not sustained farming
+-- past idle decay, which can reach the milestone brand-deal payouts. A full fix is
+-- a balance decision for the owner (David), pick one: (a) set Config.Gain.Explosion
+-- low or 0; (b) only score an explosion witnessed by >=1 OTHER player within range
+-- (kills solo farming, keeps streaming-near-people intact); or (c) cap per-character
+-- viewer gain sourced from self-proximate events. Left as a documented, owner-gated
+-- tuning choice rather than an unreviewed live-economy rebalance.
 function Bridge.OnExplosion(cb, isActive)
     AddEventHandler('explosionEvent', function(sender, ev)
         -- Cheapest early-out: no streamers live => skip all coord work.
