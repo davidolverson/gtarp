@@ -88,6 +88,27 @@ local function ringBusy()
     return row ~= nil
 end
 
+-- §19.4 pre-emption: a human challenge beats an in-progress CPU bout (a human
+-- always wins the ring over the AI). Finds the live in-memory PvE match and
+-- live-voids it through the single resolveFight hub — roundStarted routes to
+-- ResolveMatch(nil,'void') (the §11 live-void primitive, NOT VoidMatch which is
+-- betting-only and would no-op a live PvE row -> the deadlock the review caught);
+-- the settle draw branch moves $0 (entry_pot=0) and teardown despawns the puppet
+-- + stops aiThink. Returns true iff one was pre-empted. `matches` is an upvalue;
+-- resolveFight is the file GLOBAL resolved at call time.
+local function preemptLivePve()
+    for mid, m in pairs(matches) do
+        if m.isPve and not m.resolving then
+            if m.srcA then
+                Bridge.Notify(m.srcA, 'Fight Club', 'A challenger stepped up — your CPU spar was called off.', 'inform')
+            end
+            resolveFight(mid, nil, 'void')
+            return true
+        end
+    end
+    return false
+end
+
 local function getEntryStake()
     if entryStakeCache ~= nil then return entryStakeCache end
     local ok, v = pcall(function() return exports.palm6_fightclub:GetEntryStake() end)
@@ -495,7 +516,16 @@ RegisterNetEvent('palm6_fc_combat:challenge', function(payload)
     if not atRing(src) then Bridge.Notify(src, 'Fight Club', ('You must be at %s.'):format(fcCore().Ring.label), 'error') return end
     if not atRing(targetSrc) then Bridge.Notify(src, 'Fight Club', 'They are not at the ring.', 'error') return end
     if activeMatchForCitizen(aCid) or activeMatchForCitizen(bCid) then Bridge.Notify(src, 'Fight Club', 'One of you already has a match.', 'error') return end
-    if ringBusy() then Bridge.Notify(src, 'Fight Club', 'The ring is in use.', 'error') return end
+    if ringBusy() then
+        -- §19.4: a human challenge PRE-EMPTS an in-progress CPU bout (no ring deadlock);
+        -- a human PvP match in progress is NOT preempted (preemptLivePve returns false).
+        local pveCfg = fcCore().Pve
+        if not (pveCfg and pveCfg.PreemptOnHumanChallenge and preemptLivePve()) then
+            Bridge.Notify(src, 'Fight Club', 'The ring is in use.', 'error')
+            return
+        end
+        -- PvE row flipped to 'resolved' synchronously; ring is free — fall through.
+    end
     if pendingChallenges[bCid] then Bridge.Notify(src, 'Fight Club', 'They already have a pending challenge.', 'error') return end
     local ttl = fcCore().Timers.ChallengeTTL
     pendingChallenges[bCid] = { fromCid = aCid, fromSrc = src, targetSrc = targetSrc, expiresAt = now() + ttl }

@@ -252,14 +252,172 @@ local function awardRep(matchId)
     end
 end
 
+-- ===========================================================================
+-- §19.5 PvE progression + anti-farm. The PvE path SHARES the fc:match:resolved
+-- seam and the rep_awarded column with PvP but claims the COMPLEMENTARY is_pve=1
+-- rows — so §9's `is_pve=0` claim and this `is_pve=1` claim can never touch the
+-- same match (no double-award, no cross-mint). Four stacked bounds (§19.5) keep a
+-- full rolling-day of trivial-AI wins worth LESS than one real PvP win, and the
+-- rep is cash-neutral (unlocks cosmetics only). CPU never gets a progression row.
+-- ===========================================================================
+local PveTierRepFrac, PveDimFactor, PveDailyRepGrantCap, PveRepCooldownSec, PveMinMatchSec
+
+local function loadPveConf()
+    local ok, FC = pcall(function() return exports.palm6_fc_core:Config() end)
+    local P = (ok and type(FC) == 'table' and FC.Pve) or {}
+    PveTierRepFrac      = (type(P.PveTierRepFrac) == 'table' and P.PveTierRepFrac)
+                          or { T1 = 0.08, T2 = 0.14, T3 = 0.22, T4 = 0.32, T5 = 0.45 }
+    PveDimFactor        = tonumber(P.DimFactor) or 0.5
+    PveDailyRepGrantCap = tonumber(P.PveDailyRepGrantCap) or 3
+    PveRepCooldownSec   = tonumber(P.PveRepCooldownSec) or 3600
+    PveMinMatchSec      = tonumber(P.PveMinMatchSec) or 20
+end
+
+-- PvE-only W/L ledger (kept SEPARATE from PvP wins/rank so a CPU fight never pads
+-- the real record — §19.5/§19.7). Upsert; the row may not exist yet.
+local function bumpPveWin(cid)
+    pcall(function()
+        MySQL.insert.await([[
+            INSERT INTO palm6_fc_progression (citizenid, rep, wins, losses, rank_tier, pve_wins, pve_losses)
+            VALUES (?, 0, 0, 0, 0, 1, 0)
+            ON DUPLICATE KEY UPDATE pve_wins = pve_wins + 1
+        ]], { cid })
+    end)
+end
+local function bumpPveLoss(cid)
+    pcall(function()
+        MySQL.insert.await([[
+            INSERT INTO palm6_fc_progression (citizenid, rep, wins, losses, rank_tier, pve_wins, pve_losses)
+            VALUES (?, 0, 0, 0, 0, 0, 1)
+            ON DUPLICATE KEY UPDATE pve_losses = pve_losses + 1
+        ]], { cid })
+    end)
+end
+
+-- Today's shared daily counters (the single source of truth for the caps + the
+-- geometric-decay `n`). day_bucket keyed UTC, same as bumpDaily.
+local function pveDailyCounts(cid)
+    local row
+    pcall(function()
+        row = MySQL.single.await(
+            "SELECT pvp_rep_wins, pve_rep_wins FROM palm6_fc_daily WHERE citizenid = ? AND day_bucket = ?",
+            { cid, os.date('!%Y-%m-%d') })
+    end)
+    return tonumber(row and row.pvp_rep_wins) or 0, tonumber(row and row.pve_rep_wins) or 0
+end
+
+-- Increment the PvE granted-win counter (the shared cap SUMs pvp+pve). Called
+-- increment-before-credit so a crash biases against the grinder (never over-grants).
+local function bumpPveDaily(cid)
+    pcall(function()
+        MySQL.insert.await([[
+            INSERT INTO palm6_fc_daily (citizenid, day_bucket, pvp_rep_wins, pve_rep_wins, distinct_opponents)
+            VALUES (?, ?, 0, 1, 0)
+            ON DUPLICATE KEY UPDATE pve_rep_wins = pve_rep_wins + 1
+        ]], { cid, os.date('!%Y-%m-%d') })
+    end)
+end
+
+-- Bound 1: did this human already earn a rep-granting win vs the SAME cpu_tier
+-- within the cooldown? (matches-table proxy off resolved_at, mirroring the PvP
+-- wonAgainstWithin pattern; a capped prior win counts too -> conservative.)
+local function beatTierWithin(matchId, human, tier, seconds)
+    local row
+    pcall(function()
+        row = MySQL.single.await([[
+            SELECT id FROM palm6_fightclub_matches
+             WHERE id <> ? AND status = 'resolved' AND is_pve = 1 AND rep_awarded = 1
+               AND winner_citizenid = ? AND cpu_tier = ?
+               AND resolved_at >= (NOW() - INTERVAL ? SECOND)
+             LIMIT 1
+        ]], { matchId, human, tier, seconds })
+    end)
+    return row ~= nil
+end
+
+-- Returns (repAmount, reason). 0 => a bound blocked it (reason logged/notified).
+local function repToAwardPve(matchId, human, tier, durSec)
+    if durSec ~= nil and durSec < PveMinMatchSec then return 0, 'too-short' end     -- bound 4
+    if beatTierWithin(matchId, human, tier, PveRepCooldownSec) then return 0, 'cooldown' end  -- bound 1
+    local pvp, pve = pveDailyCounts(human)
+    if pve >= PveDailyRepGrantCap then return 0, 'pve-daily-cap' end                -- bound 3
+    if (pvp + pve) >= DailyRepCap then return 0, 'daily-cap' end                    -- shared ceiling
+    -- bound 2: geometric daily decay. n = (PvE grants already today) + 1.
+    local n    = pve + 1
+    local frac = tonumber(PveTierRepFrac['T' .. tostring(tier)]) or 0
+    local amount = math.floor(frac * RepPerPvpWin * (PveDimFactor ^ (n - 1)))
+    if amount <= 0 then return 0, 'zero' end
+    return amount, 'ok'
+end
+
+-- PvE award driver — atomic is_pve=1 claim, authoritative re-read, PvE ledger,
+-- gated decayed rep. Called by the seam AND boot reconcile (row is authority).
+local function awardPveRep(matchId)
+    loadConf(); loadPveConf()
+
+    -- 1. atomic claim: is_pve=1 complement of §9's claim, exactly once.
+    local claimed = false
+    pcall(function()
+        claimed = MySQL.update.await(
+            "UPDATE palm6_fightclub_matches SET rep_awarded = 1 WHERE id = ? AND rep_awarded = 0 AND is_pve = 1",
+            { matchId }) == 1
+    end)
+    if not claimed then return end
+
+    -- 2. authoritative resolved row (fighter1 = the human; fighter2 = the sentinel).
+    local m
+    pcall(function()
+        m = MySQL.single.await([[
+            SELECT winner_citizenid, method, fighter1_citizenid, cpu_tier,
+                   UNIX_TIMESTAMP(live_started_at) AS s, UNIX_TIMESTAMP(resolved_at) AS e
+              FROM palm6_fightclub_matches WHERE id = ? AND status = 'resolved' AND is_pve = 1
+        ]], { matchId })
+    end)
+    if not m then return end
+
+    local human = m.fighter1_citizenid
+    if isReserved(human) then                                   -- defensive: never a sentinel
+        dbg(('PvE match #%d: human cid reserved (%s) — skip'):format(matchId, tostring(human)))
+        return
+    end
+    local winnerCid = m.winner_citizenid
+    local method    = m.method or ''
+    local tier      = tonumber(m.cpu_tier) or 1
+    local humanWon  = winnerCid and winnerCid == human and (method == 'ko' or method == 'finisher')
+    local humanLost = winnerCid and winnerCid ~= human
+                      and (method == 'ko' or method == 'finisher' or method == 'forfeit')
+
+    -- PvE-only ledger (never on void/draw no-contest).
+    if humanWon then bumpPveWin(human)
+    elseif humanLost then bumpPveLoss(human) end
+
+    if not humanWon then return end                             -- rep only on a clean human win
+
+    local durSec = (m.s and m.e) and (tonumber(m.e) - tonumber(m.s)) or nil
+    local amount, reason = repToAwardPve(matchId, human, tier, durSec)
+    local hs = Bridge.GetSourceByCitizenId(human)
+    if amount > 0 then
+        bumpPveDaily(human)                                     -- increment-before-credit
+        addRep(human, amount)
+        if hs then Bridge.Notify(hs, 'Fight Club', ('+%d rep — Tier %d CPU down.'):format(amount, tier), 'success') end
+        dbg(('PvE match #%d: %s +%d rep (tier %d)'):format(matchId, human, amount, tier))
+    else
+        if hs then Bridge.Notify(hs, 'Fight Club', 'CPU down — no rep (' .. reason .. ').', 'inform') end
+        dbg(('PvE match #%d: %s win, rep skipped (%s)'):format(matchId, human, reason))
+    end
+end
+
 -- ---------------------------------------------------------------------------
--- Seam consumer — server-internal event, NEVER RegisterNetEvent.
+-- Seam consumer — server-internal event, NEVER RegisterNetEvent. Both drivers
+-- self-gate on their complementary is_pve claim, so calling both on every resolve
+-- is safe: a PvP row no-ops awardPveRep, a PvE row no-ops awardRep.
 -- ---------------------------------------------------------------------------
 AddEventHandler('fc:match:resolved', function(d)
     if type(d) ~= 'table' then return end
     local matchId = tonumber(d.matchId)
     if not matchId then return end
     awardRep(matchId)
+    awardPveRep(matchId)
 end)
 
 -- ---------------------------------------------------------------------------
@@ -275,10 +433,10 @@ AddEventHandler('onResourceStart', function(resource)
         local pending = {}
         pcall(function()
             pending = MySQL.query.await(
-                "SELECT id FROM palm6_fightclub_matches WHERE status = 'resolved' AND rep_awarded = 0 AND is_pve = 0") or {}
+                "SELECT id, is_pve FROM palm6_fightclub_matches WHERE status = 'resolved' AND rep_awarded = 0") or {}
         end)
         for _, row in ipairs(pending) do
-            awardRep(row.id)
+            if tonumber(row.is_pve) == 1 then awardPveRep(row.id) else awardRep(row.id) end
         end
         if #pending > 0 then
             print(('[palm6_fc_progression] boot reconcile awarded rep for %d match(es)'):format(#pending))
