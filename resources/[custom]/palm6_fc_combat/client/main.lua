@@ -125,13 +125,20 @@ local STRIKE_CLIP = {
     body     = 'plyr_takedown_front_lefthook',
 }
 
+-- Device-agnostic combat input poll (Xbox controller + keyboard via the DISABLED
+-- melee controls). Forward-declared here; assigned below once throwStrike + the
+-- light/heavy/block helpers exist, then driven by the LIVE hardening loop so it
+-- shares the exact same Fighter.hardening gate (no separate free-running thread).
+local pollCombatInput
+
 local function startHardening(matchId)
     if Fighter.hardening then return end
     Fighter.matchId = matchId
     Fighter.hardening = true
     CreateThread(function()
         while Fighter.hardening do
-            Game.HardenFighterPed()
+            Game.HardenFighterPed()                          -- disables the melee control set THIS frame
+            if pollCombatInput then pollCombatInput() end    -- ...so IsDisabledControl* reads it right after
             Wait(0)                       -- re-assert every frame (§6)
         end
     end)
@@ -243,35 +250,76 @@ local function throwStrike(moveId)
     end)
 end
 
--- LIGHT: alternate jab <-> cross on repeated presses.
+-- LIGHT: alternate jab <-> cross on repeated presses. fireLight() OWNS the
+-- alternation so BOTH the keybind command and the controller poll share it (a
+-- controller tap and a keyboard tap both advance the same jab<->cross feel).
 local lightAlt = false
-RegisterCommand('fc_light', function()
+local function fireLight()
     if not Fighter.hardening then return end
     lightAlt = not lightAlt
     throwStrike(lightAlt and 'jab' or 'cross')
-end, false)
+end
+RegisterCommand('fc_light', fireLight, false)
 RegisterKeyMapping('fc_light', 'Fight Club: Light strike', 'keyboard', 'E')
 
--- HEAVY: cycle hook -> uppercut -> body (server rejects a heavy if stamina is short).
+-- HEAVY: cycle hook -> uppercut -> body (server rejects a heavy if stamina is
+-- short). fireHeavy() OWNS the cycle index, shared by keybind + controller poll.
 local HEAVY_CYCLE = { 'hook', 'uppercut', 'body' }
 local heavyIdx = 0
-RegisterCommand('fc_heavy', function()
+local function fireHeavy()
     if not Fighter.hardening then return end
     heavyIdx = (heavyIdx % #HEAVY_CYCLE) + 1
     throwStrike(HEAVY_CYCLE[heavyIdx])
-end, false)
+end
+RegisterCommand('fc_heavy', fireHeavy, false)
 RegisterKeyMapping('fc_heavy', 'Fight Club: Heavy strike', 'keyboard', 'Q')
 
--- BLOCK: held stance. +cmd fires on press (on=true), -cmd on release (on=false).
-RegisterCommand('+fc_block', function()
-    if not Fighter.hardening or not Fighter.matchId then return end
-    TriggerServerEvent('palm6_fc_combat:block', { matchId = Fighter.matchId, on = true })
-end, false)
-RegisterCommand('-fc_block', function()
-    if not Fighter.matchId then return end
-    TriggerServerEvent('palm6_fc_combat:block', { matchId = Fighter.matchId, on = false })
-end, false)
+-- BLOCK: held stance. emitBlock(on) is the SINGLE emit path (payload unchanged:
+-- { matchId, on }); the keybind uses +/- command edges, the controller poll uses
+-- its own press/release edge (padBlocking). Same on/off guards as the originals.
+local function emitBlock(on)
+    if on then
+        if not Fighter.hardening or not Fighter.matchId then return end
+    else
+        if not Fighter.matchId then return end
+    end
+    TriggerServerEvent('palm6_fc_combat:block', { matchId = Fighter.matchId, on = on })
+end
+RegisterCommand('+fc_block', function() emitBlock(true) end, false)
+RegisterCommand('-fc_block', function() emitBlock(false) end, false)
 RegisterKeyMapping('+fc_block', 'Fight Club: Block (hold)', 'keyboard', 'LMENU')
+
+-- ============================================================================
+-- XBOX CONTROLLER (+ keyboard) support — device-agnostic melee controls.
+-- Game.HardenFighterPed DISABLES the melee control set every LIVE frame, so we
+-- read those controls via IsDisabledControl* (a plain IsControl* would see them
+-- as suppressed and return nothing). GTA V binds each of these to BOTH keyboard
+-- AND the Xbox controller by default, so this one code path gives intuitive
+-- controller punch buttons with no per-button controller-string guessing. It
+-- calls the SAME fireLight/fireHeavy/emitBlock the keybinds use — no duplicated
+-- emit logic, cooldown (strikeCd inside throwStrike) still respected.
+--   140 INPUT_MELEE_ATTACK_LIGHT -> LIGHT strike (jab/cross)      [Xbox: B]
+--   141 INPUT_MELEE_ATTACK_HEAVY -> HEAVY strike (hook/upper/body) [Xbox: RT / right trigger]
+--   143 INPUT_MELEE_BLOCK        -> BLOCK, held (press/release EDGES only) [Xbox: LB / left bumper]
+-- Assigning pollCombatInput (forward-declared above) means the LIVE hardening
+-- loop drives it: it inherits the Fighter.hardening gate exactly — dead pre-fight,
+-- after teardown/KO/round-end, and on prod (Enabled=false -> hardening never on).
+-- There is no separate thread to leak.
+-- ============================================================================
+local padBlocking = false
+pollCombatInput = function()
+    if not Fighter.hardening or not Fighter.matchId then return end
+    if IsDisabledControlJustPressed(0, 140) then fireLight() end   -- INPUT_MELEE_ATTACK_LIGHT
+    if IsDisabledControlJustPressed(0, 141) then fireHeavy() end   -- INPUT_MELEE_ATTACK_HEAVY
+    local wantBlock = IsDisabledControlPressed(0, 143)             -- INPUT_MELEE_BLOCK (held)
+    if wantBlock and not padBlocking then
+        padBlocking = true
+        emitBlock(true)                                           -- press-edge: block ON once
+    elseif not wantBlock and padBlocking then
+        padBlocking = false
+        emitBlock(false)                                          -- release-edge: block OFF once
+    end
+end
 
 -- ============================================================================
 -- Blazin finisher (T8) -- client half. Runs the scene on THIS client's OWN ped
