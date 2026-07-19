@@ -6,6 +6,7 @@
 -- ============================================================================
 
 local ringBlip, ringZone
+local promoterPed, promoterZone
 local crowd = {}
 local currentMatchId
 local spectating = false
@@ -117,7 +118,45 @@ RegisterCommand('fcspectate', function()
     if spectating then Game.SpectateOn(r.coords) else Game.SpectateOff() end
 end, false)
 
--- Ring blip + gallery zone (only when enabled — prod-inert otherwise).
+-- Fight-promoter NPC menu — pure discoverability / UX. Explains the loop and
+-- opens NO match (challenges stay player-to-player via ox_target at the ring);
+-- fires no server events. Ante is pulled from the fightclub money authority when
+-- that export is reachable (pcall-guarded), else the number is omitted.
+local function openPromoterInfo()
+    local stake
+    local ok, v = pcall(function() return exports.palm6_fightclub:GetEntryStake() end)
+    if ok and type(v) == 'number' and v > 0 then stake = v end
+    local anteDesc = stake
+        and ('Both fighters ante $%d — winner takes the purse.'):format(stake)
+        or  'Both fighters ante the entry stake — winner takes the purse.'
+
+    Game.OpenMenu('palm6_fc_promoter', 'Fight Club — how it works', {
+        {
+            title = '1. Challenge a citizen at the ring',
+            description = 'Head to the ring, aim at another fighter, and pick "Challenge to a fight".',
+            icon = 'fa-solid fa-hand-fist', disabled = true,
+        },
+        {
+            title = '2. Both fighters ante up',
+            description = anteDesc,
+            icon = 'fa-solid fa-sack-dollar', disabled = true,
+        },
+        {
+            title = '3. Spectators bet with /fcbet',
+            description = 'During the betting window, back a fighter to win a share of the pool.',
+            icon = 'fa-solid fa-money-bill-trend-up', disabled = true,
+        },
+        {
+            title = '4. Best striker wins',
+            description = 'Land clean strikes, fill your meter, and take the purse plus street rep.',
+            icon = 'fa-solid fa-trophy', disabled = true,
+        },
+    })
+end
+
+-- Ring blip + gallery zone + fight-promoter NPC (only when enabled — prod-inert
+-- otherwise). The single Enabled gate below wraps the blip, the ped, AND the
+-- promoter interaction, so nothing appears on prod while Config.Enabled == false.
 CreateThread(function()
     Wait(1500)  -- let fc_core exports come up
     if not enabled() then return end
@@ -127,12 +166,19 @@ CreateThread(function()
     ringZone = Game.AddRingZone(r.coords, r.radius or 15.0, function()
         Game.Notify({ title = 'Fight Club', description = 'You are at the fight ring. /fcspectate to watch, /fcbet during betting.', type = 'inform' })
     end, nil)
+    -- Discoverability NPC: same Enabled gate as the ring blip above.
+    if Config.Promoter then
+        promoterPed = Game.SpawnPed(Config.Promoter.model, Config.Promoter.coords, Config.Promoter.heading)
+        promoterZone = Game.AddPedInteraction(promoterPed, Config.Promoter.coords, Config.Promoter.label, Config.Promoter.icon, openPromoterInfo)
+    end
 end)
 
 AddEventHandler('onResourceStop', function(res)
     if res ~= GetCurrentResourceName() then return end
     if #crowd > 0 then Game.DeleteCrowd(crowd) end
     if spectating then Game.SpectateOff() end
+    Game.RemoveInteraction(promoterZone)
+    Game.DeletePed(promoterPed)
     Game.RemoveBlip(ringBlip)
     Game.RemoveZone(ringZone)
 end)

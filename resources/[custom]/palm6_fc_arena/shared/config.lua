@@ -21,6 +21,21 @@ Config.CrowdModels = {
 
 Config.Blip = { sprite = 491, color = 1, scale = 0.9, label = 'Fight Club Ring' }
 
+-- Fight-promoter NPC — discoverability / UX ONLY. Explains the loop; opens NO
+-- match (challenges stay player-to-player via ox_target at the ring). Spawned
+-- client-side only when exports.palm6_fc_core:Config().Enabled == true, so it is
+-- prod-inert like everything else here.
+-- PLACEHOLDER coords: a few metres outside the ring (Ring.coords in palm6_fc_core
+-- ≈ 108.0,-1305.0,29.19 · radius 15). VERIFY / retune IN-GAME (on-ground,
+-- reachable, facing the ring) before the feel-test — same as the ring coords.
+Config.Promoter = {
+    model   = 'a_m_m_business_01',
+    coords  = { x = 127.0, y = -1300.0, z = 29.19 },
+    heading = 105.0,
+    label   = 'Talk to the fight promoter',
+    icon    = 'fa-solid fa-hand-fist',
+}
+
 Config.RateLimits = { fcspectate = 1 }
 
 Config.CrowdTestSec = 10         -- DEBUG ONLY: how long /fcarenatest holds the fake LIVE statebag
