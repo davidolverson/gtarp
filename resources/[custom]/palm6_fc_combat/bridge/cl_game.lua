@@ -128,6 +128,11 @@ function Game.SwapToFighter(model, styleId)
     if HasModelLoaded(hash) then
         SetPlayerModel(PlayerId(), hash)
         SetModelAsNoLongerNeeded(hash)
+        -- Freemode fighter models (mp_m/f_freemode_01, e.g. house_ace/house_reign)
+        -- spawn with NO component variations -> the ped renders INVISIBLE. Apply the
+        -- default outfit so the fighter is actually visible. Harmless for the named
+        -- story models (they already carry a full appearance).
+        SetPedDefaultComponentVariation(PlayerPedId())
     end
 end
 
