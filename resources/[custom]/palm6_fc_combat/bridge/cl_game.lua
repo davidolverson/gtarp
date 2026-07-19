@@ -232,3 +232,87 @@ function Game.RestoreFighterPed()
     SetWeaponsNoAutoswap(false)
     ClearPedTasks(ped)
 end
+
+-- ============================================================================
+-- §19 P3: client-local CPU PUPPET. The dark-PvE CPU is a server-owned logical
+-- actor (§19.1); THIS is its purely-visual body, spawned only on the sole human's
+-- machine — a non-networked, invincible mission ped the server never holds a
+-- handle to. The server pushes its logical pos/heading/guard (cpuState) + swing
+-- events; we lerp the ped to that pos each frame and play the swing clips. It is
+-- HARD-deleted on teardown / KO / resource-stop (§19.6 — no orphaned CPU peds).
+-- ============================================================================
+local cpuPed      = nil
+local cpuTarget   = nil   -- { x, y, z, heading }
+local cpuThreadOn = false
+
+-- Delete the puppet + stop its render loop. Idempotent; the §19.6 no-orphan hook.
+function Game.CpuDespawn()
+    cpuThreadOn = false
+    cpuTarget   = nil
+    if cpuPed and DoesEntityExist(cpuPed) then
+        SetEntityAsMissionEntity(cpuPed, true, true)
+        DeletePed(cpuPed)
+    end
+    cpuPed = nil
+end
+
+-- Spawn the puppet at `pos` facing `heading`. Streams the model with a deadline;
+-- a failed load simply leaves no puppet (the fight still runs server-side — the
+-- human just has nothing to see, never a crash). Replaces any prior puppet.
+function Game.CpuSpawn(model, pos, heading)
+    Game.CpuDespawn()
+    if type(model) ~= 'string' or type(pos) ~= 'table' then return end
+    local hash = joaat(model)
+    if not IsModelValid(hash) then return end
+    RequestModel(hash)
+    local dl = GetGameTimer() + 5000
+    while not HasModelLoaded(hash) and GetGameTimer() < dl do Wait(50) end
+    if not HasModelLoaded(hash) then return end
+
+    local ped = CreatePed(4, hash, pos.x + 0.0, pos.y + 0.0, pos.z + 0.0, heading or 0.0, false, false)
+    SetModelAsNoLongerNeeded(hash)
+    if not ped or ped == 0 then return end
+    cpuPed = ped
+    SetEntityAsMissionEntity(ped, true, true)         -- engine won't cull/delete it
+    SetEntityInvincible(ped, true)                    -- damage is server-authoritative; punches never hurt the body
+    SetPedCanRagdoll(ped, false)
+    SetBlockingOfNonTemporaryEvents(ped, true)        -- no wander / flee / combat AI — the server IS its brain
+    FreezeEntityPosition(ped, false)
+    SetEntityNoCollisionEntity(ped, PlayerPedId(), false)  -- don't shove the human around
+    cpuTarget = { x = pos.x, y = pos.y, z = pos.z, heading = heading or 0.0 }
+
+    -- Render loop: smoothly chase the server-pushed target pos/heading each frame.
+    cpuThreadOn = true
+    CreateThread(function()
+        while cpuThreadOn and cpuPed and DoesEntityExist(cpuPed) do
+            local t = cpuTarget
+            if t then
+                local c = GetEntityCoords(cpuPed)
+                local nx = c.x + (t.x - c.x) * 0.25          -- catch up ~4 frames -> smooth at aiTick cadence
+                local ny = c.y + (t.y - c.y) * 0.25
+                SetEntityCoordsNoOffset(cpuPed, nx, ny, t.z, false, false, false)
+                SetEntityHeading(cpuPed, t.heading or GetEntityHeading(cpuPed))
+            end
+            Wait(0)
+        end
+    end)
+end
+
+-- Update the puppet's chase target (server cpuState). Guard-flag reserved for a
+-- future block pose (visual only; the server already owns the block mechanic).
+function Game.CpuUpdate(pos, heading, blocking)
+    if not cpuPed or type(pos) ~= 'table' then return end
+    cpuTarget = { x = pos.x, y = pos.y, z = pos.z, heading = heading or (cpuTarget and cpuTarget.heading) or 0.0 }
+end
+
+-- Play a strike clip on the puppet (server cpuSwing). Non-looping; interruptible
+-- so the next swing / a despawn overrides it cleanly.
+function Game.CpuSwing(animDict, animName)
+    if not cpuPed or not DoesEntityExist(cpuPed) then return end
+    if type(animDict) ~= 'string' or type(animName) ~= 'string' then return end
+    RequestAnimDict(animDict)
+    local dl = GetGameTimer() + 1000
+    while not HasAnimDictLoaded(animDict) and GetGameTimer() < dl do Wait(0) end
+    if not HasAnimDictLoaded(animDict) then return end
+    TaskPlayAnim(cpuPed, animDict, animName, 8.0, -8.0, -1, 0, 0.0, false, false, false)
+end

@@ -91,6 +91,7 @@ end)
 RegisterNetEvent('palm6_fc_combat:teardown', function(d)
     -- matchId==0 is the boot "abort any fight" broadcast — always unwind.
     abortFinisherLocal()   -- T8: stop the synced scene + clear the handle BEFORE any unfreeze/timescale/cam (§11)
+    Game.CpuDespawn()      -- §19.6: delete the PvE CPU puppet (no-op in PvP / when none exists)
     Game.RestoreAppearance()
     myPick = nil
     pcall(function() lib.hideContext(false) end)
@@ -104,6 +105,7 @@ AddEventHandler('onResourceStop', function(res)
     -- appearance restore, so no one is stranded invincible/frozen. abortFinisherLocal
     -- + Game.RestoreFighterPed are globals reachable from this earlier-declared handler.
     abortFinisherLocal()      -- stop the synced scene + clear the handle FIRST (§11 ordering)
+    Game.CpuDespawn()         -- §19.6: a mid-fight resource stop must not orphan the CPU puppet
     Game.RestoreFighterPed()  -- reverse the hardening natives on the ped
     Game.RestoreAppearance()
 end)
@@ -178,11 +180,34 @@ RegisterNetEvent('palm6_fc_combat:koRagdoll', function(data)
     Fighter.matchId = false
 end)
 
+-- ============================================================================
+-- §19 P3: CPU puppet reactions. Pure presentation of the server-owned CPU actor
+-- (§19.1): the server spawns/moves/swings it on THIS (the sole human's) machine.
+-- Every handler is a thin pass to the Game.Cpu* bridge; despawn is guaranteed by
+-- the teardown + onResourceStop hooks above (§19.6). No-ops in a PvP match.
+-- ============================================================================
+RegisterNetEvent('palm6_fc_combat:cpuSpawn', function(d)
+    if type(d) ~= 'table' or type(d.pos) ~= 'table' then return end
+    Game.CpuSpawn(d.model, d.pos, d.heading)
+end)
+
+RegisterNetEvent('palm6_fc_combat:cpuState', function(d)
+    if type(d) ~= 'table' or type(d.pos) ~= 'table' then return end
+    Game.CpuUpdate(d.pos, d.heading, d.blocking)
+end)
+
+RegisterNetEvent('palm6_fc_combat:cpuSwing', function(d)
+    if type(d) ~= 'table' or type(d.animDict) ~= 'string' then return end
+    local clip = STRIKE_CLIP[d.moveId] or 'plyr_takedown_front_lefthook'
+    Game.CpuSwing(d.animDict, clip)
+end)
+
 -- Canonical teardown (net-registered by T6). A second AddEventHandler runs
 -- alongside T6's HUD/cam teardown to guarantee hardening is dropped + ped restored
 -- (ring-out drops invincibility the instant this arrives).
 AddEventHandler('palm6_fc_combat:teardown', function()
     stopHardening()
+    Game.CpuDespawn()   -- §19.6 belt-and-suspenders: also drop the puppet on this teardown path
 end)
 
 -- ============================================================================

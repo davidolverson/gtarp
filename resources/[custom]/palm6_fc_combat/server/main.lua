@@ -820,6 +820,15 @@ local function pveConfig()
     return ok and type(c) == 'table' and c.Pve or nil
 end
 
+-- GTA heading (0 = +Y) pointing from `pos` toward (tx,ty). Used to face the client
+-- puppet at the human. 0.0 when the target is unknown/coincident.
+local function cpuHeadingTo(pos, tx, ty)
+    if not tx or not ty then return 0.0 end
+    local dx, dy = tx - pos.x, ty - pos.y
+    if math.abs(dx) < 1e-4 and math.abs(dy) < 1e-4 then return 0.0 end
+    return math.deg(math.atan(-dx, dy)) % 360.0
+end
+
 -- The tier row (reactionMs / blockChance / aggression / comboDepth). Difficulty is
 -- POLICY-ONLY — never HP/damage inflation (§19.2) — so a CPU win stays cash-neutral.
 local function tierPolicy(tier)
@@ -860,6 +869,12 @@ end
 -- rep, no cash — a bare loss for the human).
 local function cpuStrike(matchId, cpu, human, humanSrc, move)
     if not move or not cpu.pos then return end
+    -- P3: the puppet plays the swing on EVERY attack attempt (feel), whether or not
+    -- it connects; the damage below only lands if the human is in reach.
+    if humanSrc then
+        TriggerClientEvent('palm6_fc_combat:cpuSwing', humanSrc,
+            { matchId = matchId, animDict = cpu.animStrike, moveId = move.moveId })
+    end
     local reach = Bridge.ReachToPos(humanSrc, cpu.pos)               -- fail-closed: nil pos -> no reach
     if not reach or reach > move.reach then return end
     local dmg = move.damage
@@ -894,6 +909,14 @@ function startCpuActor(matchId, cpu, humanSrc, tier)
     else
         cpu.pos = { x = 0.0, y = 0.0, z = 0.0 }
     end
+
+    -- P3: spawn the client-local CPU puppet on the human's machine at the logical
+    -- pos. Non-networked, client-owned; the server never holds a ped handle. The
+    -- client despawns it on teardown / resource-stop (§19.6 no-orphan).
+    TriggerClientEvent('palm6_fc_combat:cpuSpawn', humanSrc, {
+        matchId = matchId, model = cpu.model, name = cpu.name,
+        pos = cpu.pos, heading = cpuHeadingTo(cpu.pos, hc and hc.x, hc and hc.y),
+    })
 
     PveActors[matchId] = { alive = true }
     local policy    = tierPolicy(tier)
@@ -945,6 +968,16 @@ function startCpuActor(matchId, cpu, humanSrc, tier)
             -- Block policy: roll a guard stance for this tick (blocking suppresses the
             -- attack + lets the human's stamina regen, matching the T7 human model).
             self.blocking = math.random() < (policy.blockChance or 0)
+
+            -- P3: push the puppet's target pos/heading/guard to the human's client so
+            -- it lerps into place + faces the human. Cheap (one client, aiTick cadence).
+            if hcoords then
+                TriggerClientEvent('palm6_fc_combat:cpuState', st.srcA, {
+                    matchId = matchId, pos = self.pos,
+                    heading = cpuHeadingTo(self.pos, hcoords.x, hcoords.y),
+                    blocking = self.blocking,
+                })
+            end
 
             -- Attack policy: aggression-gated, throttled by the tier reaction gate.
             local nowMs = GetGameTimer()
