@@ -323,19 +323,32 @@ function Game.CpuSpawn(model, pos, heading)
     SetEntityNoCollisionEntity(ped, PlayerPedId(), false)  -- don't shove the human around
     cpuTarget = { x = pos.x, y = pos.y, z = pos.z, heading = heading or 0.0 }
 
-    -- Render loop: smoothly chase the server-pushed target pos/heading each frame.
+    -- Locomotion loop: WALK/RUN the puppet toward the server-pushed target with REAL
+    -- leg animation (no more ice-skating slide). Far -> TaskGoStraightToCoord (the game
+    -- plays proper locomotion); at striking range -> stop the walk task once and gently
+    -- lerp the last metre so the connect reach stays honest and swing anims read clean.
     cpuThreadOn = true
     CreateThread(function()
+        local walking, tx, ty = false, nil, nil
         while cpuThreadOn and cpuPed and DoesEntityExist(cpuPed) do
             local t = cpuTarget
             if t then
                 local c = GetEntityCoords(cpuPed)
-                local nx = c.x + (t.x - c.x) * 0.25          -- catch up ~4 frames -> smooth at aiTick cadence
-                local ny = c.y + (t.y - c.y) * 0.25
-                SetEntityCoordsNoOffset(cpuPed, nx, ny, t.z, false, false, false)
-                SetEntityHeading(cpuPed, t.heading or GetEntityHeading(cpuPed))
+                local d = #(vector3(c.x, c.y, c.z) - vector3(t.x, t.y, t.z))
+                if d > 3.0 then
+                    -- re-task only when the target has moved enough (avoid per-tick stutter)
+                    if not walking or not tx or #(vector3(t.x, t.y, 0.0) - vector3(tx, ty, 0.0)) > 1.5 then
+                        TaskGoStraightToCoord(cpuPed, t.x, t.y, t.z, 2.2, -1, t.heading or 0.0, 0.5)
+                        walking, tx, ty = true, t.x, t.y
+                    end
+                else
+                    if walking then ClearPedTasks(cpuPed); walking = false end   -- ONCE, so swings aren't cut
+                    local c2 = GetEntityCoords(cpuPed)
+                    SetEntityCoordsNoOffset(cpuPed, c2.x + (t.x - c2.x) * 0.35, c2.y + (t.y - c2.y) * 0.35, t.z, false, false, false)
+                    if t.heading then SetEntityHeading(cpuPed, t.heading) end
+                end
             end
-            Wait(0)
+            Wait(120)
         end
     end)
 end

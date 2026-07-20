@@ -84,14 +84,18 @@ Config.Blazin = {
 -- real clips in melee@unarmed@streamed_core — swap any that reads wrong in feel-test
 -- (a bad name only no-ops that swing; the hit + damage still land server-side).
 Config.Anims = {
+    -- Strike DICT is the style's animDicts.strike = 'mini@takedowns@front' (the same
+    -- takedown dict the Blazin finisher uses, so it's proven to load + play in-game).
+    -- 'plyr_takedown_front' is the attacker half of that scene and reads as a lunging
+    -- melee strike. PLACEHOLDER-but-VISIBLE: swap to cleaner boxing clips in feel-test.
     StrikeClips = {
-        jab      = 'short_0_attack',
-        cross    = 'long_0_attack',
-        hook     = 'walk_0_attack',
-        uppercut = 'run_0_attack',
-        body     = 'ground_attack_0_a',
+        jab      = 'plyr_takedown_front',
+        cross    = 'plyr_takedown_front',
+        hook     = 'plyr_takedown_front',
+        uppercut = 'plyr_takedown_front',
+        body     = 'plyr_takedown_front',
     },
-    StrikeFallback = 'short_0_attack',   -- when a moveId has no mapped clip
+    StrikeFallback = 'plyr_takedown_front',   -- when a moveId has no mapped clip
     -- Hit reaction — played on a fighter that just took a hit (wired in a later
     -- pass; present now so that pass is pure config-read). dict + candidate clips.
     HitReact = {

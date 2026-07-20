@@ -20,15 +20,15 @@ Config.Fighters = {
 Config.Styles = {
     brawler = {
         id = 'brawler', name = 'Brawler', movementClipset = 'move_m@brave',
-        animDicts = { strike = 'melee@unarmed@streamed_core', block = 'anim@mp_player_intmenu@key_fob@', hitreact = 'melee@unarmed@streamed_core', finisher = 'mini@takedowns@front' },
+        animDicts = { strike = 'mini@takedowns@front', block = 'anim@mp_player_intmenu@key_fob@', hitreact = 'melee@unarmed@streamed_core', finisher = 'mini@takedowns@front' },
     },
     kickboxer = {
         id = 'kickboxer', name = 'Kickboxer', movementClipset = 'move_m@confident',
-        animDicts = { strike = 'melee@unarmed@streamed_core', block = 'anim@mp_player_intmenu@key_fob@', hitreact = 'melee@unarmed@streamed_core', finisher = 'mini@takedowns@front' },
+        animDicts = { strike = 'mini@takedowns@front', block = 'anim@mp_player_intmenu@key_fob@', hitreact = 'melee@unarmed@streamed_core', finisher = 'mini@takedowns@front' },
     },
     wrestler = {
         id = 'wrestler', name = 'Wrestler', movementClipset = 'move_m@tough_guy@',
-        animDicts = { strike = 'melee@unarmed@streamed_core', block = 'anim@mp_player_intmenu@key_fob@', hitreact = 'melee@unarmed@streamed_core', finisher = 'mini@takedowns@front' },
+        animDicts = { strike = 'mini@takedowns@front', block = 'anim@mp_player_intmenu@key_fob@', hitreact = 'melee@unarmed@streamed_core', finisher = 'mini@takedowns@front' },
     },
 }
 
