@@ -1100,8 +1100,10 @@ local function opRob(src, businessId)
     if not businessId then return end
     local cid = Bridge.GetCitizenId(src)
     if not cid then return end
-    -- Per-robber cooldown checked here; STAMPED only on a successful rob (set before
-    -- any further yield). Anti-spam even if a modified client skips the skill-check.
+    -- Per-robber cooldown: checked here, STAMPED on a successful rob (below). The
+    -- hard anti-stack guards are proximity (one storefront in reach) + the atomic
+    -- per-business cooldown + the eventguard budget, so the on-success stamp (rather
+    -- than a pre-yield stamp) can't be gamed — you can't rob two shops from one spot.
     if onCooldown(robberCd, src, Config.Rob.RobberCooldownSec) then
         return notify(src, 'Business', 'Lay low for a bit before your next job.', 'error')
     end
