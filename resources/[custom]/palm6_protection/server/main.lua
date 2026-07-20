@@ -34,6 +34,37 @@ local function businessAt(src)
     return nil
 end
 
+-- Which turf zone a point sits in — the nearest zone center within OwnedZoneRadius,
+-- or nil if the point is off any known zone. Centers mirror palm6_turf Config.Zones.
+local function nearestZone(coords)
+    local best, bestD
+    for _, z in ipairs(Config.Zones or {}) do
+        local d = Bridge.Distance(coords, z.coords)
+        if d <= Config.OwnedZoneRadius and (not bestD or d < bestD) then best, bestD = z, d end
+    end
+    return best
+end
+
+-- A player-OWNED palm6_business storefront the caller is standing at, IF it sits in
+-- a turf zone — shaped like a Config.Businesses entry (id/label/zone) so the
+-- shakedown flow treats hardcoded and owned targets uniformly, plus isOwned/bizId/
+-- balance for the drain path. Short-circuits nil when the dark gate is off, so
+-- /shakedown stays byte-identical to today. An off-turf shop returns nil (a shop
+-- nobody's crew controls the ground under is not shakeable).
+local function ownedBusinessAt(src)
+    if not Config.ExtortOwned then return nil end
+    local c = Bridge.GetCoords(src)
+    if not c then return nil end
+    local biz = exports.palm6_business:BusinessAtCoords(c.x, c.y, c.z, Config.OwnedRadius)
+    if not biz then return nil end
+    local zone = nearestZone({ x = biz.x, y = biz.y, z = biz.z })
+    if not zone then return nil end
+    return {
+        id = 'owned:' .. tostring(biz.id), label = biz.name, zone = zone.id,
+        isOwned = true, bizId = biz.id, balance = biz.balance or 0,
+    }
+end
+
 -- Seconds remaining before a business can be collected again, or 0 if ready.
 local function cooldownRemaining(businessId)
     local newestAge
@@ -88,7 +119,7 @@ local function cmdShakedown(src)
     local cid = Bridge.GetCitizenId(src)
     if not cid then return end
 
-    local business = businessAt(src)
+    local business = businessAt(src) or ownedBusinessAt(src)
     if not business then
         Bridge.Notify(src, 'Protection', 'No business here to lean on.', 'error')
         return
@@ -113,7 +144,21 @@ local function cmdShakedown(src)
         return
     end
 
-    local amount = math.random(Config.PayoutMin, Config.PayoutMax)
+    local amount
+    if business.isOwned then
+        -- % cap: stings but never wipes — floor(balance * cut) vs the usual roll,
+        -- whichever is smaller. A near-empty register yields nothing (no lock kept).
+        local cap = math.floor((business.balance or 0) * Config.OwnedCutPct)
+        amount = math.min(math.random(Config.PayoutMin, Config.PayoutMax), cap)
+        if amount < 1 then
+            collectLock[business.id] = nil
+            Bridge.Notify(src, 'Protection',
+                ("%s's register is empty — nothing to shake loose."):format(business.label), 'inform')
+            return
+        end
+    else
+        amount = math.random(Config.PayoutMin, Config.PayoutMax)
+    end
     local flagged = math.random() < Config.ReportChance
 
     -- Record the collection (the durable per-business cooldown claim) BEFORE
@@ -133,15 +178,46 @@ local function cmdShakedown(src)
         return
     end
 
-    -- Now hand over the cash; if it fails, void the claim so the business isn't
-    -- falsely locked for a payout that never happened.
-    if not Bridge.GiveItem(src, Config.Payout, amount) then
+    -- Void the durable claim + release the lock (every pay-failure path below).
+    local function voidClaim()
         pcall(function()
             MySQL.update.await("DELETE FROM palm6_protection_collections WHERE id = ?", { rowId })
         end)
         collectLock[business.id] = nil
-        Bridge.Notify(src, 'Protection', "Couldn't take the cash right now — try again.", 'error')
-        return
+    end
+
+    -- Take the money. Hardcoded businesses MINT dirty cash. Owned businesses are
+    -- DRAINED from their real pooled account first (bounded, never minted, never
+    -- overdrawn), THEN the collector is handed the same dirty cash — if that item
+    -- hand-off fails, the drain is refunded so no money is lost. Any failure voids
+    -- the claim so the business isn't falsely locked for a payout that never happened.
+    if business.isOwned then
+        local taken = exports.palm6_business:Extort(business.bizId, amount, cid, 'Shakedown')
+        if not taken or taken < 1 then
+            voidClaim()
+            Bridge.Notify(src, 'Protection', ("%s's register came up dry."):format(business.label), 'error')
+            return
+        end
+        amount = taken   -- Extort is all-or-nothing at `amount`, so taken == amount.
+        if not Bridge.GiveItem(src, Config.Payout, amount) then
+            -- Refund the drain. It only fails if the owner CLOSED the business in the
+            -- gap (its row is gone) — then the amount is destroyed (deflationary, rare,
+            -- non-exploitable). Meter it rather than swallow it, per the money-safety note.
+            if not exports.palm6_business:RefundExtortion(business.bizId, amount, 'shakedown-void') then
+                print(('^3[palm6_protection] shakedown void: $%d could not be refunded to business %s ')
+                    :format(amount, tostring(business.bizId))
+                    .. '(closed mid-shakedown) — destroyed.^0')
+            end
+            voidClaim()
+            Bridge.Notify(src, 'Protection', "Couldn't take the cash right now — try again.", 'error')
+            return
+        end
+    else
+        if not Bridge.GiveItem(src, Config.Payout, amount) then
+            voidClaim()
+            Bridge.Notify(src, 'Protection', "Couldn't take the cash right now — try again.", 'error')
+            return
+        end
     end
 
     -- Reported? fire the alert + evidence and attach the case to the row.

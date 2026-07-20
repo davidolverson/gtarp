@@ -1356,6 +1356,12 @@ exports('Extort', function(businessId, amount, collectorCid, memo)
     if GetInvokingResource() ~= 'palm6_protection' then return 0 end
     amount = sanitizeInt(amount)
     if not amount or amount < 1 then return 0 end
+    -- No self-shakedown: a MEMBER (owner OR employee) can't extort their own
+    -- workplace — the same guard the register robbery enforces (opRob). Without it a
+    -- non-owner employee in the controlling gang could drain the owner's pooled
+    -- account into their own dirty pocket, bypassing the owner-only withdraw.
+    local mem = getMembership(collectorCid)
+    if mem and mem.business_id == businessId then return 0 end
     local bal = debitAccount(businessId, amount)   -- nil if it can't cover / gone
     if not bal then return 0 end
     local actor = (type(collectorCid) == 'string' and collectorCid) or 'unknown'
@@ -1376,8 +1382,14 @@ end)
 
 -- Compensating credit when palm6_protection fails to hand the collector the cash
 -- AFTER Extort already debited — makes the business whole. creditAccount returns nil
--- only if the business was closed in the gap (then the money is gone with the
--- business, which refunded its own balance to the owner on close). Returns success.
+-- only if the business was CLOSED in the gap: opClose captured the already-reduced
+-- balance (it excludes this in-flight drain), so the drained amount is NOT in the
+-- owner's close-refund and cannot be credited back — it is DESTROYED (deflationary,
+-- never minted/duplicated). A false return means exactly that; the caller logs it.
+-- This owner-close race is a second, narrower instance of the documented item-payout
+-- deflation window (cf. the spec's Money-safety ordering) — accepted, not routed
+-- through the pending marker, because that marker is re-driven as a BANK credit by
+-- reconcilePending on boot and would mint on an item payout. Returns success.
 exports('RefundExtortion', function(businessId, amount, memo)
     if not enabled() then return false end
     if GetInvokingResource() ~= 'palm6_protection' then return false end

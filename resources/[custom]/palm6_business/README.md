@@ -150,10 +150,21 @@ the account — paid to their bank.
 ## Server exports (seams for later phases)
 - `exports.palm6_business:GetBusinessOf(citizenid)` → summary | nil
 - `exports.palm6_business:Charge(businessId, payerCid, amount, memo)` → bool
-  (generic player→business revenue; used by `palm6_protection` extortion later)
+  (generic player→business revenue)
 - `exports.palm6_business:GetAccountBalance(businessId)` → int
 - `exports.palm6_business:GetStorefront(businessId)` → `{x,y,z,h}` | nil (Phase 1;
   for a future greeter ped / delivery target / extortion "shake down the shop")
+
+### palm6_protection shake-down seam (all `GetInvokingResource()=='palm6_protection'` guarded)
+- `exports.palm6_business:BusinessAtCoords(x,y,z,radius)` → nearest **placed**
+  storefront within radius `{id,name,biz_type,balance,ownerCid,x,y,z}` | nil.
+  `phase1()`-gated (+ invoking-guard closes an owned-business enumeration oracle).
+- `exports.palm6_business:Extort(businessId, amount, collectorCid, memo)` → amount
+  actually taken (0 if the account can't cover it / closed / dark). Atomic guarded
+  debit (never overdraws, never mints), `extortion` ledger row, owner notified if
+  online.
+- `exports.palm6_business:RefundExtortion(businessId, amount, memo)` → bool
+  (compensating credit if the racket's cash hand-off fails after the debit).
 
 ## Tables (dbmigrate 0068 + 0070)
 `palm6_businesses`, `palm6_business_members`, `palm6_business_ledger` (0068).
@@ -165,7 +176,7 @@ idempotent in `palm6_dbmigrate`.
 Heavier type-specific *systems* beyond the service profiles above — a dealership
 **vehicle lot** (spawn + ownership transfer), a bar **venue/DJ revenue window**,
 garage **repairs** wired to vehicle damage — each needs its own audit (vehicle
-sales touch real money + ownership). Also: `palm6_protection` extortion of owned
-businesses, store-SKU cosmetics (nameplate, storefront skin, Discord
-business-registry badge), a manager delegate role, and a website `/business`
-directory page.
+sales touch real money + ownership). Also: store-SKU cosmetics (nameplate,
+storefront skin, Discord business-registry badge). `palm6_protection` extortion of
+owned businesses, the manager delegate role, and the website `/business` directory
+are now **built** (extortion ships DARK behind `palm6_protection Config.ExtortOwned`).

@@ -29,7 +29,9 @@ auto-start).
 | **Per-type mechanics** (1b) | `882a3f1` | **DARK** `Config.PerTypeMechanics` | None |
 | **Manager role** (1c) | `e6a5ebc` `de85f42` `a7a91aa` | **DARK** `Config.ManagerRole` | None |
 | **Transfer / close** | `46bc4db` `84e98f7` `ec612db` `828950f` | **DARK** `Config.OwnershipLifecycle` | None |
-| Docs | `802e992` `75a6131` this file | docs only | None |
+| **Register robbery** | `92221f7` | **DARK** `Config.Robbery` | None |
+| **Extort owned biz** | (this session) | **DARK** `palm6_protection Config.ExtortOwned` | None |
+| Docs | `802e992` `75a6131` this file + specs | docs only | None |
 
 > The 🔴 **allowlist connect-gate-hang fix (`12e6c6a`) is NOT yet in production.**
 > On a rebuilt/fresh prod DB the old code can hang every join on "Checking
@@ -102,12 +104,20 @@ The `palm6_allowlist` boot banner prints `SET`/`UNSET` + the role count.
 Order is your call, but flip one, deploy, feel-test, then the next. Every gate is
 independent and reverts by flipping back to `false` + redeploy.
 
-| Gate (`palm6_business/shared/config.lua`) | Feel-test | Migration it needs |
+| Gate | Feel-test | Migration it needs |
 |---|---|---|
 | `Config.Phase1Enabled = true` (storefronts) | Owner: menu → Storefront → Place → blip appears on map → walk away → mgmt gated → walk back → serve at shop → customize blip → passerby sees read-only card → Move / Remove | `0070` (auto-runs on boot) |
 | `Config.PerTypeMechanics = true` | For each type (restaurant/bar/garage/retail/dealership): serve → confirm its own payout/cooldown/cap/supply numbers + themed wording | none |
 | `Config.ManagerRole = true` | Owner promotes an employee → Manager. Manager CAN hire/fire-below/payroll-once-per-day/buy-supply/serve. Manager CANNOT withdraw / setWage / rename / promote / **pay themselves**. Demote back. | `0071` (auto-runs on boot) |
 | `Config.OwnershipLifecycle = true` (transfer/close) | Transfer to an employee (they become owner, you drop to employee). Close a test business (balance refunds to owner bank, roster + business deleted). | none |
+| `Config.Robbery = true` (`/robstore`) | At a **placed storefront** you don't own, `/robstore` → skill-check → up to 25% of the register (cap $5000) lands CLEAN in your bank → 45-min per-business + 10-min per-robber cooldown → police alert → owner notified if online. **Needs `Phase1Enabled` (a placed storefront).** | `0072` (auto-runs on boot) |
+| `palm6_protection Config.ExtortOwned = true` (`/shakedown`) | Stand at a **placed storefront on a turf zone your gang controls** → `/shakedown` → up to 15% of its real account (never wipes) lands as `black_money` → 30-min cooldown → owner notified if online → ledger shows `extortion`. Off-turf shop / empty register → nothing. **Needs `Phase1Enabled` (storefront to stand at) + turf control.** | none (reuses `palm6_protection_collections`) |
+
+All six business-side gates live in `palm6_business/shared/config.lua`; the extortion
+gate lives in `palm6_protection/shared/config.lua`. Note that **Robbery** (any player,
+clean-to-bank) and **Extortion** (gang-with-turf, dirty `black_money`) are distinct
+mechanics that can BOTH hit the same storefront — enable them one at a time and feel
+the combined drain pressure on a business before running both live.
 
 To prove crash-recovery on any money path: start a large withdraw/payroll, kill +
 restart the server mid-payout, confirm the boot reconcile re-pays or makes the
@@ -127,7 +137,7 @@ and ledgers persist.
 
 ## 4. Boot verification (after each deploy + Start)
 - `[palm6_business] ENABLED — player-owned businesses live.` (core is on).
-- `[palm6_dbmigrate]` prints `OK` for `0068`, `0070`, `0071`.
+- `[palm6_dbmigrate]` prints `OK` for `0068`, `0070`, `0071`, `0072`.
 - `[palm6_allowlist] ===` banner with role count + convar SET/UNSET.
 - `[palm6_founder]` boots without error.
 - 0 SCRIPT ERROR (FiveM drops erroring resources → all-present = clean).

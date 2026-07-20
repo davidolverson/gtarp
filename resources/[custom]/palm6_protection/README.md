@@ -14,7 +14,11 @@ same way `palm6_numbers` winnings do.
 
 - **`/shakedown`** — at a business whose turf zone your gang controls, collect
   protection money (paid in `black_money`). Each business is "paid up" for
-  ~30 min after any collection. Small chance the business calls the cops.
+  ~30 min after any collection. Small chance the business calls the cops. With
+  `Config.ExtortOwned` on (dark by default), this ALSO works at a **player-owned
+  `palm6_business` storefront** sitting on your controlled turf — draining its
+  **real pooled account** (bounded, never minted) instead of minting; see
+  "Extorting player-owned businesses" below.
 - **`/rackets`** — read-only: how many business blocks your crew controls and
   how many are ready to collect vs still paid up.
 
@@ -61,8 +65,38 @@ shakedown: gang, business_id, zone_id, citizenid, amount, flagged,
 evidence_case_id. Export `GetSummary()` → `{ businesses, shakedowns,
 totalCollected, flagged }`.
 
+## Extorting player-owned businesses (`Config.ExtortOwned`, DARK by default)
+
+The hardcoded `Config.Businesses` above **mint** dirty cash. This optional layer
+lets the same `/shakedown` lean on a **player-owned `palm6_business` storefront**
+in a zone your gang controls, taking the money out of that business's **real
+pooled account** instead — the site's "every dollar from another citizen"
+integrity carried into the racket.
+
+- **Bounded, never wipes:** a shakedown takes
+  `min(random(PayoutMin..PayoutMax), floor(balance * OwnedCutPct))` — up to 15% of
+  the register, so a big business pays more and a near-empty one yields nothing
+  (≥ 85% always remains). Still paid to the collector as `black_money`.
+- **Turf-gated, passive:** the storefront must sit in a controlled zone (nearest
+  `Config.Zones` center within `OwnedZoneRadius`; off-turf shops aren't shakeable).
+  Works whether or not the owner is online — the owner is notified if online and
+  the business ledger always records an `extortion` row.
+- **No mint, no overdraw:** the drain goes through three invoking-resource-guarded
+  `palm6_business` exports — `BusinessAtCoords` (find the shop), `Extort` (atomic
+  guarded debit + ledger + owner notify), `RefundExtortion` (compensating credit
+  if the cash hand-off fails after the debit). Cooldown/evidence reuse the same
+  `palm6_protection_collections` table, namespaced `owned:<id>` (no new migration).
+- Distinct from `palm6_business`'s own **register robbery** (`/robstore`, any
+  player, clean-to-bank): this is organised, turf-based, and dirty.
+
+While `Config.ExtortOwned = false`, `/shakedown` and `/rackets` are byte-identical
+to the hardcoded-only behavior. See
+`docs/superpowers/specs/2026-07-20-palm6-protection-extort-owned-design.md`.
+
 ## Tuning (`shared/config.lua`)
 
 `Config.Businesses` (id → turf zone → coords; Tier-3 placeholders reusing
 turf's validated zone points — retune to real storefronts in-game),
 `PayoutMin`/`PayoutMax`, `CollectIntervalSec`, `ReportChance`, `CooldownSec`.
+Owned-business layer: `Config.ExtortOwned`, `Config.Zones` (mirror of
+`palm6_turf`), `OwnedZoneRadius`, `OwnedRadius`, `OwnedCutPct`.

@@ -64,3 +64,43 @@ Config.Evidence = {
     IncidentKeyPrefix = 'extortion:',
     CaseTitle         = 'Extortion / protection racket',
 }
+
+-- ---------------------------------------------------------------------------
+-- OWNED-BUSINESS EXTORTION (Phase 1 seam -> palm6_business). DARK by default.
+-- When true, a gang controlling a turf zone can also shake down a PLAYER-OWNED
+-- palm6_business storefront that sits in that zone, draining its REAL pooled
+-- account (bounded, never minted) instead of the hardcoded mint above. When
+-- false, the owned-business resolver short-circuits nil on its first line, so
+-- /shakedown and /rackets behave byte-identically to today. Effectively also
+-- needs palm6_business Config.Phase1Enabled (an owned business with no placed
+-- storefront has nothing to stand at). See docs/superpowers/specs/
+-- 2026-07-20-palm6-protection-extort-owned-design.md.
+-- ---------------------------------------------------------------------------
+Config.ExtortOwned = false
+
+-- Local mirror of palm6_turf Config.Zones centers — KEEP IN SYNC with palm6_turf.
+-- Used only to resolve which turf zone a player-placed storefront sits in (turf
+-- exposes no point->zone lookup and its zones are 3m interaction points). A
+-- storefront belongs to the nearest zone whose center is within OwnedZoneRadius;
+-- ownership itself is still read live via Bridge.GetZoneOwner (the DB cross-read).
+Config.Zones = {
+    { id = 'legion_square', coords = vector3(195.17, -933.77, 30.69) },
+    { id = 'grove_street',  coords = vector3(-47.30, -1757.40, 29.42) },
+    { id = 'mirror_park',   coords = vector3(1163.10, -322.90, 69.20) },
+    { id = 'vinewood',      coords = vector3(-1222.10, -906.90, 12.33) },
+    { id = 'sandy_shores',  coords = vector3(1961.30, 3740.30, 32.34) },
+    { id = 'paleto_bay',    coords = vector3(1728.66, 6414.16, 35.04) },
+}
+
+-- A storefront within this distance of a zone center is "in" that zone (nearest
+-- wins). Wide enough to cover a neighborhood, since turf zones are single points.
+Config.OwnedZoneRadius = 200.0
+
+-- How close the collector must stand to the storefront to shake it (mirrors the
+-- hardcoded businesses' per-entry radius).
+Config.OwnedRadius = 14.0
+
+-- Max fraction of a business's account a single shakedown can take — it stings but
+-- never wipes the register (>= 1 - OwnedCutPct always remains). The actual take is
+-- min(random(PayoutMin..PayoutMax), floor(balance * OwnedCutPct)).
+Config.OwnedCutPct = 0.15
