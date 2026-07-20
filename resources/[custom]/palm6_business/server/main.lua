@@ -253,20 +253,35 @@ local function debitAccountWithPending(businessId, amount, payeeCid)
     return MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0
 end
 
+-- In-flight settle marker (per business). Set for the WHOLE claim->credit->restore
+-- window, so opClose can refuse to delete a business whose payout is mid-settle:
+-- during that window the marker is already cleared (claim-before-credit) and the
+-- account is 0, so the delete guard alone can't see the in-limbo payout. Defined
+-- before settlePayout so the local is in scope.
+local settleBusy = {}
+
 -- Settle a pending payout exactly once. CLAIM-BEFORE-CREDIT: atomically clear the
 -- marker first (so a crash after the claim can never re-pay -> no double-pay,
 -- matching the repo's claim-before-credit idiom), THEN issue the bank credit;
 -- reverse the account debit if the credit fails in-process. Callable from the
 -- live path OR the boot reconcile — whichever wins the atomic claim pays once.
--- Returns 'paid' | 'lost' (claimed but credit failed, account refunded) | 'taken'
+-- Returns 'paid' | 'lost' (claimed but credit failed, refunded) | 'taken'
 -- (another caller already claimed it).
 local function settlePayout(businessId, payeeCid, amount, reason)
+    settleBusy[businessId] = true
     local claimed = MySQL.update.await(
         'UPDATE palm6_businesses SET pending_amount = 0, pending_cid = NULL, pending_at = 0 WHERE id = ? AND pending_amount = ? AND pending_cid = ?',
         { businessId, amount, payeeCid })
-    if claimed ~= 1 then return 'taken' end
-    if Bridge.CreditBankByCitizenId(payeeCid, amount, reason) then return 'paid' end
-    creditAccount(businessId, amount, payeeCid, 'payout-refund', 'Payout reversed (credit failed)')
+    if claimed ~= 1 then settleBusy[businessId] = nil; return 'taken' end
+    if Bridge.CreditBankByCitizenId(payeeCid, amount, reason) then settleBusy[businessId] = nil; return 'paid' end
+    -- Credit failed: restore to the account. If the business is GONE (creditAccount
+    -- returns nil — e.g. it was closed in a race the settleBusy guard didn't cover),
+    -- send the money straight to the payee's bank instead of dropping it. Belt to the
+    -- settleBusy braces: the payout money is never destroyed.
+    if not creditAccount(businessId, amount, payeeCid, 'payout-refund', 'Payout reversed (credit failed)') then
+        Bridge.CreditBankByCitizenId(payeeCid, amount, 'business-payout-orphan-refund')
+    end
+    settleBusy[businessId] = nil
     return 'lost'
 end
 
@@ -755,6 +770,13 @@ local function opClose(src)
     local m = getMembership(cid)
     if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can close the business.', 'error') end
     local bizId = m.business_id
+    -- Refuse while a payout/payroll is mid-settle for this business: during the
+    -- claim->credit window the marker is cleared and the account is 0, so the delete
+    -- guard alone can't see the in-limbo payout. These in-memory flags are set
+    -- synchronously before any DB await, so a settle already in flight is visible here.
+    if settleBusy[bizId] or payrollBusy[bizId] then
+        return notify(src, 'Business', 'A payout is still settling — try again in a moment.', 'error')
+    end
     -- Atomically drain the whole balance INTO the pending marker (MySQL evaluates SET
     -- left-to-right, so pending_amount reads the OLD balance before it is zeroed). The
     -- pending_amount=0 guard means a payout already mid-settle blocks the close — retry.
