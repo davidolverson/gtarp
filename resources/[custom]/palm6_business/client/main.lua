@@ -1,0 +1,206 @@
+-- ============================================================================
+-- palm6_business/client/main.lua
+--
+-- Menu flow only. Receives server snapshots (menuData / ledgerData) and the
+-- hire/charge prompts, builds ox_lib menus via Game.* (bridge/cl_game.lua), and
+-- sends intent back to the server. The server re-validates everything; the
+-- client is pure presentation. No world coords/blips/peds in Phase 0.
+-- ============================================================================
+
+local lastData = nil
+
+local function money(n) return ('$%s'):format(n or 0) end
+
+-- ---------------------------------------------------------------------------
+-- Register flow (no membership)
+-- ---------------------------------------------------------------------------
+local function doRegister(typeKey)
+    local res = Game.InputDialog('Register a business', {
+        { type = 'input', label = 'Business name', required = true, min = 3, max = 48 },
+    })
+    if not res or not res[1] then return end
+    TriggerServerEvent('palm6_business:register', res[1], typeKey)
+end
+
+local function renderRegister(data)
+    local opts = {}
+    for _, t in ipairs(data.types or {}) do
+        opts[#opts + 1] = {
+            title = t.label,
+            description = t.flavor,
+            arrow = true,
+            onSelect = function() doRegister(t.key) end,
+        }
+    end
+    local cost = data.cfg and data.cfg.registrationCost or 0
+    Game.OpenMenu('palm6_business_register', ('Start a business  ·  fee %s'):format(money(cost)), opts)
+end
+
+-- ---------------------------------------------------------------------------
+-- Account submenu (owner)
+-- ---------------------------------------------------------------------------
+local function renderAccount(b)
+    local opts = {
+        { title = ('Balance: %s'):format(money(b.balance)), disabled = true },
+        {
+            title = 'Deposit', description = 'Move money from your bank into the business',
+            onSelect = function()
+                local r = Game.InputDialog('Deposit', { { type = 'number', label = 'Amount', required = true, min = 1 } })
+                if r and r[1] then TriggerServerEvent('palm6_business:deposit', math.floor(r[1])) end
+            end,
+        },
+        {
+            title = 'Withdraw', description = 'Move money from the business to your bank',
+            onSelect = function()
+                local r = Game.InputDialog('Withdraw', { { type = 'number', label = 'Amount', required = true, min = 1 } })
+                if r and r[1] then TriggerServerEvent('palm6_business:withdraw', math.floor(r[1])) end
+            end,
+        },
+    }
+    Game.OpenMenu('palm6_business_account', 'Account', opts, 'palm6_business_root')
+end
+
+-- ---------------------------------------------------------------------------
+-- Employees submenu (owner)
+-- ---------------------------------------------------------------------------
+local function employeeActions(b, emp)
+    local opts = {
+        {
+            title = 'Set wage', description = ('Current: %s/run'):format(money(emp.wage)),
+            onSelect = function()
+                local r = Game.InputDialog('Set wage', { { type = 'number', label = 'Per-payroll wage', required = true, min = 0 } })
+                if r and r[1] then TriggerServerEvent('palm6_business:setWage', emp.citizenid, math.floor(r[1])) end
+            end,
+        },
+        {
+            title = 'Fire', description = 'Remove from the roster',
+            onSelect = function()
+                if Game.Confirm('Fire', ('Remove %s?'):format(emp.name or emp.citizenid)) then
+                    TriggerServerEvent('palm6_business:fire', emp.citizenid)
+                end
+            end,
+        },
+    }
+    Game.OpenMenu('palm6_business_emp', emp.name or emp.citizenid, opts, 'palm6_business_employees')
+end
+
+local function renderEmployees(b)
+    local opts = {
+        { title = 'Hire someone nearby', description = 'Offer a job to the closest unaffiliated person', onSelect = function() TriggerServerEvent('palm6_business:hireNearest') end },
+        { title = 'Run payroll', description = 'Pay clocked-in employees their wage from the account', onSelect = function() TriggerServerEvent('palm6_business:runPayroll') end },
+    }
+    for _, emp in ipairs(b.roster or {}) do
+        if emp.role < 3 then
+            opts[#opts + 1] = {
+                title = ('%s  ·  %s'):format(emp.name or emp.citizenid, money(emp.wage)),
+                description = (emp.clocked_in == 1) and 'On the clock' or 'Off the clock',
+                arrow = true,
+                onSelect = function() employeeActions(b, emp) end,
+            }
+        end
+    end
+    Game.OpenMenu('palm6_business_employees', 'Employees', opts, 'palm6_business_root')
+end
+
+-- ---------------------------------------------------------------------------
+-- Operations submenu (any staff)
+-- ---------------------------------------------------------------------------
+local function doServe()
+    if Game.ServeAction() then
+        TriggerServerEvent('palm6_business:serve')
+    else
+        Game.Notify({ title = 'Business', description = 'Fumbled the order.', type = 'error' })
+    end
+end
+
+local function doCharge()
+    local r = Game.InputDialog('Charge a customer', {
+        { type = 'number', label = 'Amount', required = true, min = 1 },
+        { type = 'input', label = 'For (memo)', max = 64 },
+    })
+    if r and r[1] then TriggerServerEvent('palm6_business:chargeNearest', math.floor(r[1]), r[2]) end
+end
+
+local function renderOperations(b, cfg)
+    local opts = {
+        { title = ('Serve a walk-in  (+%s)'):format(money(cfg.servePayout)), description = ('Supply: %d  ·  today %s / %s'):format(b.supply or 0, money(b.dayIncome), money(b.dailyCap)), onSelect = doServe },
+        { title = 'Charge a nearby customer', description = 'Ring up the closest player', onSelect = doCharge },
+    }
+    if b.role >= 3 then
+        opts[#opts + 1] = {
+            title = ('Buy supply  (%s each)'):format(money(cfg.stockUnitCost)),
+            description = ('Storage: %d / %d'):format(b.supply or 0, cfg.maxSupply),
+            onSelect = function()
+                local r = Game.InputDialog('Buy supply', { { type = 'number', label = 'Units', required = true, min = 1 } })
+                if r and r[1] then TriggerServerEvent('palm6_business:buyStock', math.floor(r[1])) end
+            end,
+        }
+    end
+    Game.OpenMenu('palm6_business_ops', 'Operations', opts, 'palm6_business_root')
+end
+
+-- ---------------------------------------------------------------------------
+-- Root
+-- ---------------------------------------------------------------------------
+local function renderRoot(data)
+    if not data.enabled then
+        return Game.Notify({ title = 'Business', description = 'Businesses are not open yet.', type = 'error' })
+    end
+    if not data.business then return renderRegister(data) end
+    local b = data.business
+    local cfg = data.cfg or {}
+    local opts = {}
+    opts[#opts + 1] = { title = b.name, description = ('%s  ·  you are %s'):format(b.biz_type or '', b.roleName or ''), disabled = true }
+
+    if b.role >= 3 then
+        opts[#opts + 1] = { title = ('Account  ·  %s'):format(money(b.balance)), arrow = true, onSelect = function() renderAccount(b) end }
+        opts[#opts + 1] = { title = 'Employees', description = ('%d on the roster'):format(#(b.roster or {})), arrow = true, onSelect = function() renderEmployees(b) end }
+    end
+    opts[#opts + 1] = { title = 'Operations', description = 'Serve, charge, supply', arrow = true, onSelect = function() renderOperations(b, cfg) end }
+    opts[#opts + 1] = {
+        title = b.clockedIn and 'Clock out' or 'Clock in',
+        description = b.clockedIn and 'You are on the clock' or 'Clock in to serve customers',
+        onSelect = function() TriggerServerEvent('palm6_business:clock', not b.clockedIn) end,
+    }
+    opts[#opts + 1] = { title = 'View ledger', description = 'Recent money movements', onSelect = function() TriggerServerEvent('palm6_business:viewLedger') end }
+    if b.role >= 3 then
+        opts[#opts + 1] = {
+            title = 'Rename business',
+            onSelect = function()
+                local r = Game.InputDialog('Rename', { { type = 'input', label = 'New name', required = true, min = 3, max = 48 } })
+                if r and r[1] then TriggerServerEvent('palm6_business:rename', r[1]) end
+            end,
+        }
+    else
+        opts[#opts + 1] = { title = 'Resign', description = 'Leave this business', onSelect = function()
+            if Game.Confirm('Resign', 'Leave this business?') then TriggerServerEvent('palm6_business:resign') end
+        end }
+    end
+    Game.OpenMenu('palm6_business_root', b.name, opts)
+end
+
+RegisterNetEvent('palm6_business:menuData', function(data)
+    lastData = data
+    renderRoot(data)
+end)
+
+RegisterNetEvent('palm6_business:ledgerData', function(d)
+    local lines = {}
+    for _, r in ipairs(d.rows or {}) do
+        local sign = (r.amount and r.amount < 0) and '-' or '+'
+        lines[#lines + 1] = ('**%s**  %s%s  →  %s  \n%s'):format(r.action or '?', sign, money(math.abs(r.amount or 0)), money(r.balance_after), r.memo or '')
+    end
+    local body = (#lines > 0) and table.concat(lines, '  \n') or 'No activity yet.'
+    Game.ShowReport(('%s · ledger'):format(d.name or 'Business'), body)
+end)
+
+RegisterNetEvent('palm6_business:hirePrompt', function(d)
+    if Game.Confirm('Job offer', ('**%s** is offering you a job. Accept?'):format(d.businessName or 'A business')) then
+        TriggerServerEvent('palm6_business:acceptHire')
+    end
+end)
+
+RegisterNetEvent('palm6_business:chargePrompt', function(d)
+    local ok = Game.Confirm('Payment', ('**%s** is charging you %s for "%s". Pay?'):format(d.businessName or 'A business', money(d.amount), d.memo or 'a sale'))
+    if ok then TriggerServerEvent('palm6_business:acceptCharge') end
+end)

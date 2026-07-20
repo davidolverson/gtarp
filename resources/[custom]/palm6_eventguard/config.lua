@@ -257,4 +257,32 @@ Config.Events = {
     ['palm6_fc_combat:connect']   = { calls = 60, window_seconds = 10, class = 'combat' },
     ['palm6_fc_combat:block']     = { calls = 40, window_seconds = 10, class = 'combat' },
     ['palm6_fc_combat:break']     = { calls = 80, window_seconds = 10, class = 'combat' },
+
+    -- palm6_business — player-owned businesses. Money-touching events are
+    -- `deposit`/`withdraw`/`buyStock`/`serve`/`runPayroll`/`acceptCharge` (each
+    -- server-re-validated + atomic + charge-before-credit); `register` charges
+    -- the founder's bank; the rest are membership/menu. `serve` is the most
+    -- frequent (repeated walk-in serving) so it gets the widest budget; its money
+    -- is bounded server-side by supply/cooldown/daily-cap regardless. `openMenu`
+    -- fans a DB-backed roster snapshot per call -> blunt budget as defense-in-depth
+    -- (same reasoning as ox_inventory:openInventory / palm6_gangs:requestMenu).
+    -- ensure order in custom.cfg puts palm6_eventguard BEFORE palm6_business so
+    -- these guards register first in the handler chain.
+    ['palm6_business:openMenu']     = { calls = 20, window_seconds = 30 },
+    ['palm6_business:register']     = { calls = 5,  window_seconds = 60 },
+    ['palm6_business:deposit']      = { calls = 20, window_seconds = 60 },
+    ['palm6_business:withdraw']     = { calls = 20, window_seconds = 60 },
+    ['palm6_business:buyStock']     = { calls = 20, window_seconds = 60 },
+    ['palm6_business:serve']        = { calls = 40, window_seconds = 60 },
+    ['palm6_business:clock']        = { calls = 15, window_seconds = 60 },
+    ['palm6_business:hireNearest']  = { calls = 15, window_seconds = 60 },
+    ['palm6_business:acceptHire']   = { calls = 10, window_seconds = 60 },
+    ['palm6_business:fire']         = { calls = 15, window_seconds = 60 },
+    ['palm6_business:setWage']      = { calls = 20, window_seconds = 60 },
+    ['palm6_business:runPayroll']   = { calls = 10, window_seconds = 60 },
+    ['palm6_business:chargeNearest']= { calls = 20, window_seconds = 60 },
+    ['palm6_business:acceptCharge'] = { calls = 15, window_seconds = 60 },
+    ['palm6_business:viewLedger']   = { calls = 20, window_seconds = 60 },
+    ['palm6_business:rename']       = { calls = 5,  window_seconds = 60 },
+    ['palm6_business:resign']       = { calls = 5,  window_seconds = 60 },
 }

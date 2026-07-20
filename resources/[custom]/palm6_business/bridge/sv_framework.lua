@@ -1,0 +1,143 @@
+-- ============================================================================
+-- palm6_business/bridge/sv_framework.lua
+--
+-- Framework adapter (server). The ONLY file in this resource that calls
+-- qbx_core / server natives. server/main.lua holds the business logic and calls
+-- Bridge.* only, so a port to GTA VI is a rewrite of THIS FILE (the bridge
+-- pattern, same as palm6_gangs). Our OWN SQL (palm6_businesses / _members /
+-- _ledger) stays in the logic layer — our schema, fully portable. Only reads/
+-- writes against the FRAMEWORK's own player money belong here.
+--
+-- Business money is BANK money (clean, auditable) throughout — deposits pull the
+-- owner's bank, charges pull the customer's bank, payroll/withdraw credit a bank.
+-- ============================================================================
+
+Bridge = {}
+
+local function getPlayer(src)
+    local ok, p = pcall(function() return exports.qbx_core:GetPlayer(src) end)
+    return ok and p or nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Identity
+-- ---------------------------------------------------------------------------
+
+function Bridge.GetCitizenId(src)
+    local p = getPlayer(src)
+    return p and p.PlayerData and p.PlayerData.citizenid or nil
+end
+
+-- Character display name for the roster / ledger. NB: the :gsub-count leak that
+-- broke gang create/join is avoided by assigning to a local before returning.
+function Bridge.GetPlayerName(src)
+    local p = getPlayer(src)
+    if p and p.PlayerData and p.PlayerData.charinfo then
+        local ci = p.PlayerData.charinfo
+        local name = ('%s %s'):format(ci.firstname or '', ci.lastname or '')
+        name = name:gsub('^%s+', ''):gsub('%s+$', '')
+        return name
+    end
+    return GetPlayerName(src) or ('player %d'):format(src)
+end
+
+-- ---------------------------------------------------------------------------
+-- Money (BANK — clean, auditable)
+-- ---------------------------------------------------------------------------
+
+-- Whole-dollar bank balance the player holds right now.
+function Bridge.GetBank(src)
+    local p = getPlayer(src)
+    if not p or not p.PlayerData or not p.PlayerData.money then return 0 end
+    return tonumber(p.PlayerData.money.bank) or 0
+end
+
+-- Charge `amount` from the player's BANK. Returns true ONLY if the framework
+-- confirms it left their account (affordability checked before the debit), so
+-- the caller credits the business account nothing it did not take.
+function Bridge.ChargeBank(src, amount, reason)
+    if amount <= 0 then return true end
+    local p = getPlayer(src)
+    if not p or not p.Functions then return false end
+    if (tonumber(p.PlayerData.money.bank) or 0) < amount then return false end
+    local ok, res = pcall(function() return p.Functions.RemoveMoney('bank', amount, reason) end)
+    return ok and res ~= false
+end
+
+-- Credit a bank balance by citizenid, online or offline (payroll/withdraw must
+-- land even for an employee who logged off, and the account-refund path on a
+-- failed credit). Online -> AddMoney; offline -> the JSON_SET SQL fallback.
+function Bridge.CreditBankByCitizenId(citizenid, amount, reason)
+    if amount <= 0 then return true end
+    -- Defense-in-depth: never credit a sentinel actor id (NPC/system).
+    if type(citizenid) == 'string' and citizenid:sub(1, 2) == '__' then return false end
+    local src = Bridge.GetSourceByCitizenId(citizenid)
+    if src then
+        local p = getPlayer(src)
+        if p and p.Functions then
+            local ok = pcall(function() p.Functions.AddMoney('bank', amount, reason) end)
+            if ok then return true end
+        end
+    end
+    return pcall(function()
+        MySQL.update.await(
+            "UPDATE players SET money = JSON_SET(money, '$.bank', CAST(JSON_EXTRACT(money,'$.bank') AS UNSIGNED) + ?) WHERE citizenid = ?",
+            { amount, citizenid })
+    end) and true or false
+end
+
+-- ---------------------------------------------------------------------------
+-- Presence / world
+-- ---------------------------------------------------------------------------
+
+function Bridge.GetOnlinePlayers()
+    local out = {}
+    for _, sid in ipairs(GetPlayers()) do out[#out + 1] = tonumber(sid) end
+    return out
+end
+
+function Bridge.GetSourceByCitizenId(citizenid)
+    for _, sid in ipairs(GetPlayers()) do
+        sid = tonumber(sid)
+        local p = getPlayer(sid)
+        if p and p.PlayerData and p.PlayerData.citizenid == citizenid then
+            return sid
+        end
+    end
+    return nil
+end
+
+-- Caller's ped position as {x,y,z}, or nil. Server-side proximity anti-abuse for
+-- hire/charge target selection — never trust a client-supplied position.
+function Bridge.GetCoords(src)
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 then return nil end
+    local c = GetEntityCoords(ped)
+    return { x = c.x, y = c.y, z = c.z }
+end
+
+function Bridge.Distance(a, b)
+    local dx, dy, dz = a.x - b.x, a.y - b.y, (a.z or 0) - (b.z or 0)
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+-- ---------------------------------------------------------------------------
+-- Notify / commands
+-- ---------------------------------------------------------------------------
+
+function Bridge.Notify(src, title, msg, t)
+    if not src or src == 0 then return end
+    TriggerClientEvent('ox_lib:notify', src, {
+        title = title, description = msg, type = t or 'inform',
+    })
+end
+
+function Bridge.ResourceStarted(name)
+    return GetResourceState(name) == 'started'
+end
+
+-- Unrestricted chat command (all gating is server-side in the handler, or the
+-- command just opens the menu which is itself server-gated).
+function Bridge.RegisterCommand(name, handler)
+    RegisterCommand(name, handler, false)
+end

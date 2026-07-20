@@ -459,6 +459,50 @@ CREATE TABLE IF NOT EXISTS `palm6_racing_results` (
     PRIMARY KEY (id),
     KEY idx_racing_results_cid_time (citizenid, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    -- 0068: palm6_business (player-owned businesses, Phase 0). A registry, a
+    -- pooled BANK account, an employee roster, and a ledger. No money columns that
+    -- can mint: account_balance is pooled real money, supply_units is a
+    -- clean-money cost basis for the capped NPC-income faucet, day_npc_income is
+    -- the per-business daily cap counter. All three idempotent CREATE IF NOT EXISTS.
+    { name = '0068 palm6_businesses', sql = [[
+CREATE TABLE IF NOT EXISTS `palm6_businesses` (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    owner_cid VARCHAR(64) NOT NULL,
+    name VARCHAR(48) NOT NULL,
+    biz_type VARCHAR(24) NOT NULL,
+    account_balance BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    supply_units INT UNSIGNED NOT NULL DEFAULT 0,
+    day_key VARCHAR(10) NOT NULL DEFAULT '',
+    day_npc_income INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_palm6_business_name (name),
+    INDEX idx_palm6_business_owner (owner_cid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    { name = '0068 palm6_business_members', sql = [[
+CREATE TABLE IF NOT EXISTS `palm6_business_members` (
+    citizenid VARCHAR(64) NOT NULL PRIMARY KEY,
+    business_id INT UNSIGNED NOT NULL,
+    role TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    wage INT UNSIGNED NOT NULL DEFAULT 0,
+    clocked_in TINYINT(1) NOT NULL DEFAULT 0,
+    last_serve_at BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    name VARCHAR(64) NULL,
+    hired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_palm6_business_members_biz (business_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    { name = '0068 palm6_business_ledger', sql = [[
+CREATE TABLE IF NOT EXISTS `palm6_business_ledger` (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    business_id INT UNSIGNED NOT NULL,
+    actor_cid VARCHAR(64) NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    amount BIGINT NOT NULL,
+    balance_after BIGINT UNSIGNED NOT NULL,
+    memo VARCHAR(128) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_palm6_business_ledger_biz (business_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
 }
 
 CreateThread(function()
