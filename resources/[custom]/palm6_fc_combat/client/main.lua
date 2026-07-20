@@ -143,17 +143,23 @@ local Fighter = { matchId = false, hardening = false }
 
 -- Clip name WITHIN the style's strike dict (server picks the dict; the clip is
 -- pure feel — tune/replace in David's feel-test, zero logic impact).
--- Real unarmed melee attack clips from the style strike dict (melee@unarmed@
--- streamed_core). The old 'plyr_takedown_front_lefthook' was not a real clip, so
--- swings never animated. These are the core attack anims; David feel-tests + swaps
--- any that read wrong (a bad name just no-ops the swing, damage still lands).
-local STRIKE_CLIP = {
+-- Strike clip per moveId, sourced from fc_core Config.Anims.StrikeClips (the single
+-- feel-tuning surface) with a hardcoded fallback so a momentary fc_core hiccup never
+-- leaves a swing clipless. The fighter's style supplies the DICT; this is the CLIP
+-- within it. Both the human swing and the CPU-puppet swing resolve through here.
+local STRIKE_CLIP_FALLBACK = {
     jab      = 'short_0_attack',
     cross    = 'long_0_attack',
     hook     = 'walk_0_attack',
     uppercut = 'run_0_attack',
     body     = 'ground_attack_0_a',
 }
+local function strikeClip(moveId)
+    local ok, cfg = pcall(function() return exports.palm6_fc_core:Config() end)
+    local a = ok and cfg and cfg.Anims or nil
+    if a and a.StrikeClips and a.StrikeClips[moveId] then return a.StrikeClips[moveId] end
+    return STRIKE_CLIP_FALLBACK[moveId] or (a and a.StrikeFallback) or 'short_0_attack'
+end
 
 -- Device-agnostic combat input poll (Xbox controller + keyboard via the DISABLED
 -- melee controls). Forward-declared here; assigned below once throwStrike + the
@@ -194,7 +200,7 @@ end)
 -- Attacker's own swing (targeted to us; replication shows it to everyone else).
 RegisterNetEvent('palm6_fc_combat:playClip', function(data)
     if type(data) ~= 'table' then return end
-    local clip = STRIKE_CLIP[data.moveId] or 'plyr_takedown_front_lefthook'
+    local clip = strikeClip(data.moveId)
     Game.PlayStrikeClip(data.animDict, clip)
 end)
 
@@ -226,7 +232,7 @@ end)
 
 RegisterNetEvent('palm6_fc_combat:cpuSwing', function(d)
     if type(d) ~= 'table' or type(d.animDict) ~= 'string' then return end
-    local clip = STRIKE_CLIP[d.moveId] or 'short_0_attack'
+    local clip = strikeClip(d.moveId)
     Game.CpuSwing(d.animDict, clip)
 end)
 
@@ -292,9 +298,9 @@ local function throwStrike(moveId)
     --    echoes :playClip back to us (replication shows the swing to everyone).
     TriggerServerEvent('palm6_fc_combat:strike', { matchId = matchId, moveId = moveId })
 
-    -- 2) optimistic local swing for feel (reuse STRIKE_CLIP + Game.PlayStrikeClip).
+    -- 2) optimistic local swing for feel (strikeClip + Game.PlayStrikeClip).
     local dict = myStrikeDict()
-    local clip = STRIKE_CLIP[moveId]
+    local clip = strikeClip(moveId)
     if dict and clip then Game.PlayStrikeClip(dict, clip) end
 
     -- 3) schedule the CONNECT so it lands inside the server active window. Delay

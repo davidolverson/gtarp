@@ -76,6 +76,30 @@ Config.Blazin = {
     BaseFinisherDamage = 60,
 }
 
+-- CLIENT ANIMATION CLIPS (§6/§7) — every tunable swing/react clip in ONE place so
+-- feel-testing an animation is a single-file edit (no client-code hunt), co-located
+-- with the per-style animDicts in data.lua. The DICT for a strike comes from the
+-- fighter's style (data.lua Config.Styles[x].animDicts.strike); THESE are the CLIP
+-- names within that dict, keyed by moveId (must match Config.Moves keys). Values are
+-- real clips in melee@unarmed@streamed_core — swap any that reads wrong in feel-test
+-- (a bad name only no-ops that swing; the hit + damage still land server-side).
+Config.Anims = {
+    StrikeClips = {
+        jab      = 'short_0_attack',
+        cross    = 'long_0_attack',
+        hook     = 'walk_0_attack',
+        uppercut = 'run_0_attack',
+        body     = 'ground_attack_0_a',
+    },
+    StrikeFallback = 'short_0_attack',   -- when a moveId has no mapped clip
+    -- Hit reaction — played on a fighter that just took a hit (wired in a later
+    -- pass; present now so that pass is pure config-read). dict + candidate clips.
+    HitReact = {
+        dict  = 'melee@unarmed@streamed_core',
+        clips = { 'ground_attack_on_spot' },
+    },
+}
+
 -- Fallbacks when a player never opens SELECT. MUST reference real rows in
 -- data.lua (asserted at boot in exports.lua).
 Config.DefaultFighter = 'house_ace'
