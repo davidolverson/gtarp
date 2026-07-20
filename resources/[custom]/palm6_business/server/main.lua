@@ -821,6 +821,14 @@ local function opOpenHere(src, businessId)
     if m and m.business_id == businessId then
         return pushMenu(src)
     end
+    -- Passerby (not a member): only reveal the read-only card for a business that
+    -- ACTUALLY PLACED a storefront AND that the caller is physically standing at —
+    -- the card is meant to be reachable only by walking up to a real storefront
+    -- target. Without these two checks a modified client could fire openHere(id) for
+    -- id=1..N from anywhere and harvest every business's name/type/owner-character
+    -- name (an enumeration oracle), including Phase-0 businesses with no map surface.
+    local sf = storefrontOf(businessId)
+    if not hasLoc(sf) or not nearLoc(src, sf) then return end
     local ownerName = MySQL.scalar.await(
         'SELECT name FROM palm6_business_members WHERE business_id = ? AND role = ? ORDER BY hired_at ASC LIMIT 1',
         { businessId, Config.Role.Owner })
