@@ -284,6 +284,7 @@ local pendingHire = {}    -- [targetSrc] = { businessId, businessName, ownerCid,
 local pendingCharge = {}  -- [targetSrc] = { businessId, businessName, cashierCid, amount, memo, expiresAt }
 local hireCd = {}         -- [src] = epoch
 local chargeCd = {}       -- [src] = epoch
+local payrollBusy = {}    -- [businessId] = true while a payroll run is in flight (serializes payroll per business)
 
 local function onCooldown(map, src, seconds)
     local t = map[src]
@@ -701,11 +702,7 @@ end
 -- Pay each clocked-in employee (wage>0) from the account, capped at the live
 -- balance — the atomic debit means payroll can NEVER overdraw. Stops when funds
 -- run out; nothing is minted.
-local function opPayroll(src)
-    if not enabled() then return end
-    local cid = Bridge.GetCitizenId(src)
-    local m = getMembership(cid)
-    if not m or m.role < minManageRole() then return notify(src, 'Business', 'You do not have permission to run payroll.', 'error') end
+local function runPayroll(src, m)
     -- Payee set = ranks STRICTLY BELOW THE ACTOR (role < m.role), NOT a constant
     -- Owner. This keeps the actor out of their own payee set: a manager (2) pays
     -- employees only, never themselves or a peer manager; an owner (3) still pays
@@ -752,6 +749,27 @@ local function opPayroll(src)
     end
     notify(src, 'Business', ('Paid %d for $%d%s.'):format(paid, total, ranDry and ' (account ran out)' or ''), ranDry and 'error' or 'success')
     pushMenu(src)
+end
+
+-- Payroll entry point. SERIALIZES per business: the day-lock check and the stamp
+-- are separate statements, so two concurrent runs could otherwise interleave past
+-- the pay/stamp window and re-pay a member. An in-memory per-business in-flight
+-- flag (set synchronously before any DB await, so a second call always sees it)
+-- makes each business's payroll strictly one-at-a-time. Cleared in a finally-style
+-- unconditional line after the pcall so it can never stick, even on error.
+local function opPayroll(src)
+    if not enabled() then return end
+    local cid = Bridge.GetCitizenId(src)
+    local m = getMembership(cid)
+    if not m or m.role < minManageRole() then return notify(src, 'Business', 'You do not have permission to run payroll.', 'error') end
+    if payrollBusy[m.business_id] then return notify(src, 'Business', 'A payroll run is already in progress.', 'error') end
+    payrollBusy[m.business_id] = true
+    local ok, err = pcall(runPayroll, src, m)
+    payrollBusy[m.business_id] = nil
+    if not ok then
+        print(('[palm6_business] payroll error (business %s): %s'):format(m.business_id, tostring(err)))
+        notify(src, 'Business', 'Payroll could not complete.', 'error')
+    end
 end
 
 local function opChargeNearest(src, amount, memo)
