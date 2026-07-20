@@ -51,7 +51,8 @@ Config.ChatColor = { 130, 205, 140 }
 --                 palm6_ransom ('demandransom', 'payransom'),
 --                 palm6_chopshop ('reportstolen', 'sellstolen'),
 --                 palm6_pumpcoin ('shill', 'pumpboard'),
---                 palm6_fightclub ('fcjoin', 'fcleave', 'fcbet', 'fcmatches'),
+--                 palm6_fightclub/palm6_fc_combat ('fcbet', 'fcmatches',
+--                   'fcchallenge', 'fcpve', 'fcspectate', 'fccareer'),
 --                 palm6_flashdrop ('flashdrop'),
 --                 palm6_clout ('golive', 'endstream', 'clout', 'streamers')
 --   EMS        -> palm6_ems ('medbills', 'paymedbill', 'emsbill', 'emscalls', 'treat')
@@ -67,7 +68,9 @@ Config.ChatColor = { 130, 205, 140 }
 --                 palm6_rapsheet ('priors'), palm6_evidence ('evidence', 'casenew'),
 --                 palm6_witnesses ('witnesses'), palm6_replay ('bodycam'),
 --                 palm6_seizure ('seizedirty'), palm6_legal ('expunge')
---   Jobs       -> palm6_courier ('courier', 'courierpost')
+--   Jobs       -> palm6_courier ('courier', 'courierpost'), palm6_market ('market')
+--   Racing     -> palm6_racing ('races', 'startrace', 'joinrace', 'racego',
+--                   'raceleave', 'racetop')
 -- ---------------------------------------------------------------------------
 Config.Categories = {
     {
@@ -107,10 +110,12 @@ Config.Categories = {
             { cmd = '/sellstolen',   blurb = 'Sell a stolen vehicle at the chop shop.' },
             { cmd = '/shill',        blurb = 'Shill a coin to pump its price: /shill [coin].' },
             { cmd = '/pumpboard',    blurb = 'View the pump and dump leaderboard.' },
-            { cmd = '/fcjoin',       blurb = 'Join the fight club queue.' },
-            { cmd = '/fcleave',      blurb = 'Leave the fight club queue.' },
+            { cmd = '/fcchallenge',  blurb = 'Challenge a fighter at the ring: /fcchallenge [id].' },
+            { cmd = '/fcpve',        blurb = 'Fight a house CPU when the ring is empty: /fcpve [tier].' },
+            { cmd = '/fcspectate',   blurb = 'Spectate the fight happening at the ring.' },
+            { cmd = '/fccareer',     blurb = 'View your fighter reputation, rank and record.' },
             { cmd = '/fcbet',        blurb = 'Bet on a fight club match: /fcbet [amount].' },
-            { cmd = '/fcmatches',    blurb = 'See the upcoming fight club matches.' },
+            { cmd = '/fcmatches',    blurb = 'See the current fight club matches.' },
             { cmd = '/flashdrop',    blurb = 'Check the current flash drop event.' },
             { cmd = '/golive',       blurb = 'Go live and start a stream for clout.' },
             { cmd = '/endstream',    blurb = 'End your current stream.' },
@@ -194,6 +199,20 @@ Config.Categories = {
         commands = {
             { cmd = '/courier',     blurb = 'Browse and accept courier deliveries: /courier list.' },
             { cmd = '/courierpost', blurb = 'Post a courier delivery job for others.' },
+            { cmd = '/market',      blurb = 'Trade raw goods at the Palm6 Commodity Exchange: /market.' },
+        },
+    },
+    {
+        key = 'racing',
+        label = 'Racing',
+        blurb = 'Street racing at the meet — build a name on the leaderboard.',
+        commands = {
+            { cmd = '/races',     blurb = 'List the race routes you can start.' },
+            { cmd = '/startrace', blurb = 'Open a race on a route (in a car at the meet): /startrace [route].' },
+            { cmd = '/joinrace',  blurb = 'Join an open race during its sign-up window.' },
+            { cmd = '/racego',    blurb = 'Start the race you are hosting (or wait for auto-start).' },
+            { cmd = '/raceleave', blurb = 'Drop out of the race you are in.' },
+            { cmd = '/racetop',   blurb = 'Street racing reputation leaderboard.' },
         },
     },
 }
