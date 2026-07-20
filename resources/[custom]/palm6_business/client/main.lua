@@ -11,6 +11,14 @@ local lastData = nil
 
 local function money(n) return ('$%s'):format(n or 0) end
 
+-- Manager-delegate helpers (Config is shared, so the client resolves the same gate
+-- the server enforces; the server re-validates every op regardless). When the
+-- delegate feature is off, minManage() == Owner, so managers don't exist and the
+-- UI is identical to the pre-manager menu.
+local function mgrOn() return Config.ManagerRole == true end
+local function minManage() return (mgrOn() and Config.Role.Manager) or Config.Role.Owner end
+local function canManageStaff(role) return (role or 0) >= minManage() end
+
 -- ---------------------------------------------------------------------------
 -- Register flow (no membership)
 -- ---------------------------------------------------------------------------
@@ -61,38 +69,68 @@ local function renderAccount(b)
 end
 
 -- ---------------------------------------------------------------------------
--- Employees submenu (owner)
+-- Employees submenu (owner + manager). Owners get wage/promote/demote; managers
+-- get hire/fire (of ranks below them) + payroll. The server re-gates every action.
 -- ---------------------------------------------------------------------------
+local function roleLabel(role)
+    if role == Config.Role.Owner then return 'Owner' end
+    if role == Config.Role.Manager then return 'Manager' end
+    return 'Employee'
+end
+
 local function employeeActions(b, emp)
-    local opts = {
-        {
+    local isOwner = b.role >= Config.Role.Owner
+    local opts = { { title = ('Role: %s'):format(roleLabel(emp.role)), disabled = true } }
+    if isOwner then
+        opts[#opts + 1] = {
             title = 'Set wage', description = ('Current: %s/run'):format(money(emp.wage)),
             onSelect = function()
                 local r = Game.InputDialog('Set wage', { { type = 'number', label = 'Per-payroll wage', required = true, min = 0 } })
                 if r and r[1] then TriggerServerEvent('palm6_business:setWage', emp.citizenid, math.floor(r[1])) end
             end,
-        },
-        {
+        }
+    end
+    -- Fire: a manager+ may fire, but only someone ranked strictly below them.
+    if canManageStaff(b.role) and (emp.role or 1) < b.role then
+        opts[#opts + 1] = {
             title = 'Fire', description = 'Remove from the roster',
             onSelect = function()
                 if Game.Confirm('Fire', ('Remove %s?'):format(emp.name or emp.citizenid)) then
                     TriggerServerEvent('palm6_business:fire', emp.citizenid)
                 end
             end,
-        },
-    }
+        }
+    end
+    -- Promote / demote: owner-only, only when the delegate feature is enabled.
+    if isOwner and mgrOn() then
+        if (emp.role or 1) == Config.Role.Employee then
+            opts[#opts + 1] = { title = 'Promote to Manager', description = 'Delegate day-to-day management',
+                onSelect = function()
+                    if Game.Confirm('Promote', ('Make %s a Manager?'):format(emp.name or emp.citizenid)) then
+                        TriggerServerEvent('palm6_business:promote', emp.citizenid)
+                    end
+                end }
+        elseif (emp.role or 1) == Config.Role.Manager then
+            opts[#opts + 1] = { title = 'Demote to Employee', description = 'Revoke management',
+                onSelect = function()
+                    if Game.Confirm('Demote', ('Demote %s to Employee?'):format(emp.name or emp.citizenid)) then
+                        TriggerServerEvent('palm6_business:demote', emp.citizenid)
+                    end
+                end }
+        end
+    end
     Game.OpenMenu('palm6_business_emp', emp.name or emp.citizenid, opts, 'palm6_business_employees')
 end
 
 local function renderEmployees(b)
     local opts = {
         { title = 'Hire someone nearby', description = 'Offer a job to the closest unaffiliated person', onSelect = function() TriggerServerEvent('palm6_business:hireNearest') end },
-        { title = 'Run payroll', description = 'Pay clocked-in employees their wage from the account', onSelect = function() TriggerServerEvent('palm6_business:runPayroll') end },
+        { title = 'Run payroll', description = 'Pay clocked-in staff their wage from the account', onSelect = function() TriggerServerEvent('palm6_business:runPayroll') end },
     }
     for _, emp in ipairs(b.roster or {}) do
-        if emp.role < 3 then
+        if emp.role < Config.Role.Owner then
             opts[#opts + 1] = {
-                title = ('%s  ·  %s'):format(emp.name or emp.citizenid, money(emp.wage)),
+                title = ('%s  ·  %s  ·  %s'):format(emp.name or emp.citizenid, roleLabel(emp.role), money(emp.wage)),
                 description = (emp.clocked_in == 1) and 'On the clock' or 'Off the clock',
                 arrow = true,
                 onSelect = function() employeeActions(b, emp) end,
@@ -144,7 +182,7 @@ local function renderOperations(b, cfg)
           onSelect = function() doServe(b, cfg) end },
         { title = 'Charge a nearby customer', description = 'Ring up the closest player', onSelect = doCharge },
     }
-    if b.role >= 3 then
+    if canManageStaff(b.role) then
         opts[#opts + 1] = {
             title = ('Buy %s  (%s each)'):format(lbl.supplyNoun, money(cfg.stockUnitCost)),
             description = ('Storage: %d / %d'):format(b.supply or 0, cfg.maxSupply),
@@ -220,6 +258,8 @@ local function renderRoot(data)
     else
         if isOwner then
             opts[#opts + 1] = { title = ('Account  ·  %s'):format(money(b.balance)), arrow = true, onSelect = function() renderAccount(b) end }
+        end
+        if canManageStaff(b.role) then
             opts[#opts + 1] = { title = 'Employees', description = ('%d on the roster'):format(#(b.roster or {})), arrow = true, onSelect = function() renderEmployees(b) end }
         end
         opts[#opts + 1] = { title = 'Operations', description = 'Serve, charge, supply', arrow = true, onSelect = function() renderOperations(b, cfg) end }

@@ -278,6 +278,8 @@ Config.Events = {
     ['palm6_business:acceptHire']   = { calls = 10, window_seconds = 60 },
     ['palm6_business:fire']         = { calls = 15, window_seconds = 60 },
     ['palm6_business:setWage']      = { calls = 20, window_seconds = 60 },
+    ['palm6_business:promote']      = { calls = 10, window_seconds = 60 },
+    ['palm6_business:demote']       = { calls = 10, window_seconds = 60 },
     ['palm6_business:runPayroll']   = { calls = 10, window_seconds = 60 },
     ['palm6_business:chargeNearest']= { calls = 20, window_seconds = 60 },
     ['palm6_business:acceptCharge'] = { calls = 15, window_seconds = 60 },

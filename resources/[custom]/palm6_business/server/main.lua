@@ -18,6 +18,14 @@ local function enabled() return Config.Enabled == true end
 -- Phase 0 never auto-lights storefronts. EVERY storefront code path checks this.
 local function phase1() return Config.Enabled == true and Config.Phase1Enabled == true end
 
+-- Manager delegate gate + the effective minimum role that may run staff/ops
+-- management (hire/fire/payroll/buy supply). When the delegate feature is OFF this
+-- is Owner — byte-for-byte the pre-manager behaviour; when ON, a Manager (role 2)
+-- qualifies too. Money-out (withdraw), setWage, rename, storefront, and promote/
+-- demote are NOT routed through this — they stay Owner-only regardless.
+local function managerEnabled() return Config.ManagerRole == true end
+local function minManageRole() return managerEnabled() and Config.Role.Manager or Config.Role.Owner end
+
 -- ---------------------------------------------------------------------------
 -- Utils
 -- ---------------------------------------------------------------------------
@@ -313,6 +321,11 @@ local function pushMenu(src)
         -- must never receive the roster or balance in the menuData payload.
         if isOwner then
             data.business.balance = m.account_balance or 0
+        end
+        -- Roster goes to owners AND (when the delegate feature is on) managers — a
+        -- manager needs it to hire/fire/run payroll. The account BALANCE stays
+        -- owner-only. Server-authoritative: a role-1 employee receives neither.
+        if isOwner or (managerEnabled() and m.role >= Config.Role.Manager) then
             data.business.roster = rosterOf(m.business_id)
         end
         data.cfg = {
@@ -444,7 +457,7 @@ local function opBuyStock(src, qty)
     if not enabled() then return end
     local cid = Bridge.GetCitizenId(src)
     local m = getMembership(cid)
-    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner buys supply.', 'error') end
+    if not m or m.role < minManageRole() then return notify(src, 'Business', 'You do not have permission to buy supply.', 'error') end
     local svc = serviceOf(m.biz_type)
     qty = clampInt(qty, 1, Config.StockMaxPerBuy)
     if not qty or qty < 1 then return notify(src, 'Business', 'Invalid quantity.', 'error') end
@@ -543,7 +556,7 @@ local function opHireNearest(src)
     if not enabled() then return end
     local cid = Bridge.GetCitizenId(src)
     local m = getMembership(cid)
-    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can hire.', 'error') end
+    if not m or m.role < minManageRole() then return notify(src, 'Business', 'You do not have permission to hire.', 'error') end
     if onCooldown(hireCd, src, Config.HireCooldownSec) then return notify(src, 'Business', 'Slow down.', 'error') end
     local count = MySQL.scalar.await('SELECT COUNT(*) FROM palm6_business_members WHERE business_id = ?', { m.business_id }) or 0
     if count >= (Config.MaxEmployees + 1) then return notify(src, 'Business', 'Your roster is full.', 'error') end
@@ -607,12 +620,15 @@ local function opFire(src, targetCid)
     if not enabled() then return end
     local cid = Bridge.GetCitizenId(src)
     local m = getMembership(cid)
-    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can fire.', 'error') end
+    if not m or m.role < minManageRole() then return notify(src, 'Business', 'You do not have permission to fire.', 'error') end
     if type(targetCid) ~= 'string' or targetCid == '' or targetCid == cid then return end
+    -- Target must rank strictly BELOW the actor: an owner (3) can fire managers +
+    -- employees; a manager (2) can fire employees only — never a peer manager or the
+    -- owner. `role < ?actorRole` enforces this in the DELETE itself (server-authoritative).
     local aff = MySQL.update.await(
         'DELETE FROM palm6_business_members WHERE citizenid = ? AND business_id = ? AND role < ?',
-        { targetCid, m.business_id, Config.Role.Owner })
-    if aff ~= 1 then return notify(src, 'Business', 'Not on your roster.', 'error') end
+        { targetCid, m.business_id, m.role })
+    if aff ~= 1 then return notify(src, 'Business', 'Not on your roster (or outranks you).', 'error') end
     notify(src, 'Business', 'Removed from the roster.', 'inform')
     local ts = Bridge.GetSourceByCitizenId(targetCid)
     if ts then notify(ts, 'Business', ('You were let go from %s.'):format(m.business_name), 'inform') end
@@ -635,6 +651,53 @@ local function opSetWage(src, targetCid, amount)
     pushMenu(src)
 end
 
+-- Promote an employee to Manager (owner-only + manager gate). Atomic: the manager
+-- cap is evaluated INSIDE the UPDATE via a materialised derived table (dodging
+-- MySQL's can't-self-select-in-UPDATE rule, same idiom as opAcceptHire), and the
+-- target must currently be an Employee. affected=1 -> promoted; 0 -> not a
+-- promotable employee on this roster, or the manager slots are full.
+local function opPromote(src, targetCid)
+    if not enabled() or not managerEnabled() then return end
+    local cid = Bridge.GetCitizenId(src)
+    local m = getMembership(cid)
+    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can promote.', 'error') end
+    if type(targetCid) ~= 'string' or targetCid == '' or targetCid == cid then return end
+    local cap = Config.MaxManagers or 0
+    local affected = 0
+    local ok = pcall(function()
+        affected = MySQL.update.await([[
+            UPDATE palm6_business_members AS t
+              JOIN (SELECT COUNT(*) AS cnt FROM palm6_business_members WHERE business_id = ? AND role = ?) AS c
+                SET t.role = ?
+              WHERE t.citizenid = ? AND t.business_id = ? AND t.role = ? AND c.cnt < ?
+        ]], { m.business_id, Config.Role.Manager, Config.Role.Manager, targetCid, m.business_id, Config.Role.Employee, cap })
+    end)
+    if not ok then return notify(src, 'Business', 'Could not promote.', 'error') end
+    if affected ~= 1 then return notify(src, 'Business', 'Not a promotable employee, or the manager slots are full.', 'error') end
+    notify(src, 'Business', 'Promoted to Manager.', 'success')
+    local ts = Bridge.GetSourceByCitizenId(targetCid)
+    if ts then notify(ts, 'Business', ('You were promoted to Manager at %s.'):format(m.business_name), 'success') end
+    pushMenu(src)
+end
+
+-- Demote a Manager back to Employee (owner-only + manager gate). Only a current
+-- Manager is affected; an owner can never be demoted (role = Manager guard).
+local function opDemote(src, targetCid)
+    if not enabled() or not managerEnabled() then return end
+    local cid = Bridge.GetCitizenId(src)
+    local m = getMembership(cid)
+    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can demote.', 'error') end
+    if type(targetCid) ~= 'string' or targetCid == '' or targetCid == cid then return end
+    local aff = MySQL.update.await(
+        'UPDATE palm6_business_members SET role = ? WHERE citizenid = ? AND business_id = ? AND role = ?',
+        { Config.Role.Employee, targetCid, m.business_id, Config.Role.Manager })
+    if aff ~= 1 then return notify(src, 'Business', 'That person is not a manager here.', 'error') end
+    notify(src, 'Business', 'Demoted to Employee.', 'inform')
+    local ts = Bridge.GetSourceByCitizenId(targetCid)
+    if ts then notify(ts, 'Business', ('You were demoted to Employee at %s.'):format(m.business_name), 'inform') end
+    pushMenu(src)
+end
+
 -- Pay each clocked-in employee (wage>0) from the account, capped at the live
 -- balance — the atomic debit means payroll can NEVER overdraw. Stops when funds
 -- run out; nothing is minted.
@@ -642,7 +705,10 @@ local function opPayroll(src)
     if not enabled() then return end
     local cid = Bridge.GetCitizenId(src)
     local m = getMembership(cid)
-    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner runs payroll.', 'error') end
+    if not m or m.role < minManageRole() then return notify(src, 'Business', 'You do not have permission to run payroll.', 'error') end
+    -- Pays everyone BELOW owner (employees + managers) at their OWNER-set wage.
+    -- Wages are owner-only to set, so a manager running payroll can only disburse
+    -- amounts the owner already authorised — no delegate-driven account drain.
     local emps = MySQL.query.await(
         'SELECT citizenid, wage, name FROM palm6_business_members WHERE business_id = ? AND role < ? AND wage > 0 AND clocked_in = 1',
         { m.business_id, Config.Role.Owner }) or {}
@@ -854,6 +920,8 @@ RegisterNetEvent('palm6_business:hireNearest',function() opHireNearest(source) e
 RegisterNetEvent('palm6_business:acceptHire', function() opAcceptHire(source) end)
 RegisterNetEvent('palm6_business:fire',       function(cid) opFire(source, cid) end)
 RegisterNetEvent('palm6_business:setWage',    function(cid, amt) opSetWage(source, cid, amt) end)
+RegisterNetEvent('palm6_business:promote',    function(cid) opPromote(source, cid) end)
+RegisterNetEvent('palm6_business:demote',     function(cid) opDemote(source, cid) end)
 RegisterNetEvent('palm6_business:runPayroll', function() opPayroll(source) end)
 RegisterNetEvent('palm6_business:chargeNearest', function(amt, memo) opChargeNearest(source, amt, memo) end)
 RegisterNetEvent('palm6_business:acceptCharge',  function() opAcceptCharge(source) end)

@@ -64,6 +64,27 @@ and the Phase-0 wording, so the **live economy is byte-for-byte unchanged**. Fli
   get Account / Employees / Operations / Ledger / Rename; employees get Clock
   in/out / Serve / Charge / Ledger / Resign.
 
+## Manager delegate role (ships DARK behind `Config.ManagerRole`)
+An owner can promote an employee to **Manager** (role 2, the reserved slot) to run
+the day-to-day without handing over the keys. Authority matrix:
+
+| Action | Employee | **Manager** | Owner |
+|---|:-:|:-:|:-:|
+| serve / charge / clock / ledger / resign | ✅ | ✅ | ✅ |
+| hire · fire (ranks below only) · run payroll · buy supply | — | ✅ | ✅ |
+| **set wage** · deposit · **withdraw** · rename · storefront · promote/demote | — | — | ✅ |
+
+- **`setWage` is deliberately owner-only** — that closes the one account-drain a
+  delegate could otherwise pull (inflate a wage, then run payroll). A manager runs
+  payroll only at wages the owner already set.
+- A manager can fire/act on ranks **strictly below** them (employees), never a peer
+  manager or the owner — enforced in the SQL (`role < actorRole`), not just the UI.
+- `Config.MaxManagers` caps appointments (enforced atomically inside the promote
+  UPDATE). Owner promotes/demotes; the roster shows each member's role.
+- **Gating** — while `Config.ManagerRole = false`, promote/demote refuse and every
+  management op falls back to **owner-only**, so the live behaviour is unchanged (no
+  manager has ever been assigned). Flip `true` + redeploy after a delegate feel-test.
+
 ## Phase 1 — physical storefronts (ships DARK behind `Config.Phase1Enabled`)
 Turns a business from a menu-anywhere into a **place**.
 - **Owner marks a location** from the menu (*Storefront → Place / Move here*). The

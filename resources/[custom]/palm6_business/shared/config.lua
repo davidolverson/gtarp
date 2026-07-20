@@ -42,6 +42,20 @@ Config.Phase1Enabled = false
 -- NUMBERS per type, never the invariants — no new faucet, no new exploit surface.
 Config.PerTypeMechanics = false
 
+-- MANAGER DELEGATE GATE — lets an owner promote an employee to MANAGER (role 2),
+-- who can run the day-to-day (hire, fire employees, run payroll, buy supply, serve)
+-- but CANNOT extract or redefine the business: withdraw, set wages, rename,
+-- storefront, and promote/demote stay OWNER-only. Keeping setWage owner-only is
+-- deliberate — it closes the only account-drain path a delegate could otherwise
+-- abuse (inflate a wage + run payroll). INDEPENDENT gate; while false, promote/
+-- demote refuse and every management op falls back to OWNER-only — byte-for-byte
+-- the current behaviour (no manager has ever been assigned). Flip true (+ redeploy)
+-- after a delegate feel-test.
+Config.ManagerRole = false
+
+-- Max managers an owner can appoint (excludes the owner). Bounds delegation.
+Config.MaxManagers = 3
+
 -- Command that opens the business menu (+ a short alias).
 Config.Command = 'business'
 Config.CommandAlias = 'biz'
