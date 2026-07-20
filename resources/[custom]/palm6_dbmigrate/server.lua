@@ -566,6 +566,12 @@ CREATE INDEX IF NOT EXISTS `idx_palm6_business_loc` ON `palm6_businesses` (`loc_
     -- ADD COLUMN IF NOT EXISTS (0068 pending pattern); no effect while dark.
     { name = '0071 business_members last_payroll_day', sql = [[
 ALTER TABLE `palm6_business_members` ADD COLUMN IF NOT EXISTS `last_payroll_day` VARCHAR(10) NULL]] },
+    -- 0072: palm6_business robbery cooldown — the epoch a business's register was
+    -- last cracked. opRob stamps + guards on it atomically (per-business cooldown).
+    -- Nullable, ADD COLUMN IF NOT EXISTS (0068 pending pattern); no effect while the
+    -- robbery feature is dark.
+    { name = '0072 business last_robbed_at', sql = [[
+ALTER TABLE `palm6_businesses` ADD COLUMN IF NOT EXISTS `last_robbed_at` BIGINT UNSIGNED NULL]] },
 }
 
 CreateThread(function()

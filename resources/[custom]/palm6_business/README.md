@@ -129,6 +129,24 @@ owner). Both owner-only.
   menu items are hidden; the live system is unchanged. Neither op can mint or
   overdraw (transfer moves nothing; close returns the owner their own money).
 
+## Register robbery (ships DARK behind `Config.Robbery`)
+Makes a placed storefront a target. A **non-member** at the storefront runs
+`/robstore`, passes a skill-check, and cracks the register for a **capped** cut of
+the account — paid to their bank.
+- **Money-safe** — a single atomic UPDATE debits the account (guarded `balance >=
+  amount AND pending_amount = 0`) and stamps the per-business cooldown in one
+  statement, so it can't overdraw, can't mint, and can't be double-robbed (the
+  second robber fails the cooldown guard the instant the first stamps it). On a
+  bank-credit failure the take is put back and the cooldown cleared.
+- **Bounded** — `Rob.Pct` (25%) of the account, hard-capped at `Rob.Max` ($5k),
+  only if the account holds at least `Rob.Min` ($2k); a long per-business cooldown
+  (`Rob.CooldownSec`, 45 min) + a per-robber cooldown (`Rob.RobberCooldownSec`)
+  set before any DB yield. Fires a soft police alert + pings the owner.
+- **Requires a placed storefront** (Phase 1a) and server-side proximity; you can't
+  rob your own business. `getMembership` hot path untouched. New migration `0072`
+  = `last_robbed_at` on `palm6_businesses` (nullable). Gate off → `/robstore`
+  refuses, nothing changes.
+
 ## Server exports (seams for later phases)
 - `exports.palm6_business:GetBusinessOf(citizenid)` → summary | nil
 - `exports.palm6_business:Charge(businessId, payerCid, amount, memo)` → bool

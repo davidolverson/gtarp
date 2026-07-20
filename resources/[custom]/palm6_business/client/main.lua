@@ -387,6 +387,22 @@ CreateThread(function()
     end
 end)
 
+-- /robstore — crack the register at the storefront you're standing at. Client finds
+-- the nearest broadcast storefront + runs the skill-check; the server re-validates
+-- the business id, proximity, membership, cooldowns, balance, and the atomic debit.
+RegisterCommand(Config.Rob and Config.Rob.Command or 'robstore', function()
+    if not (Config.Enabled and Config.Robbery) then return end
+    local near = Game.NearestStorefront(Config.Rob.Radius)
+    if not near then
+        return Game.Notify({ title = 'Business', description = 'No register to crack here.', type = 'error' })
+    end
+    if Game.RobAction(Config.Rob.Skill) then
+        TriggerServerEvent('palm6_business:rob', near.id)
+    else
+        Game.Notify({ title = 'Business', description = 'You fumbled the lock — try again.', type = 'error' })
+    end
+end, false)
+
 AddEventHandler('onResourceStop', function(res)
     if res ~= GetCurrentResourceName() then return end
     Game.ClearStorefronts()

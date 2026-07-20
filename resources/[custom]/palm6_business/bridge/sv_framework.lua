@@ -134,6 +134,15 @@ function Bridge.GetHeading(src)
     return GetEntityHeading(ped) or 0.0
 end
 
+-- Best-effort police alert (robbery). Soft: fires qbx_police's dispatch event only
+-- if that resource is running, pcall-guarded so a missing/renamed handler never
+-- errors the robbery. No hard dependency — if no police system is present, the
+-- robbery still completes silently.
+function Bridge.PoliceAlert(src, text)
+    if GetResourceState('qbx_police') ~= 'started' then return end
+    pcall(function() TriggerEvent('police:server:policeAlert', text, nil, src) end)
+end
+
 -- ---------------------------------------------------------------------------
 -- Notify / commands
 -- ---------------------------------------------------------------------------

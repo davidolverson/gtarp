@@ -144,3 +144,28 @@ function Game.ClearStorefronts()
     sf.loop = false
     if not hasTarget then lib.hideTextUI() end
 end
+
+-- Nearest rendered storefront within `radius` (metres) of the player, or nil. Used
+-- by /robstore; the server re-validates the business id + proximity + all gates.
+function Game.NearestStorefront(radius)
+    local ped = PlayerPedId()
+    if ped == 0 then return nil end
+    local pc = GetEntityCoords(ped)
+    local r2 = (radius or 3.5) * (radius or 3.5)
+    local bestId, bestD, bestName
+    for id, s in pairs(sf.list) do
+        local dx, dy, dz = pc.x - s.x, pc.y - s.y, pc.z - s.z
+        local d = dx * dx + dy * dy + dz * dz
+        if d <= r2 and (not bestD or d < bestD) then bestId, bestD, bestName = id, d, s.name end
+    end
+    if bestId then return { id = bestId, name = bestName } end
+    return nil
+end
+
+-- The "crack the register" active-work moment for a robbery. Harder skill-check than
+-- a serve; server re-validates every money gate regardless of the client result.
+function Game.RobAction(spec)
+    local difficulty = (spec and spec.difficulty) or { 'medium', 'medium', 'hard' }
+    local keys = (spec and spec.keys) or { 'w', 'a', 's', 'd' }
+    return lib.skillCheck(difficulty, keys) == true
+end

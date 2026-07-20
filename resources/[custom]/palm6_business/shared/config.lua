@@ -67,6 +67,27 @@ Config.MaxManagers = 3
 -- idiom (drain-to-zero captured atomically) before deleting.
 Config.OwnershipLifecycle = false
 
+-- ROBBERY GATE — a non-member can crack a business's register at its storefront for
+-- a CAPPED cut of the account, paid to their bank. Pure redistribution (atomic
+-- guarded debit of the business account, never minted, never overdrawn), bounded by
+-- a small percentage + a hard cap + a long per-business cooldown + a per-robber
+-- cooldown, and it fires a police alert. Gives a placed storefront real stakes and
+-- rewards owners who withdraw profits instead of hoarding. INDEPENDENT gate; while
+-- false /robstore refuses and nothing changes. Requires a placed storefront (Phase 1a).
+Config.Robbery = false
+Config.Rob = {
+    Command = 'robstore',   -- namespaced to avoid the ATM-robbery /rob (palm6_robbery)
+    Pct = 0.25,             -- fraction of the account taken (before the hard cap)
+    Max = 5000,             -- hard cap per robbery ($)
+    Min = 2000,             -- account must hold at least this to be worth robbing
+    Radius = 3.5,           -- must be right at the storefront
+    CooldownSec = 2700,     -- 45 min per business (the register is emptied/locked)
+    RobberCooldownSec = 600,-- 10 min per robber (anti-farm), set before any DB yield
+    AlertChance = 1.0,      -- chance a robbery trips a police alert
+    Payout = 'bank',        -- where the take lands (bank = clean; seam for a dirty variant)
+    Skill = { difficulty = { 'medium', 'medium', 'hard' }, keys = { 'w', 'a', 's', 'd' } },
+}
+
 -- Command that opens the business menu (+ a short alias).
 Config.Command = 'business'
 Config.CommandAlias = 'biz'

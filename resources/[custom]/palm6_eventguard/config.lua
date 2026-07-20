@@ -296,4 +296,7 @@ Config.Events = {
     ['palm6_business:setBlip']            = { calls = 15, window_seconds = 60 },
     ['palm6_business:openHere']           = { calls = 40, window_seconds = 60 },
     ['palm6_business:requestStorefronts'] = { calls = 10, window_seconds = 60 },
+    -- Robbery: server re-validates proximity + per-robber + per-business cooldown +
+    -- balance + atomic guarded debit; a tight budget is belt-and-braces over those.
+    ['palm6_business:rob']                = { calls = 6,  window_seconds = 60 },
 }

@@ -29,6 +29,9 @@ local function minManageRole() return managerEnabled() and Config.Role.Manager o
 -- Ownership-lifecycle gate (transfer / close). Requires the master flag too.
 local function lifecycleEnabled() return Config.Enabled == true and Config.OwnershipLifecycle == true end
 
+-- Robbery gate. Requires the master flag too.
+local function robberyEnabled() return Config.Enabled == true and Config.Robbery == true end
+
 -- ---------------------------------------------------------------------------
 -- Utils
 -- ---------------------------------------------------------------------------
@@ -315,6 +318,7 @@ local pendingHire = {}    -- [targetSrc] = { businessId, businessName, ownerCid,
 local pendingCharge = {}  -- [targetSrc] = { businessId, businessName, cashierCid, amount, memo, expiresAt }
 local hireCd = {}         -- [src] = epoch
 local chargeCd = {}       -- [src] = epoch
+local robberCd = {}       -- [src] = epoch (per-robber /robstore cooldown, set before any DB yield)
 local payrollBusy = {}    -- [businessId] = true while a payroll run is in flight (serializes payroll per business)
 
 local function onCooldown(map, src, seconds)
@@ -1085,6 +1089,74 @@ local function opOpenHere(src, businessId)
     })
 end
 
+-- Rob a business's register at its storefront. Non-member only; a CAPPED cut of the
+-- account paid to the robber's bank — pure redistribution (atomic guarded debit,
+-- never minted, never overdrawn), bounded by percent + hard cap + per-business +
+-- per-robber cooldown, with a police alert + owner ping. Only the codebase-wide
+-- ChargeBank->durable in-memory window applies (graceful-restart safe).
+local function opRob(src, businessId)
+    if not robberyEnabled() then return end
+    businessId = sanitizeInt(businessId)
+    if not businessId then return end
+    local cid = Bridge.GetCitizenId(src)
+    if not cid then return end
+    -- Per-robber cooldown checked here; STAMPED only on a successful rob (set before
+    -- any further yield). Anti-spam even if a modified client skips the skill-check.
+    if onCooldown(robberCd, src, Config.Rob.RobberCooldownSec) then
+        return notify(src, 'Business', 'Lay low for a bit before your next job.', 'error')
+    end
+    local m = getMembership(cid)
+    if m and m.business_id == businessId then
+        return notify(src, 'Business', "You can't rob your own business.", 'error')
+    end
+    local sf = storefrontOf(businessId)
+    if not hasLoc(sf) then return notify(src, 'Business', 'Nothing to rob here.', 'error') end
+    local pc = Bridge.GetCoords(src)
+    if not pc or Bridge.Distance(pc, { x = sf.loc_x, y = sf.loc_y, z = sf.loc_z }) > Config.Rob.Radius then
+        return notify(src, 'Business', 'Get to the register first.', 'error')
+    end
+    local bal = MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0
+    if bal < Config.Rob.Min then
+        return notify(src, 'Business', 'The register is basically empty — not worth it.', 'error')
+    end
+    local amount = math.floor(bal * Config.Rob.Pct)
+    if amount > Config.Rob.Max then amount = Config.Rob.Max end
+    if amount < 1 then return notify(src, 'Business', 'Nothing worth taking.', 'error') end
+    local now = nowSec()
+    -- Atomic: debit + stamp the per-business cooldown, guarded on balance, cooldown
+    -- elapsed, and no payout mid-settle. affected=0 -> raced / on cooldown / a payout
+    -- is pending -> refuse. This one statement also anti-double-robs: a second robber
+    -- fails the cooldown guard the instant the first stamps last_robbed_at.
+    local aff = MySQL.update.await([[
+        UPDATE palm6_businesses
+           SET account_balance = account_balance - ?, last_robbed_at = ?
+         WHERE id = ?
+           AND account_balance >= ?
+           AND pending_amount = 0
+           AND (last_robbed_at IS NULL OR last_robbed_at + ? <= ?)
+    ]], { amount, now, businessId, amount, Config.Rob.CooldownSec, now })
+    if aff ~= 1 then
+        return notify(src, 'Business', 'The register is locked down right now — try later.', 'error')
+    end
+    -- Pay the robber. On a credit failure, put the money back and clear the cooldown
+    -- so the shop isn't wrongly locked for a rob that never paid out.
+    if not Bridge.CreditBankByCitizenId(cid, amount, 'business-robbery') then
+        MySQL.update.await('UPDATE palm6_businesses SET account_balance = account_balance + ?, last_robbed_at = NULL WHERE id = ?', { amount, businessId })
+        return notify(src, 'Business', "Couldn't grab the cash — try again.", 'error')
+    end
+    robberCd[src] = now
+    local bizRow = getBusinessById(businessId)
+    insertLedger(businessId, cid, 'robbery', -amount, (bizRow and bizRow.account_balance) or 0, 'Register robbed')
+    notify(src, 'Business', ('You cracked the register — +$%d.'):format(amount), 'success')
+    if bizRow and bizRow.owner_cid then
+        local os = Bridge.GetSourceByCitizenId(bizRow.owner_cid)
+        if os then notify(os, 'Business', ('%s is being robbed!'):format(bizRow.name or 'Your business'), 'error') end
+    end
+    if math.random() < (Config.Rob.AlertChance or 0) then
+        Bridge.PoliceAlert(src, 'Business robbery in progress')
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Net events (guarded by palm6_eventguard — ensure order in custom.cfg).
 -- ---------------------------------------------------------------------------
@@ -1118,6 +1190,7 @@ RegisterNetEvent('palm6_business:clearStorefront', function() opClearStorefront(
 RegisterNetEvent('palm6_business:setBlip',         function(sprite, color) opSetBlip(source, sprite, color) end)
 RegisterNetEvent('palm6_business:openHere',        function(businessId) opOpenHere(source, businessId) end)
 RegisterNetEvent('palm6_business:requestStorefronts', function() sendStorefronts(source) end)
+RegisterNetEvent('palm6_business:rob',             function(businessId) opRob(source, businessId) end)
 
 AddEventHandler('playerDropped', function()
     local s = source
@@ -1125,6 +1198,7 @@ AddEventHandler('playerDropped', function()
     pendingCharge[s] = nil
     hireCd[s] = nil
     chargeCd[s] = nil
+    robberCd[s] = nil
 end)
 
 -- ---------------------------------------------------------------------------
