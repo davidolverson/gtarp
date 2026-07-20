@@ -49,8 +49,20 @@ function Game.Notify(opts)
     lib.notify(opts)
 end
 
--- Accept/decline modal. Returns true on accept.
+-- Accept/decline modal. Returns true on accept. Auto-dismisses after ttlSec so an
+-- unanswered challenge cancels ITSELF instead of leaving a control-locking (NUI
+-- focus) modal open until the player notices — a griefer could otherwise re-fire
+-- the prompt to freeze a co-located player's aim/movement. A programmatic close
+-- resolves lib.alertDialog as 'cancel', so the caller triggers decline (timeout =
+-- decline), matching the server-side ChallengeTTL expiry.
 function Game.ConfirmDialog(title, msg, ttlSec)
+    local answered = false
+    if ttlSec and ttlSec > 0 then
+        CreateThread(function()
+            Wait(math.floor(ttlSec * 1000))
+            if not answered then pcall(function() lib.closeAlertDialog() end) end
+        end)
+    end
     local res = lib.alertDialog({
         header = title,
         content = msg,
@@ -58,6 +70,7 @@ function Game.ConfirmDialog(title, msg, ttlSec)
         cancel = true,
         labels = { confirm = 'Accept', cancel = 'Decline' },
     })
+    answered = true
     return res == 'confirm'
 end
 

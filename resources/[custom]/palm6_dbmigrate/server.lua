@@ -522,6 +522,20 @@ ALTER TABLE `palm6_businesses` ADD COLUMN IF NOT EXISTS `pending_amount` BIGINT 
 ALTER TABLE `palm6_businesses` ADD COLUMN IF NOT EXISTS `pending_at` BIGINT UNSIGNED NOT NULL DEFAULT 0]] },
     { name = '0068 business pending index', sql = [[
 CREATE INDEX IF NOT EXISTS `idx_palm6_business_pending` ON `palm6_businesses` (`pending_amount`)]] },
+    -- 0009: the connect-gate `allowlist` table (see sql/0009_allowlist.sql). It was
+    -- ONLY in the standalone sql file, never registered here — so on a fresh/rebuilt
+    -- prod DB (which is not reachable from outside the panel network) it would be
+    -- ABSENT, and palm6_allowlist's connect query would throw and HANG every join.
+    -- Registered here so it always exists on boot. IF NOT EXISTS -> no-op where 0009
+    -- already applied. (palm6_allowlist also now pcall-guards the read as a backstop.)
+    { name = '0009 allowlist', sql = [[
+CREATE TABLE IF NOT EXISTS `allowlist` (
+    `id`         INT AUTO_INCREMENT PRIMARY KEY,
+    `identifier` VARCHAR(100) NOT NULL UNIQUE,
+    `note`       VARCHAR(255) DEFAULT NULL,
+    `enabled`    TINYINT(1) NOT NULL DEFAULT 1,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
 }
 
 CreateThread(function()

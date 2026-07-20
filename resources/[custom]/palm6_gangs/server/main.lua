@@ -426,6 +426,16 @@ RegisterNetEvent('palm6_gangs:invite', function()
         Bridge.Notify(src, 'Gangs', 'No eligible player nearby to invite.', 'error'); return
     end
 
+    -- Per-target guard (mirrors fc_combat's pendingChallenges): do NOT stack a new
+    -- input-locking invite modal on a player who already has a live pending invite.
+    -- The per-inviter cooldown alone doesn't bound aggregate spam from MULTIPLE
+    -- inviters onto one victim; this caps a victim to one invite prompt at a time
+    -- across all inviters so the confirm modal can't be weaponized to camp/freeze.
+    local existing = pendingInvites[bestCid]
+    if existing and now() <= existing.expiresAt then
+        Bridge.Notify(src, 'Gangs', 'They already have a pending invite.', 'error'); return
+    end
+
     pendingInvites[bestCid] = {
         gangId = g.id, gangName = g.name, gangTag = g.tag,
         inviterCid = cid, inviterName = Bridge.GetPlayerName(src),

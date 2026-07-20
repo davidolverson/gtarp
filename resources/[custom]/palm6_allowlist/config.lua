@@ -25,10 +25,15 @@ Config = {}
 Config.BotTokenConvar = 'palm6:discord_bot_token'
 Config.GuildIdConvar  = 'palm6:discord_guild_id'
 
--- Discord role ids permitted to join. Add real ids when known.
+-- Discord role ids permitted to join. A join is admitted if the linked Discord
+-- member holds ANY of these roles (requires the bot token + guild id convars set
+-- below — the boot banner in server/main.lua reports whether they are).
 Config.AllowedRoles = {
-    -- ['000000000000000000'] = 'member',
-    -- ['000000000000000001'] = 'whitelist',
+    -- Founding Tester role (guild 1522465866837393418), granted by the founding
+    -- pipeline (palm6-bot /webhooks/founding-grant) — the primary admit path for
+    -- the Founding Beta cohort. Add the general whitelist role id here as well
+    -- once it exists for the public launch.
+    ['1528644816890630166'] = 'founding',
 }
 
 -- Role lookups are cached this many seconds.
