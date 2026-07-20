@@ -59,6 +59,30 @@ RegisterNetEvent('palm6_fc_combat:openSelect', function(d)
     Game.OpenMenu('palm6_fc_select', 'Choose your fighter', opts)
 end)
 
+-- §19 PvE fighter select — /fcpve opens this (server-gated first). Same roster as
+-- PvP; picking sets myPick (so the COUNTDOWN model swap matches) and tells the
+-- server to open the solo bout with that fighter + the requested tier.
+RegisterNetEvent('palm6_fc_combat:openPveSelect', function(d)
+    if type(d) ~= 'table' then return end
+    local tier = tonumber(d.tier) or 1
+    local ok, cfg = pcall(function() return exports.palm6_fc_core:Config() end)
+    if not ok or not cfg then return end
+    local opts = {}
+    for _, f in ipairs(cfg.Fighters or {}) do
+        opts[#opts + 1] = {
+            title = f.name,
+            description = ('Style: %s'):format(f.styleId or '?'),
+            icon = 'fa-solid fa-user-ninja',
+            onSelect = function()
+                myPick = { fighterId = f.id, styleId = f.styleId }
+                TriggerServerEvent('palm6_fc_combat:pveSelect',
+                    { tier = tier, fighterId = f.id, styleId = f.styleId })
+            end,
+        }
+    end
+    Game.OpenMenu('palm6_fc_pve_select', ('Spar a CPU (Tier %d) — pick your fighter'):format(tier), opts)
+end)
+
 RegisterNetEvent('palm6_fc_combat:countdown', function(d)
     if type(d) ~= 'table' then return end
     local sec = tonumber(d.seconds) or 0

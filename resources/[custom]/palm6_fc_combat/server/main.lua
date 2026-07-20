@@ -15,7 +15,7 @@
 -- ---------------------------------------------------------------------------
 
 local SELECT_WINDOW_SEC = 15   -- client-UX select window (not money); defaults applied if a side never picks
-local RATE = { fcchallenge = 3, fcaccept = 1, fcdecline = 1, fcselect = 1, fcpve = 3 }
+local RATE = { fcchallenge = 3, fcaccept = 1, fcdecline = 1, fcselect = 1, fcpve = 3, fcpveselect = 1 }
 
 local matches        = {}   -- [matchId] = { cidA,cidB,srcA,srcB, selA,selB, nameA,nameB, modelA,modelB, roundStarted,resolving,inFinisher,startedAt,wentLive,bettingEndsAt }
 local activeByCid    = {}   -- [cid]  = matchId (in-memory quick lookup; DB is the authority)
@@ -304,10 +304,10 @@ local function cpuForTier(tier)
     return nil
 end
 
--- Returns true if the bout opened. Human fights as the DEFAULT fighter in P2 (the
--- client has no PvE select yet, so server + client must agree on the default);
--- a PvE fighter-select lands with the client puppet phase.
-local function startPveMatch(humanSrc, humanCid, tier)
+-- Returns true if the bout opened. `pick` = { fighterId, styleId } from the PvE
+-- fighter-select; validPick resolves an absent/invalid pick to the default, so the
+-- server and the client (which swaps to the same fighter via myPick) stay in sync.
+local function startPveMatch(humanSrc, humanCid, tier, pick)
     local cfg = fcCore()
     local cpu = cpuForTier(tier)
     if not cpu then
@@ -316,6 +316,9 @@ local function startPveMatch(humanSrc, humanCid, tier)
     end
 
     local fighterH, styleH = cfg.DefaultFighter, cfg.DefaultStyle
+    if type(pick) == 'table' then
+        fighterH, styleH = validPick(pick.fighterId, pick.styleId)   -- invalid -> default (server-authoritative)
+    end
 
     -- OpenMatch-equivalent money-inert row. pcall-wrapped: a throw/nil is the single
     -- failure branch (nothing was charged, so nothing to refund — §19.2).
@@ -670,50 +673,72 @@ local function otherHumanAtRing(selfSrc)
     return false
 end
 
--- /fcpve [tier 1-5] — open a dark-PvE bout vs the tier's house CPU. Gated on
--- Config.Pve.Enabled (ships dark), the feature Enabled + boot no-contest, being
--- at the ring, not already in a match, a free ring, and the §19.4 population gate.
-Bridge.RegisterCommand('fcpve', function(src, args)
-    if src == 0 then return end
-    if not enabled() or not bootDone then return end
-    if not rl(src, 'fcpve') then return end
-
+-- Shared PvE entry gates (§19.4). Returns (cid, pveCfg) if `src` may open a solo
+-- bout right now, else nil (notifying the reason). Used by BOTH the /fcpve command
+-- and the fighter-pick net handler, so the pick path is re-validated server-side
+-- (a spoofed pveSelect can never bypass the gates). Config.Pve.Enabled ships dark.
+local function pveGatesPass(src)
+    if not enabled() or not bootDone then return nil end
     local pve = (fcCore() or {}).Pve
     if not pve or pve.Enabled ~= true then
         Bridge.Notify(src, 'Fight Club', 'Solo sparring is not available.', 'error')
-        return
+        return nil
     end
-
     local cid = Bridge.GetCitizenId(src)
-    if not cid then return end
+    if not cid then return nil end
     if not atRing(src) then
         Bridge.Notify(src, 'Fight Club', ('You must be at %s.'):format(fcCore().Ring.label), 'error')
-        return
+        return nil
     end
     if activeMatchForCitizen(cid) then
         Bridge.Notify(src, 'Fight Club', 'You already have a match.', 'error')
-        return
+        return nil
     end
     if ringBusy() then
         Bridge.Notify(src, 'Fight Club', 'The ring is in use.', 'error')
-        return
+        return nil
     end
     if pve.RequireNoHumanAtRing and otherHumanAtRing(src) then
         Bridge.Notify(src, 'Fight Club', 'Another fighter is at the ring — challenge them instead.', 'error')
-        return
+        return nil
     end
     local maxPop = tonumber(pve.MaxPop) or 6
     if #GetPlayers() > maxPop then
         Bridge.Notify(src, 'Fight Club', 'Too many players online for solo sparring — find a real opponent.', 'error')
-        return
+        return nil
     end
+    return cid, pve
+end
 
-    -- tier: default 1, clamped to the configured tier count.
+local function clampTier(pve, raw)
     local maxTier = (type(pve.Tiers) == 'table' and #pve.Tiers) or 5
-    local tier = math.floor(tonumber(args[1]) or 1)
-    if tier < 1 then tier = 1 elseif tier > maxTier then tier = maxTier end
+    local tier = math.floor(tonumber(raw) or 1)
+    if tier < 1 then return 1 elseif tier > maxTier then return maxTier end
+    return tier
+end
 
-    startPveMatch(src, cid, tier)
+-- /fcpve [tier 1-5] — gate, then open the fighter-select menu. The match itself is
+-- started by the pveSelect handler once the human picks (or the menu times out and
+-- they re-run). Fighter choice lets them avoid the freemode models entirely.
+Bridge.RegisterCommand('fcpve', function(src, args)
+    if src == 0 then return end
+    if not rl(src, 'fcpve') then return end
+    local cid, pve = pveGatesPass(src)
+    if not cid then return end
+    TriggerClientEvent('palm6_fc_combat:openPveSelect', src, { tier = clampTier(pve, args[1]) })
+end)
+
+-- Fighter picked from the PvE select menu -> re-validate the gates (net event =
+-- spoofable) and open the bout with the chosen fighter. Own rate-limit key so it
+-- doesn't collide with the /fcpve command's window a second earlier.
+RegisterNetEvent('palm6_fc_combat:pveSelect', function(payload)
+    local src = source
+    if type(payload) ~= 'table' then return end
+    if not rl(src, 'fcpveselect') then return end
+    local cid, pve = pveGatesPass(src)
+    if not cid then return end
+    startPveMatch(src, cid, clampTier(pve, payload.tier),
+        { fighterId = payload.fighterId, styleId = payload.styleId })
 end)
 
 -- T7/T8 read/mutate match state through this export (never re-declare matches[]).
