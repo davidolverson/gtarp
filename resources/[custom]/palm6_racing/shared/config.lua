@@ -11,7 +11,9 @@ Config = {}
 
 -- HARD prod gate. Every entry point checks this; ships false = prod-inert (no
 -- organizer NPC, no blips, /startrace refuses). Flip true only to feel-test.
-Config.Enabled = false
+-- TEST TOGGLE 2026-07-20: enabled to feel-test on the live server. Set back to
+-- false to re-dark after testing.
+Config.Enabled = true
 
 Config.Debug = false
 
