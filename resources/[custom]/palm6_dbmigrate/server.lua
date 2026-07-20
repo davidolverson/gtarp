@@ -474,6 +474,13 @@ CREATE TABLE IF NOT EXISTS `palm6_businesses` (
     supply_units INT UNSIGNED NOT NULL DEFAULT 0,
     day_key VARCHAR(10) NOT NULL DEFAULT '',
     day_npc_income INT UNSIGNED NOT NULL DEFAULT 0,
+    -- Crash-recoverable payout marker (withdraw/payroll): the server debits the
+    -- account and stamps a single pending payout here in one statement, then
+    -- claim-before-credits it to the payee's bank; reconcilePending() re-drives it
+    -- on boot. WITHOUT these three, every withdraw and payroll SQL-errors.
+    pending_cid VARCHAR(64) NULL,
+    pending_amount BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    pending_at BIGINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_palm6_business_name (name),
@@ -503,6 +510,15 @@ CREATE TABLE IF NOT EXISTS `palm6_business_ledger` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_palm6_business_ledger_biz (business_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    -- Backfill the crash-recoverable payout columns for any DB where an earlier
+    -- 0068 created palm6_businesses without them (the CREATE above now includes
+    -- them for fresh installs; this ALTER is the idempotent catch-up so withdraw
+    -- and payroll never hit a missing-column error).
+    { name = '0069 palm6_businesses pending payout columns', sql = [[
+ALTER TABLE `palm6_businesses`
+    ADD COLUMN IF NOT EXISTS `pending_cid`    VARCHAR(64)     NULL              AFTER `day_npc_income`,
+    ADD COLUMN IF NOT EXISTS `pending_amount` BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER `pending_cid`,
+    ADD COLUMN IF NOT EXISTS `pending_at`     BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER `pending_amount`]] },
 }
 
 CreateThread(function()

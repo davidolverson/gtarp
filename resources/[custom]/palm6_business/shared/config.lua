@@ -21,7 +21,7 @@ Config.Debug = false
 -- MASTER GATE. false = prod-inert: commands refuse, net events early-return,
 -- nothing player-facing registers. Flip true (+ redeploy) to go live, batched
 -- with a feel-test. Mirrors the palm6_racing / palm6_fc_core dark-ship idiom.
-Config.Enabled = false
+Config.Enabled = true
 
 -- Command that opens the business menu (+ a short alias).
 Config.Command = 'business'
