@@ -110,6 +110,25 @@ Turns a business from a menu-anywhere into a **place**.
 `Config.Phase1Enabled = false` by default — flip `true` + redeploy after the
 Phase-1 feel-test.
 
+## Ownership lifecycle — transfer / close (ships DARK behind `Config.OwnershipLifecycle`)
+Closes the documented gap where an owner was stuck forever (`opResign` refuses an
+owner). Both owner-only.
+- **Transfer** (from an employee's action menu) — hand the business to a roster
+  member: they become owner, the old owner drops to employee. The target is
+  **promoted first under an affected-row guard**, so if they just resigned the
+  transfer aborts before the old owner steps down — the business can never end up
+  ownerless. No money moves.
+- **Close** (root menu, typed-name confirmation) — the remaining account balance is
+  refunded to the OWNER's bank via the **crash-safe pending idiom** (one atomic
+  `SET pending_amount = account_balance, account_balance = 0` captures the exact
+  balance and zeroes the account so no serve can race money in), settled once, and
+  only THEN are the roster + business row deleted. The ledger is kept as an orphan
+  audit trail; ids are never reused. Delete happens only after a confirmed refund —
+  a failed refund keeps the business intact.
+- **Gating** — while `Config.OwnershipLifecycle = false`, both ops refuse and the
+  menu items are hidden; the live system is unchanged. Neither op can mint or
+  overdraw (transfer moves nothing; close returns the owner their own money).
+
 ## Server exports (seams for later phases)
 - `exports.palm6_business:GetBusinessOf(citizenid)` → summary | nil
 - `exports.palm6_business:Charge(businessId, payerCid, amount, memo)` → bool

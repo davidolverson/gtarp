@@ -18,6 +18,7 @@ local function money(n) return ('$%s'):format(n or 0) end
 local function mgrOn() return Config.ManagerRole == true end
 local function minManage() return (mgrOn() and Config.Role.Manager) or Config.Role.Owner end
 local function canManageStaff(role) return (role or 0) >= minManage() end
+local function lifecycleOn() return Config.OwnershipLifecycle == true end
 
 -- ---------------------------------------------------------------------------
 -- Register flow (no membership)
@@ -118,6 +119,15 @@ local function employeeActions(b, emp)
                     end
                 end }
         end
+    end
+    -- Hand the whole business over to this member (owner-only, lifecycle gate).
+    if isOwner and lifecycleOn() then
+        opts[#opts + 1] = { title = 'Transfer ownership to them', description = 'They become owner — you drop to employee', icon = 'fa-solid fa-crown',
+            onSelect = function()
+                if Game.Confirm('Transfer ownership', ('Hand the business to %s? You will become an employee.'):format(emp.name or emp.citizenid)) then
+                    TriggerServerEvent('palm6_business:transfer', emp.citizenid)
+                end
+            end }
     end
     Game.OpenMenu('palm6_business_emp', emp.name or emp.citizenid, opts, 'palm6_business_employees')
 end
@@ -289,6 +299,26 @@ local function renderRoot(data)
             onSelect = function()
                 local r = Game.InputDialog('Rename', { { type = 'input', label = 'New name', required = true, min = 3, max = 48 } })
                 if r and r[1] then TriggerServerEvent('palm6_business:rename', r[1]) end
+            end,
+        }
+    end
+    -- Close the business (owner, lifecycle gate) — destructive, so a typed name
+    -- confirmation. The server re-checks owner + gate; this is just a mis-click guard.
+    if not gated and isOwner and lifecycleOn() then
+        opts[#opts + 1] = {
+            title = 'Close business', description = 'Refund the account to you, then dissolve it',
+            icon = 'fa-solid fa-triangle-exclamation',
+            onSelect = function()
+                local r = Game.InputDialog('Close business', {
+                    { type = 'input', label = ('Type the name to confirm: %s'):format(b.name), required = true },
+                })
+                if r and r[1] then
+                    if r[1] == b.name then
+                        TriggerServerEvent('palm6_business:close')
+                    else
+                        Game.Notify({ title = 'Business', description = 'Name did not match — not closed.', type = 'error' })
+                    end
+                end
             end,
         }
     end

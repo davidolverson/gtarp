@@ -3,8 +3,8 @@ game 'gta5'
 lua54 'yes'
 
 author 'EvThatGuy'
-version '0.4.0'
-description 'palm6 business — player-owned businesses: registry, pooled account, employees, payroll, capped walk-in income, a full ledger, Phase-1 physical storefronts, per-type mechanics, and a manager delegate role (ships DARK)'
+version '0.5.0'
+description 'palm6 business — player-owned businesses: registry, pooled account, employees, payroll, capped walk-in income, a full ledger, Phase-1 physical storefronts, per-type mechanics, a manager delegate role, and ownership transfer/close (ships DARK)'
 
 shared_scripts {
     '@ox_lib/init.lua',

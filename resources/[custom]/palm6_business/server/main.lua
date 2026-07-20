@@ -26,6 +26,9 @@ local function phase1() return Config.Enabled == true and Config.Phase1Enabled =
 local function managerEnabled() return Config.ManagerRole == true end
 local function minManageRole() return managerEnabled() and Config.Role.Manager or Config.Role.Owner end
 
+-- Ownership-lifecycle gate (transfer / close). Requires the master flag too.
+local function lifecycleEnabled() return Config.Enabled == true and Config.OwnershipLifecycle == true end
+
 -- ---------------------------------------------------------------------------
 -- Utils
 -- ---------------------------------------------------------------------------
@@ -699,6 +702,89 @@ local function opDemote(src, targetCid)
     pushMenu(src)
 end
 
+-- Transfer ownership to an existing roster member. Owner-only + lifecycle gate. The
+-- target is PROMOTED FIRST under an affected-row guard, so if they just resigned the
+-- transfer aborts BEFORE the old owner is demoted — the business can never end up
+-- ownerless. No money moves. (Owner-serial, rare action; a mid-sequence DB failure
+-- leaves at worst a recoverable two-owner state, never money loss.)
+local function opTransfer(src, targetCid)
+    if not lifecycleEnabled() then return end
+    local cid = Bridge.GetCitizenId(src)
+    local m = getMembership(cid)
+    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can transfer the business.', 'error') end
+    if type(targetCid) ~= 'string' or targetCid == '' or targetCid == cid then
+        return notify(src, 'Business', 'Pick a different roster member to hand it to.', 'error')
+    end
+    -- Promote the target to Owner ONLY IF they are currently a member of THIS business
+    -- ranked below owner. affected=1 -> they are valid + now owner; 0 -> not on the roster.
+    local promoted = MySQL.update.await(
+        'UPDATE palm6_business_members SET role = ? WHERE citizenid = ? AND business_id = ? AND role < ?',
+        { Config.Role.Owner, targetCid, m.business_id, Config.Role.Owner })
+    if promoted ~= 1 then return notify(src, 'Business', 'That person is not on your roster.', 'error') end
+    -- Old owner steps down to Employee; business owner_cid follows.
+    MySQL.update.await('UPDATE palm6_business_members SET role = ? WHERE citizenid = ? AND business_id = ? AND role = ?',
+        { Config.Role.Employee, cid, m.business_id, Config.Role.Owner })
+    MySQL.update.await('UPDATE palm6_businesses SET owner_cid = ? WHERE id = ?', { targetCid, m.business_id })
+    insertLedger(m.business_id, cid, 'transfer', 0,
+        MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { m.business_id }) or 0,
+        ('Ownership transferred to %s'):format(targetCid))
+    notify(src, 'Business', ('You handed %s over. You are now an employee.'):format(m.business_name), 'success')
+    local ts = Bridge.GetSourceByCitizenId(targetCid)
+    if ts then notify(ts, 'Business', ('You are now the owner of %s.'):format(m.business_name), 'success') end
+    pushMenu(src)
+end
+
+-- Close/dissolve the business. Owner-only + lifecycle gate. The remaining account
+-- balance is refunded to the OWNER (their own money) via the crash-safe pending
+-- idiom, THEN the business + roster are deleted. Reuses opClose's serialization
+-- through the pending marker (guarded pending_amount=0): the capture zeroes the
+-- account and stashes the exact balance in one atomic UPDATE, so no serve can race
+-- money in after the refund amount is fixed. The ledger is kept (audit trail).
+local function opClose(src)
+    if not lifecycleEnabled() then return end
+    local cid = Bridge.GetCitizenId(src)
+    local m = getMembership(cid)
+    if not m or m.role < Config.Role.Owner then return notify(src, 'Business', 'Only the owner can close the business.', 'error') end
+    local bizId = m.business_id
+    -- Atomically drain the whole balance INTO the pending marker (MySQL evaluates SET
+    -- left-to-right, so pending_amount reads the OLD balance before it is zeroed). The
+    -- pending_amount=0 guard means a payout already mid-settle blocks the close — retry.
+    local captured = MySQL.update.await([[
+        UPDATE palm6_businesses
+           SET pending_cid = ?, pending_amount = account_balance, pending_at = ?, account_balance = 0
+         WHERE id = ? AND pending_amount = 0
+    ]], { cid, nowSec(), bizId })
+    if captured ~= 1 then return notify(src, 'Business', 'Cannot close right now (a payout is still settling). Try again.', 'error') end
+    local amount = MySQL.scalar.await('SELECT pending_amount FROM palm6_businesses WHERE id = ?', { bizId }) or 0
+    if amount > 0 then
+        local res = settlePayout(bizId, cid, amount, 'business-close-refund')
+        if res ~= 'paid' then
+            -- Credit failed + account already refunded by settlePayout('lost'), or a
+            -- reconcile claimed it ('taken'). Either way the money is safe but NOT
+            -- fully in hand this call — do NOT delete; the owner keeps the business.
+            return notify(src, 'Business', 'Refund could not complete — business kept. Try closing again.', 'error')
+        end
+    else
+        -- Nothing to refund; clear the (zero) marker we set so the row is clean.
+        MySQL.update.await('UPDATE palm6_businesses SET pending_cid = NULL, pending_amount = 0, pending_at = 0 WHERE id = ?', { bizId })
+    end
+    -- Refund is in the owner's bank (or was zero). Now delete the roster + business.
+    -- Ledger rows are kept as an orphaned audit trail (ids never reused).
+    local members = MySQL.query.await('SELECT citizenid FROM palm6_business_members WHERE business_id = ?', { bizId }) or {}
+    MySQL.update.await('DELETE FROM palm6_business_members WHERE business_id = ?', { bizId })
+    MySQL.update.await('DELETE FROM palm6_businesses WHERE id = ?', { bizId })
+    insertLedger(bizId, cid, 'close', -amount, 0, ('Business closed — $%d refunded'):format(amount))
+    notify(src, 'Business', ('%s is closed. $%d returned to your bank.'):format(m.business_name, amount), 'success')
+    for _, e in ipairs(members) do
+        if e.citizenid ~= cid then
+            local es = Bridge.GetSourceByCitizenId(e.citizenid)
+            if es then notify(es, 'Business', ('%s has shut down.'):format(m.business_name), 'inform') end
+        end
+    end
+    if phase1() then broadcastStorefronts() end  -- drop the closed business's blip/target
+    pushMenu(src)
+end
+
 -- Pay each clocked-in employee (wage>0) from the account, capped at the live
 -- balance — the atomic debit means payroll can NEVER overdraw. Stops when funds
 -- run out; nothing is minted.
@@ -963,6 +1049,8 @@ RegisterNetEvent('palm6_business:fire',       function(cid) opFire(source, cid) 
 RegisterNetEvent('palm6_business:setWage',    function(cid, amt) opSetWage(source, cid, amt) end)
 RegisterNetEvent('palm6_business:promote',    function(cid) opPromote(source, cid) end)
 RegisterNetEvent('palm6_business:demote',     function(cid) opDemote(source, cid) end)
+RegisterNetEvent('palm6_business:transfer',   function(cid) opTransfer(source, cid) end)
+RegisterNetEvent('palm6_business:close',      function() opClose(source) end)
 RegisterNetEvent('palm6_business:runPayroll', function() opPayroll(source) end)
 RegisterNetEvent('palm6_business:chargeNearest', function(amt, memo) opChargeNearest(source, amt, memo) end)
 RegisterNetEvent('palm6_business:acceptCharge',  function() opAcceptCharge(source) end)

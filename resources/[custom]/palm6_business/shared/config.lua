@@ -56,6 +56,17 @@ Config.ManagerRole = false
 -- Max managers an owner can appoint (excludes the owner). Bounds delegation.
 Config.MaxManagers = 3
 
+-- OWNERSHIP LIFECYCLE GATE — lets an owner TRANSFER the business to a roster member
+-- (they become owner, the old owner drops to employee) or CLOSE it (remaining
+-- account balance is refunded to the owner's bank, then the business + roster are
+-- deleted). Fills the documented gap where an owner was stuck forever (opResign
+-- refuses an owner). INDEPENDENT gate; while false the two ops refuse and the menu
+-- items are hidden — no change to the live Phase-0 system. Flip true (+ redeploy)
+-- after a transfer/close feel-test. Neither op can mint or overdraw: transfer moves
+-- no money; close refunds the OWNER their own account via the crash-safe pending
+-- idiom (drain-to-zero captured atomically) before deleting.
+Config.OwnershipLifecycle = false
+
 -- Command that opens the business menu (+ a short alias).
 Config.Command = 'business'
 Config.CommandAlias = 'biz'
