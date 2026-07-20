@@ -223,12 +223,15 @@ local function creditAccount(businessId, amount, actorCid, action, memo)
     return bal
 end
 
--- Atomic guarded debit — the account can NEVER go negative. Returns the new
--- balance on success, or nil if the account could not cover `amount`. Caller
--- logs the ledger row (with the right action/memo) on success.
+-- Atomic guarded debit for an ITEM / dirty-cash payout (NOT the account->bank
+-- recoverable path). The account can NEVER go negative, and the debit is refused
+-- while a recoverable payout is mid-settle (pending_amount > 0) so it can't
+-- interleave with the withdraw/payroll reconcile — the same guard the register-
+-- robbery debit uses. Returns the new balance on success, or nil if the account
+-- couldn't cover `amount` (or a payout is pending). Caller logs the ledger row.
 local function debitAccount(businessId, amount)
     local aff = MySQL.update.await(
-        'UPDATE palm6_businesses SET account_balance = account_balance - ? WHERE id = ? AND account_balance >= ?',
+        'UPDATE palm6_businesses SET account_balance = account_balance - ? WHERE id = ? AND account_balance >= ? AND pending_amount = 0',
         { amount, businessId, amount })
     if aff ~= 1 then return nil end
     return MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0
@@ -320,6 +323,7 @@ local hireCd = {}         -- [src] = epoch
 local chargeCd = {}       -- [src] = epoch
 local robberCd = {}       -- [src] = epoch (per-robber /robstore cooldown, set before any DB yield)
 local payrollBusy = {}    -- [businessId] = true while a payroll run is in flight (serializes payroll per business)
+local lifecycleBusy = {}  -- [businessId] = true while a transfer/close is in flight (mutually exclusive)
 
 local function onCooldown(map, src, seconds)
     local t = map[src]
@@ -647,10 +651,14 @@ local function opAcceptHire(src)
             SELECT ?, ?, ?, 0, 0, ?
               FROM (SELECT COUNT(*) AS cnt FROM palm6_business_members WHERE business_id = ?) AS c
              WHERE c.cnt < ?
-        ]], { cid, p.businessId, Config.Role.Employee, Bridge.GetPlayerName(src), p.businessId, cap })
+               AND EXISTS (SELECT 1 FROM palm6_businesses WHERE id = ?)
+        ]], { cid, p.businessId, Config.Role.Employee, Bridge.GetPlayerName(src), p.businessId, cap, p.businessId })
     end)
     if not ok then return notify(src, 'Business', 'Could not join.', 'error') end
-    if affected ~= 1 then return notify(src, 'Business', 'That roster filled up.', 'error') end
+    -- affected=0 also covers a business CLOSED (deleted) in this exact window: the
+    -- EXISTS guard makes the INSERT a no-op instead of writing an orphan member row
+    -- that would permanently soft-lock the hire (getMembership INNER-JOINs businesses).
+    if affected ~= 1 then return notify(src, 'Business', 'Could not join (the roster filled up or the business closed).', 'error') end
     notify(src, 'Business', ('You joined %s.'):format(p.businessName), 'success')
     local ownerSrc = Bridge.GetSourceByCitizenId(p.ownerCid)
     if ownerSrc then notify(ownerSrc, 'Business', ('%s joined the team.'):format(Bridge.GetPlayerName(src)), 'success') end
@@ -751,19 +759,32 @@ local function opTransfer(src, targetCid)
     if type(targetCid) ~= 'string' or targetCid == '' or targetCid == cid then
         return notify(src, 'Business', 'Pick a different roster member to hand it to.', 'error')
     end
+    -- Serialize the whole ownership lifecycle per business: a transfer/close already
+    -- in flight makes this refuse. Set synchronously right after getMembership (no
+    -- yield between its resolve and here), so two concurrent transfers can't both
+    -- promote a target and mint TWO owners, and a close can't delete mid-transfer.
+    local bizId = m.business_id
+    if lifecycleBusy[bizId] or settleBusy[bizId] or payrollBusy[bizId] then
+        return notify(src, 'Business', 'The business is busy — try again in a moment.', 'error')
+    end
+    lifecycleBusy[bizId] = true
     -- Promote the target to Owner ONLY IF they are currently a member of THIS business
     -- ranked below owner. affected=1 -> they are valid + now owner; 0 -> not on the roster.
     local promoted = MySQL.update.await(
         'UPDATE palm6_business_members SET role = ? WHERE citizenid = ? AND business_id = ? AND role < ?',
-        { Config.Role.Owner, targetCid, m.business_id, Config.Role.Owner })
-    if promoted ~= 1 then return notify(src, 'Business', 'That person is not on your roster.', 'error') end
+        { Config.Role.Owner, targetCid, bizId, Config.Role.Owner })
+    if promoted ~= 1 then
+        lifecycleBusy[bizId] = nil
+        return notify(src, 'Business', 'That person is not on your roster.', 'error')
+    end
     -- Old owner steps down to Employee; business owner_cid follows.
     MySQL.update.await('UPDATE palm6_business_members SET role = ? WHERE citizenid = ? AND business_id = ? AND role = ?',
-        { Config.Role.Employee, cid, m.business_id, Config.Role.Owner })
-    MySQL.update.await('UPDATE palm6_businesses SET owner_cid = ? WHERE id = ?', { targetCid, m.business_id })
-    insertLedger(m.business_id, cid, 'transfer', 0,
-        MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { m.business_id }) or 0,
+        { Config.Role.Employee, cid, bizId, Config.Role.Owner })
+    MySQL.update.await('UPDATE palm6_businesses SET owner_cid = ? WHERE id = ?', { targetCid, bizId })
+    insertLedger(bizId, cid, 'transfer', 0,
+        MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { bizId }) or 0,
         ('Ownership transferred to %s'):format(targetCid))
+    lifecycleBusy[bizId] = nil
     notify(src, 'Business', ('You handed %s over. You are now an employee.'):format(m.business_name), 'success')
     local ts = Bridge.GetSourceByCitizenId(targetCid)
     if ts then notify(ts, 'Business', ('You are now the owner of %s.'):format(m.business_name), 'success') end
@@ -786,9 +807,12 @@ local function opClose(src)
     -- claim->credit window the marker is cleared and the account is 0, so the delete
     -- guard alone can't see the in-limbo payout. These in-memory flags are set
     -- synchronously before any DB await, so a settle already in flight is visible here.
-    if settleBusy[bizId] or payrollBusy[bizId] then
-        return notify(src, 'Business', 'A payout is still settling — try again in a moment.', 'error')
+    if settleBusy[bizId] or payrollBusy[bizId] or lifecycleBusy[bizId] then
+        return notify(src, 'Business', 'The business is busy — try again in a moment.', 'error')
     end
+    -- Hold the lifecycle lock for the whole close so a concurrent transfer can't
+    -- re-own (and lose) a business mid-delete. Cleared at every exit below.
+    lifecycleBusy[bizId] = true
     -- Atomically drain the whole balance INTO the pending marker (MySQL evaluates SET
     -- left-to-right, so pending_amount reads the OLD balance before it is zeroed). The
     -- pending_amount=0 guard means a payout already mid-settle blocks the close — retry.
@@ -797,7 +821,7 @@ local function opClose(src)
            SET pending_cid = ?, pending_amount = account_balance, pending_at = ?, account_balance = 0
          WHERE id = ? AND pending_amount = 0
     ]], { cid, nowSec(), bizId })
-    if captured ~= 1 then return notify(src, 'Business', 'Cannot close right now (a payout is still settling). Try again.', 'error') end
+    if captured ~= 1 then lifecycleBusy[bizId] = nil; return notify(src, 'Business', 'Cannot close right now (a payout is still settling). Try again.', 'error') end
     local amount = MySQL.scalar.await('SELECT pending_amount FROM palm6_businesses WHERE id = ?', { bizId }) or 0
     if amount > 0 then
         local res = settlePayout(bizId, cid, amount, 'business-close-refund')
@@ -805,6 +829,7 @@ local function opClose(src)
             -- Credit failed + account already refunded by settlePayout('lost'), or a
             -- reconcile claimed it ('taken'). Either way the money is safe but NOT
             -- fully in hand this call — do NOT delete; the owner keeps the business.
+            lifecycleBusy[bizId] = nil
             return notify(src, 'Business', 'Refund could not complete — business kept. Try closing again.', 'error')
         end
     else
@@ -822,6 +847,7 @@ local function opClose(src)
     -- refund the payer — so members can be removed safely afterwards.
     local delBiz = MySQL.update.await('DELETE FROM palm6_businesses WHERE id = ? AND account_balance = 0 AND pending_amount = 0', { bizId })
     if delBiz ~= 1 then
+        lifecycleBusy[bizId] = nil
         return notify(src, 'Business', ('Activity landed mid-close — %s refunded, but funds came in. Close again to finish.'):format(m.business_name), 'inform')
     end
     -- Ledger rows are kept as an orphaned audit trail (ids never reused).
@@ -835,6 +861,7 @@ local function opClose(src)
             if es then notify(es, 'Business', ('%s has shut down.'):format(m.business_name), 'inform') end
         end
     end
+    lifecycleBusy[bizId] = nil
     if phase1() then broadcastStorefronts() end  -- drop the closed business's blip/target
     pushMenu(src)
 end
@@ -978,6 +1005,10 @@ local function opRename(src, rawName)
     end
     MySQL.update.await('UPDATE palm6_businesses SET name = ? WHERE id = ?', { name, m.business_id })
     notify(src, 'Business', ('Renamed to %s.'):format(name), 'success')
+    -- Storefront blip/target labels carry the business name — refresh them on all
+    -- clients (same idiom as opClose), else they show the OLD name until the next
+    -- unrelated storefront mutation or a client reconnect.
+    if phase1() then broadcastStorefronts() end
     pushMenu(src)
 end
 
@@ -989,7 +1020,11 @@ local function opResign(src)
     if m.role >= Config.Role.Owner then
         return notify(src, 'Business', 'An owner cannot resign — transfer or close is coming later.', 'error')
     end
-    MySQL.update.await('DELETE FROM palm6_business_members WHERE citizenid = ? AND business_id = ? AND role < ?', { cid, m.business_id, Config.Role.Owner })
+    -- Only claim "you left" if a row was actually removed. Guards the TOCTOU where a
+    -- concurrent transfer promoted this member to Owner between getMembership and this
+    -- DELETE (role<Owner now fails, 0 rows) — they're the new owner, not a leaver.
+    local left = MySQL.update.await('DELETE FROM palm6_business_members WHERE citizenid = ? AND business_id = ? AND role < ?', { cid, m.business_id, Config.Role.Owner })
+    if left ~= 1 then return pushMenu(src) end
     notify(src, 'Business', ('You left %s.'):format(m.business_name), 'inform')
     pushMenu(src)
 end
@@ -1117,7 +1152,11 @@ local function opRob(src, businessId)
     if not pc or Bridge.Distance(pc, { x = sf.loc_x, y = sf.loc_y, z = sf.loc_z }) > Config.Rob.Radius then
         return notify(src, 'Business', 'Get to the register first.', 'error')
     end
-    local bal = MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0
+    -- Capture the owner cid alongside the balance so a credit-failure rollback can
+    -- reroute the take to the owner if the business was CLOSED (deleted) mid-robbery.
+    local biz = MySQL.single.await('SELECT account_balance, owner_cid FROM palm6_businesses WHERE id = ?', { businessId })
+    local bal = (biz and biz.account_balance) or 0
+    local ownerCidAtStart = biz and biz.owner_cid or nil
     if bal < Config.Rob.Min then
         return notify(src, 'Business', 'The register is basically empty — not worth it.', 'error')
     end
@@ -1141,9 +1180,15 @@ local function opRob(src, businessId)
         return notify(src, 'Business', 'The register is locked down right now — try later.', 'error')
     end
     -- Pay the robber. On a credit failure, put the money back and clear the cooldown
-    -- so the shop isn't wrongly locked for a rob that never paid out.
+    -- so the shop isn't wrongly locked for a rob that never paid out. If the business
+    -- was CLOSED mid-robbery the restore affects 0 rows (row gone) — reroute the take
+    -- to the owner's bank so the debited money is never destroyed (mirrors
+    -- settlePayout's orphan-refund; the owner already got the close refund of the rest).
     if not Bridge.CreditBankByCitizenId(cid, amount, 'business-robbery') then
-        MySQL.update.await('UPDATE palm6_businesses SET account_balance = account_balance + ?, last_robbed_at = NULL WHERE id = ?', { amount, businessId })
+        local restored = MySQL.update.await('UPDATE palm6_businesses SET account_balance = account_balance + ?, last_robbed_at = NULL WHERE id = ?', { amount, businessId })
+        if restored ~= 1 and ownerCidAtStart then
+            Bridge.CreditBankByCitizenId(ownerCidAtStart, amount, 'business-robbery-orphan-refund')
+        end
         return notify(src, 'Business', "Couldn't grab the cash — try again.", 'error')
     end
     robberCd[src] = now
@@ -1262,6 +1307,84 @@ exports('GetStorefront', function(businessId)
     local sf = storefrontOf(businessId)
     if not hasLoc(sf) then return nil end
     return { x = sf.loc_x, y = sf.loc_y, z = sf.loc_z, h = sf.loc_h or 0.0 }
+end)
+
+-- ---------------------------------------------------------------------------
+-- palm6_protection shake-down seam (see docs/superpowers/specs/
+-- 2026-07-20-palm6-protection-extort-owned-design.md). All three are guarded by
+-- GetInvokingResource() == 'palm6_protection' — only the racket may reach a
+-- business this way. They add NO Phase-0 behaviour: nothing calls them unless
+-- palm6_protection has Config.ExtortOwned = true (dark by default).
+-- ---------------------------------------------------------------------------
+
+-- Nearest PLACED storefront within `radius` of a point, with the fields the racket
+-- needs to shake it down. phase1()-gated (an unplaced/Phase-0 business has no map
+-- surface to stand at) + invoking-guarded so it can't become an owned-business
+-- location/identity enumeration oracle (cf. the 2fe2331 storefront info-card lesson).
+exports('BusinessAtCoords', function(x, y, z, radius)
+    if not phase1() then return nil end
+    if GetInvokingResource() ~= 'palm6_protection' then return nil end
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    radius = tonumber(radius) or 0.0
+    if not x or not y or not z then return nil end
+    local rows = MySQL.query.await([[
+        SELECT id, name, biz_type, account_balance, owner_cid, loc_x, loc_y, loc_z
+          FROM palm6_businesses
+         WHERE loc_x IS NOT NULL AND loc_y IS NOT NULL AND loc_z IS NOT NULL
+    ]]) or {}
+    local here = { x = x, y = y, z = z }
+    local best, bestD
+    for _, r in ipairs(rows) do
+        local d = Bridge.Distance(here, { x = r.loc_x, y = r.loc_y, z = r.loc_z })
+        if d <= radius and (not bestD or d < bestD) then best, bestD = r, d end
+    end
+    if not best then return nil end
+    return {
+        id = best.id, name = best.name, biz_type = best.biz_type,
+        balance = best.account_balance or 0, ownerCid = best.owner_cid,
+        x = best.loc_x, y = best.loc_y, z = best.loc_z,
+    }
+end)
+
+-- Drain `amount` of a business's REAL pooled account as a shakedown. Atomic guarded
+-- debit (WHERE account_balance >= amount — never overdraws, never mints), writes an
+-- `extortion` ledger row, notifies the owner if online. Returns the amount actually
+-- taken (0 if the account can't cover the full amount, the business is closed, or
+-- the system is dark). All-or-nothing at the caller-capped amount; no partial debit.
+exports('Extort', function(businessId, amount, collectorCid, memo)
+    if not enabled() then return 0 end
+    if GetInvokingResource() ~= 'palm6_protection' then return 0 end
+    amount = sanitizeInt(amount)
+    if not amount or amount < 1 then return 0 end
+    local bal = debitAccount(businessId, amount)   -- nil if it can't cover / gone
+    if not bal then return 0 end
+    local actor = (type(collectorCid) == 'string' and collectorCid) or 'unknown'
+    local m = (type(memo) == 'string' and memo:sub(1, 64)) or 'Shakedown'
+    insertLedger(businessId, actor, 'extortion', -amount, bal, m)
+    -- Passive turf-tax: tell the owner if they're online (the ledger is the record
+    -- either way). Best-effort — a missing owner/src just means no live ping.
+    local biz = getBusinessById(businessId)
+    if biz and biz.owner_cid then
+        local osrc = Bridge.GetSourceByCitizenId(biz.owner_cid)
+        if osrc then
+            notify(osrc, 'Business',
+                ('%s was shaken down for $%d in protection money.'):format(biz.name or 'Your business', amount), 'error')
+        end
+    end
+    return amount
+end)
+
+-- Compensating credit when palm6_protection fails to hand the collector the cash
+-- AFTER Extort already debited — makes the business whole. creditAccount returns nil
+-- only if the business was closed in the gap (then the money is gone with the
+-- business, which refunded its own balance to the owner on close). Returns success.
+exports('RefundExtortion', function(businessId, amount, memo)
+    if not enabled() then return false end
+    if GetInvokingResource() ~= 'palm6_protection' then return false end
+    amount = sanitizeInt(amount)
+    if not amount or amount < 1 then return false end
+    local m = (type(memo) == 'string' and memo:sub(1, 64)) or 'Shakedown voided'
+    return creditAccount(businessId, amount, 'system', 'extortion-refund', m) ~= nil
 end)
 
 CreateThread(function()
