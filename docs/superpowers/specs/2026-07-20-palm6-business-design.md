@@ -211,3 +211,39 @@ Build DARK on branch `feat/defjam-fightclub-phase0` (current working branch),
 commit, NO deploy. Enable batched with David's next feel-test deploy (flip
 `Config.Enabled=true`, ensure in custom.cfg, dbmigrate 0068 lands on restart).
 Revert = flip false.
+
+## 12. Durability & crash-recovery (post-build ultracode audit hardening, 2026-07-20)
+A 7-dimension adversarial audit (wf_67b9a43f, 12 candidates → 9 confirmed) drove
+these hardenings, applied before enable:
+- **Recoverable account→bank payouts (withdraw/payroll).** The account debit is
+  immediately durable but the qbx bank credit is in-memory until the next
+  player-save, so a hard crash in that window could strand money — the archetype
+  the repo's 2026-07-16 payout-recoverability sweep fixed for every other
+  bank-payout resource. Added the same idiom, adapted to the account→bank
+  direction: `debitAccountWithPending` sets a single per-business pending marker
+  (`pending_cid`/`pending_amount`/`pending_at`, dbmigrate 0068) atomically WITH
+  the debit (guarded `AND pending_amount = 0` so it can't overwrite an unsettled
+  one); `settlePayout` is **claim-before-credit** (atomically clear the marker,
+  then credit — a crash after the claim can never double-pay); a boot
+  `reconcilePending()` re-drives any `pending_amount > 0` on start. Loss is bounded
+  to the deflationary claim→credit window (never a mint, never a double-pay),
+  matching the sibling resources.
+- **Accepted in-memory window (deposit/charge/buyStock).** The player-side debit
+  is qbx in-memory while our account credit is durable; a hard crash between them
+  could keep the account gain without the player's debit. This is the SAME window
+  every `ChargeBank`→durable-write path in the codebase carries (lottery,
+  flashdrop, …); a graceful deploy-restart saves players first, so it is safe.
+  Documented and accepted codebase-wide, not special-cased.
+- **Server-side least-privilege:** `pushMenu` attaches the roster (coworker
+  citizenids/wages) and account balance ONLY for the owner — the server, not the
+  client render gate, decides what a non-owner receives.
+- **Roster-cap race:** hire-accept is an atomic conditional insert (COUNT inside
+  the statement, derived-table wrapped) — no check-then-insert TOCTOU.
+- **Dark-ship completeness:** `pushMenu` and the read-only exports
+  `GetBusinessOf`/`GetAccountBalance` early-return when disabled, matching every
+  op and `Charge`.
+- **Dead code:** removed the unproduced `palm6_business:openMenu` net event + its
+  eventguard budget (the command opens the menu server-side; Phase 1's ped/target
+  will re-add a produced event).
+- **Ledger `balance_after`** is a best-effort read-back snapshot (cosmetic under
+  simultaneous same-business writes); `account_balance` itself is always exact.

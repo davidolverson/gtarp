@@ -474,10 +474,14 @@ CREATE TABLE IF NOT EXISTS `palm6_businesses` (
     supply_units INT UNSIGNED NOT NULL DEFAULT 0,
     day_key VARCHAR(10) NOT NULL DEFAULT '',
     day_npc_income INT UNSIGNED NOT NULL DEFAULT 0,
+    pending_cid VARCHAR(64) NULL,
+    pending_amount BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    pending_at BIGINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_palm6_business_name (name),
-    INDEX idx_palm6_business_owner (owner_cid)
+    INDEX idx_palm6_business_owner (owner_cid),
+    INDEX idx_palm6_business_pending (pending_amount)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
     { name = '0068 palm6_business_members', sql = [[
 CREATE TABLE IF NOT EXISTS `palm6_business_members` (
