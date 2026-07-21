@@ -1,0 +1,117 @@
+name: Palm6 discord allowlist convars
+
+# One-off ops workflow: writes the two palm6:discord_* convars into the live
+# server's server.cfg via the Pterodactyl client API, then restarts FXServer so
+# palm6_allowlist turns on the REAL-TIME Discord role check (no 10-min DB-sync
+# lag). Idempotent (re-running re-sets the same two lines). Manual dispatch only.
+#
+# This does NOT change who is admitted: palm6_allowlist/config.lua Config.AllowedRoles
+# already lists the 6 admit roles (admin/mod/whitelisted/member/customer/investor);
+# the Founding Tester role is deliberately excluded there. Setting these convars
+# only removes the lag on the existing role set.
+#
+# Secrets used (write-only, never in git):
+#   PTERO_API_KEY              - existing Pterodactyl client key (drives restarts)
+#   PALM6_DISCORD_BOT_TOKEN    - Palm6/Horizon bot token (same app as the DB-sync)
+# Guild id (1522465866837393418) is a public snowflake, kept as a literal below.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-custom-layer   # share the deploy lock so we never race a deploy
+  cancel-in-progress: false
+
+env:
+  PANEL_URL: ${{ vars.PANEL_URL || 'https://control.rocketnode.com' }}
+  SERVER_ID: ${{ vars.SERVER_ID || '9524616c' }}
+  GUILD_ID: '1522465866837393418'
+
+jobs:
+  set-convars:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write discord allowlist convars and restart
+        env:
+          PTERO_API_KEY: ${{ secrets.PTERO_API_KEY }}
+          BOT_TOKEN: ${{ secrets.PALM6_DISCORD_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for v in PTERO_API_KEY BOT_TOKEN GUILD_ID; do
+            if [ -z "${!v:-}" ]; then echo "::error::$v is not set"; exit 1; fi
+          done
+
+          API="$PANEL_URL/api/client/servers/$SERVER_ID"
+          AUTH=(-H "Authorization: Bearer $PTERO_API_KEY" -H "Accept: application/json")
+
+          fetch() {
+            curl -sS -o cur.cfg -w "%{http_code}" "${AUTH[@]}" \
+              "$API/files/contents?file=$1"
+          }
+
+          CFG_PATH=""
+          for cand in "%2Fserver.cfg" "%2FtxData%2Fserver.cfg"; do
+            code="$(fetch "$cand" || echo 000)"
+            if [ "$code" = "200" ] && grep -qE 'endpoint_add|sv_licenseKey|ensure |exec ' cur.cfg; then
+              CFG_PATH="$cand"; break
+            fi
+          done
+
+          if [ -z "$CFG_PATH" ]; then
+            echo "Root server.cfg not found; scanning /txData for a *.base profile..."
+            code="$(curl -sS -o list.json -w "%{http_code}" "${AUTH[@]}" "$API/files/list?directory=%2FtxData" || echo 000)"
+            if [ "$code" = "200" ]; then
+              base="$(jq -r '.data[].attributes | select(.is_file==false) | .name' list.json | grep -E '\.base$' | head -1 || true)"
+              if [ -n "$base" ]; then
+                enc="%2FtxData%2F${base}%2Fserver.cfg"
+                code="$(fetch "$enc" || echo 000)"
+                if [ "$code" = "200" ] && grep -qE 'endpoint_add|sv_licenseKey|ensure |exec ' cur.cfg; then
+                  CFG_PATH="$enc"
+                fi
+              fi
+            fi
+          fi
+
+          if [ -z "$CFG_PATH" ]; then
+            echo "::error::Could not locate a valid server.cfg to edit. Aborting (nothing written)."
+            exit 1
+          fi
+
+          BYTES="$(wc -c < cur.cfg)"
+          echo "Found server.cfg at '$CFG_PATH' ($BYTES bytes)."
+          if [ "$BYTES" -lt 200 ]; then
+            echo "::error::server.cfg suspiciously small ($BYTES bytes) — refusing to overwrite."
+            exit 1
+          fi
+
+          # Idempotent: strip any prior discord convars, then PREPEND fresh ones so
+          # they are set before 'exec custom.cfg' / 'ensure palm6_allowlist'.
+          grep -vE '^[[:space:]]*set[[:space:]]+palm6:discord_(bot_token|guild_id)[[:space:]]' cur.cfg > stripped.cfg || true
+          {
+            printf 'set palm6:discord_bot_token "%s"\n' "$BOT_TOKEN"
+            printf 'set palm6:discord_guild_id "%s"\n' "$GUILD_ID"
+            cat stripped.cfg
+          } > new.cfg
+
+          NEWBYTES="$(wc -c < new.cfg)"
+          echo "New server.cfg is $NEWBYTES bytes; discord set-lines present: $(grep -cE '^set palm6:discord_' new.cfg)/2 (values not printed)"
+
+          wcode="$(curl -sS -o write_resp.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Content-Type: text/plain" \
+            -X POST "$API/files/write?file=$CFG_PATH" \
+            --data-binary @new.cfg || echo 000)"
+          if [ "$wcode" -lt 200 ] || [ "$wcode" -ge 300 ]; then
+            echo "::error::file write failed (HTTP $wcode)"; cat write_resp.txt || true; exit 1
+          fi
+          echo "server.cfg written (HTTP $wcode)."
+
+          rcode="$(curl -sS -o restart_resp.txt -w "%{http_code}" \
+            -H "Authorization: Bearer $PTERO_API_KEY" \
+            -H "Content-Type: application/json" -H "Accept: application/json" \
+            -X POST "$API/power" -d '{"signal":"restart"}' || echo 000)"
+          if [ "$rcode" -lt 200 ] || [ "$rcode" -ge 300 ]; then
+            echo "::error::restart failed (HTTP $rcode)"; cat restart_resp.txt || true; exit 1
+          fi
+          echo "Restart signal accepted (HTTP $rcode). palm6_allowlist boot banner will report convars SET."
