@@ -31,23 +31,32 @@ local TTL_MS = (Config.CacheTtlSeconds or 60) * 1000
 -- Resolve a discord id to its active grant, cb({label, icon} | nil). Fail-open.
 local function queryGrant(discordId, cb)
     if not discordId then cb(nil); return end
-    local ok = pcall(function()
-        MySQL.single(
-            'SELECT tag_label, tag_icon FROM palm6_founding_grants WHERE discord_id = ? AND revoked_at IS NULL LIMIT 1',
-            { discordId },
-            function(row)
-                if row then
-                    cb({
-                        label = row.tag_label or Config.DefaultLabel,
-                        icon = row.tag_icon or Config.DefaultIcon,
-                    })
-                else
-                    cb(nil)
-                end
-            end
-        )
+    -- Run the query on its OWN thread using the sync .await form. The caller still
+    -- returns immediately (this resource must never block a connect/chat/gameplay),
+    -- but .await genuinely throws INTO the pcall on a query error.
+    --
+    -- The previous shape wrapped the ASYNC callback form in pcall, which could not
+    -- catch an async failure: pcall returned ok=true the instant MySQL.single was
+    -- dispatched, so on a query error the callback simply never fired, cb() never
+    -- ran, and loadForSrc's `loading[src] = true` was never cleared — the founder
+    -- tag stayed dead for that player's whole session and Refresh() could not
+    -- recover it (it early-returns while loading). cb is now invoked on EVERY path.
+    CreateThread(function()
+        local ok, row = pcall(function()
+            return MySQL.single.await(
+                'SELECT tag_label, tag_icon FROM palm6_founding_grants WHERE discord_id = ? AND revoked_at IS NULL LIMIT 1',
+                { discordId })
+        end)
+        if not ok then cb(nil); return end
+        if row then
+            cb({
+                label = row.tag_label or Config.DefaultLabel,
+                icon = row.tag_icon or Config.DefaultIcon,
+            })
+        else
+            cb(nil)
+        end
     end)
-    if not ok then cb(nil) end
 end
 
 -- Populate/refresh the cache for a connected player. `false` records a confirmed

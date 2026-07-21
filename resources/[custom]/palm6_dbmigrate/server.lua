@@ -541,6 +541,23 @@ CREATE INDEX IF NOT EXISTS `idx_palm6_business_pending` ON `palm6_businesses` (`
     -- ABSENT, and palm6_allowlist's connect query would throw and HANG every join.
     -- Registered here so it always exists on boot. IF NOT EXISTS -> no-op where 0009
     -- already applied. (palm6_allowlist also now pcall-guards the read as a backstop.)
+    -- 0008: palm6_eventguard's `event_violations` forensics table. Like 0009 below
+    -- it previously existed ONLY in a standalone sql file (sql/0008_security_events
+    -- .sql), so a fresh/rebuilt prod DB would not have it — and the guard's INSERT
+    -- then threw on every violation. Registered here so it always exists on boot.
+    -- (record() also pcall-guards the INSERT now, so a missing table can never
+    -- break the drop/kick path.) IF NOT EXISTS -> no-op where 0008 already applied.
+    { name = '0008 event_violations', sql = [[
+CREATE TABLE IF NOT EXISTS `event_violations` (
+    `id`         INT AUTO_INCREMENT PRIMARY KEY,
+    `player_src` INT NOT NULL,
+    `identifier` VARCHAR(100) DEFAULT NULL,
+    `event_name` VARCHAR(100) NOT NULL,
+    `reason`     VARCHAR(255) NOT NULL,
+    `created_at` DATETIME NOT NULL,
+    KEY `idx_event_time` (`event_name`, `created_at`),
+    KEY `idx_identifier` (`identifier`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
     { name = '0009 allowlist', sql = [[
 CREATE TABLE IF NOT EXISTS `allowlist` (
     `id`         INT AUTO_INCREMENT PRIMARY KEY,

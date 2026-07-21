@@ -36,10 +36,18 @@ local function record(src, eventName, reason)
         eventName, reason, Violations[src])
     print(('[palm6_eventguard] VIOLATION src=%d %s'):format(src, detail))
 
-    MySQL.insert.await(
-        "INSERT INTO event_violations (player_src, identifier, event_name, reason, created_at) VALUES (?,?,?,?, NOW())",
-        { src, Bridge.GetPrimaryIdentifier(src), eventName, reason }
-    )
+    -- Best-effort: an unguarded await here THREW on any DB error (and
+    -- event_violations ships only in sql/0008_security_events.sql, so a rebuilt DB
+    -- may not have it), which unwound record() and skipped BOTH the staff log and
+    -- the 3-strike kick below. pcall keeps the violation flow alive; the row is
+    -- forensics, the kick is the control. (The drop itself already happened in
+    -- guard() before this is ever called.) Also registered in palm6_dbmigrate now.
+    pcall(function()
+        MySQL.insert.await(
+            "INSERT INTO event_violations (player_src, identifier, event_name, reason, created_at) VALUES (?,?,?,?, NOW())",
+            { src, Bridge.GetPrimaryIdentifier(src), eventName, reason }
+        )
+    end)
 
     pcall(function()
         exports.palm6_staff:Log('eventguard', 0, src, detail)
@@ -58,6 +66,17 @@ local function guard(eventName, budget)
         local b = bucket(eventName, src)
         prune(b, budget.window_seconds)
         if #b.calls >= budget.calls then
+            -- CANCEL FIRST — before ANY yielding call. CancelEvent() only takes
+            -- effect while this handler is still running SYNCHRONOUSLY. record()
+            -- below performs a yielding DB insert (and a yielding staff log), and
+            -- in FiveM a yield hands control back to the event dispatcher, which
+            -- immediately invokes the NEXT handler — the real one. Cancelling
+            -- AFTER record() therefore arrived too late: the over-budget event was
+            -- already delivered, so the limiter logged violations but never
+            -- actually dropped anything (every non-combat budget was inert; only
+            -- the combat branch, which cancelled before returning, worked).
+            -- Dropping is load-bearing; logging is best-effort. Order matters.
+            CancelEvent()
             -- Combat-class budget (fc striking/finisher mash): DROP the
             -- over-budget event but NEVER call record() — no violation row,
             -- no Violations[src]++ , no 3-strike kick. A legit flurry of
@@ -66,13 +85,9 @@ local function guard(eventName, budget)
             -- — is the combat authority, and the §7 finisher :break mash would
             -- trip the kick model instantly. Money/menu events keep the
             -- strike-and-kick model via record() below.
-            if budget.class == 'combat' then
-                CancelEvent()
-                return
-            end
+            if budget.class == 'combat' then return end
             record(src, eventName, ('over budget %d/%ds'):format(
                 budget.calls, budget.window_seconds))
-            CancelEvent()
             return
         end
         b.calls[#b.calls + 1] = now()
