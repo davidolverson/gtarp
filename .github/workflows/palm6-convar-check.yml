@@ -1,0 +1,57 @@
+name: Palm6 convar check (read-only)
+
+# Read-only diagnostic. Fetches the live server.cfg via the Pterodactyl client
+# API and reports whether the founding-launch Discord convars are present.
+# NEVER prints the bot token value (only SET/UNSET). Dispatch-only; touches
+# nothing on the box (no write, no restart). Path is under .github/ so it does
+# not trigger deploy-custom-layer (which filters on resources/** + custom.cfg).
+
+on:
+  workflow_dispatch:
+
+env:
+  PANEL_URL: ${{ vars.PANEL_URL || 'https://control.rocketnode.com' }}
+  SERVER_ID: ${{ vars.SERVER_ID || '9524616c' }}
+
+jobs:
+  convar-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report founding convar presence
+        env:
+          PTERO_API_KEY: ${{ secrets.PTERO_API_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${PTERO_API_KEY:-}" ] || { echo "::error::PTERO_API_KEY not set"; exit 1; }
+          API="$PANEL_URL/api/client/servers/$SERVER_ID"
+          AUTH=(-H "Authorization: Bearer $PTERO_API_KEY" -H "Accept: application/json")
+
+          found=""
+          for cand in "%2Fserver.cfg" "%2FtxData%2Fserver.cfg"; do
+            code="$(curl -sS -o cur.cfg -w "%{http_code}" "${AUTH[@]}" "$API/files/contents?file=$cand" || echo 000)"
+            if [ "$code" = "200" ] && grep -qE 'ensure |exec ' cur.cfg; then
+              found="$cand"; echo "server.cfg found at $cand ($(wc -c < cur.cfg) bytes)"; break
+            fi
+          done
+          [ -n "$found" ] || { echo "::error::could not fetch server.cfg"; exit 1; }
+
+          echo "===== founding-launch convar presence (values NEVER printed for the token) ====="
+
+          # Token: report SET/UNSET only, never the value.
+          if grep -qiE 'discord_bot_token' cur.cfg; then
+            echo "discord_bot_token : SET"
+          else
+            echo "discord_bot_token : UNSET"
+          fi
+
+          # Guild id is a public Discord snowflake, safe to echo for verification.
+          if grep -qiE 'discord_guild_id' cur.cfg; then
+            gid="$(grep -iE 'discord_guild_id' cur.cfg | grep -oE '[0-9]{15,20}' | head -1 || true)"
+            echo "discord_guild_id  : SET (${gid:-value hidden})"
+          else
+            echo "discord_guild_id  : UNSET"
+          fi
+
+          # Which convar prefix is in use (palm6: vs gtarp:), for the naming check.
+          echo "--- convar key prefixes present ---"
+          grep -oiE '(palm6|gtarp):discord_(bot_token|guild_id)' cur.cfg | sort -u || echo "(no matching convar keys)"
