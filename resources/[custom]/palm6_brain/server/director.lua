@@ -389,11 +389,47 @@ exports('GetGoals', function()
     return out
 end)
 
+-- ============================================================================
+-- CRIME DISPATCH THROTTLE — the guardrail, built before the live police bus.
+--
+-- When CrimeEnabled flips on (a later slice), a committed rob/deal/attack goal
+-- will call crimeAllowed() and, ONLY if permitted, fire Bridge.AlertPolice +
+-- crimeRecord(). This throttle is the roadmap's mandated "rate-limit +
+-- CountOnDutyPolice" guard, so off-peak AI crime can never flood on-duty cops.
+-- It is pure decision logic over a small state — deterministic given
+-- (state, now, onDuty, cfg) — so it is fully unit-tested (/braincrime) BEFORE any
+-- dispatch is wired. NOTHING here dispatches anything yet.
+-- ============================================================================
+local crimeState = { lastGlobal = 0, byLocation = {}, tickCount = 0 }
+
+-- Reset the per-tick counter; called once at the top of each Director tick.
+local function crimeResetTick(state) state.tickCount = 0 end
+
+-- Pure, read-only: may a crime dispatch fire now at `location`? -> ok, reason.
+local function crimeAllowed(state, now, location, onDuty, cfg)
+    if type(location) ~= 'string' or location == '' then return false, 'bad-location' end
+    if (onDuty or 0) < (cfg.MinOnDutyPolice or 1) then return false, 'no-police' end
+    if (now - (state.lastGlobal or 0)) < (cfg.GlobalCooldownSec or 45) then return false, 'global-cooldown' end
+    local lastHere = state.byLocation[location]
+    if lastHere and (now - lastHere) < (cfg.LocationCooldownSec or 180) then return false, 'location-cooldown' end
+    if (state.tickCount or 0) >= (cfg.PerTickMax or 1) then return false, 'tick-cap' end
+    return true, 'ok'
+end
+
+-- Record a fired dispatch (call ONLY after a real dispatch actually fired).
+local function crimeRecord(state, now, location)
+    state.lastGlobal = now
+    state.byLocation[location] = now
+    state.tickCount = (state.tickCount or 0) + 1
+end
+
 -- ── The automatic tick loop (only runs when the master gate is on) ───────────
 CreateThread(function()
     local d = Config.Director
     if not (d and d.Enabled == true) then return end   -- dark-ship: loop never starts
     while (Config.Director and Config.Director.Enabled) == true do
+        crimeResetTick(crimeState)   -- fresh per-tick crime budget (inert until crime is wired)
+
         -- Expire stale goals FIRST, every iteration — this runs even when GLM is
         -- down or players<min, so a Director outage degrades to reflex on schedule
         -- rather than leaving NPCs stuck on an old goal.
@@ -552,6 +588,40 @@ RegisterCommand('braingoals', function(src)
     if src ~= 0 then
         TriggerClientEvent('chat:addMessage', src, { color = { 150, 200, 255 },
             args = { 'director', ('%d active goal(s) — see server console'):format(n) } })
+    end
+end, true)
+
+-- /braincrime — deterministic battery for the crime dispatch throttle (no live
+-- dispatch, no GLM). Proves the rate-limiter BEFORE it guards the real police bus.
+RegisterCommand('braincrime', function(src)
+    local cfg = { MinOnDutyPolice = 1, GlobalCooldownSec = 45, LocationCooldownSec = 180, PerTickMax = 1 }
+    local pass, fail = 0, 0
+    local function expect(cond, label)
+        if cond then pass = pass + 1
+        else fail = fail + 1; print('[palm6_brain:director]   FAIL: ' .. label) end
+    end
+    local s = { lastGlobal = 0, byLocation = {}, tickCount = 0 }
+    local ok, reason
+
+    ok = crimeAllowed(s, 1000, 'Legion Square', 0, cfg);        expect(ok == false, 'no police -> reject')
+    ok = crimeAllowed(s, 1000, 'Legion Square', 1, cfg);        expect(ok == true,  'police + fresh -> allow')
+    crimeRecord(s, 1000, 'Legion Square')
+    ok, reason = crimeAllowed(s, 1044, 'Del Perro Pier', 2, cfg); expect(ok == false and reason == 'global-cooldown', 'within global cooldown -> reject')
+    crimeResetTick(s)
+    ok = crimeAllowed(s, 1045, 'Del Perro Pier', 2, cfg);       expect(ok == true,  'after global cooldown, new location -> allow')
+    ok, reason = crimeAllowed(s, 1100, 'Legion Square', 2, cfg); expect(ok == false and reason == 'location-cooldown', 'same location within cooldown -> reject')
+    crimeResetTick(s)
+    crimeRecord(s, 2000, 'Vespucci Beach')
+    ok, reason = crimeAllowed(s, 2050, 'Sandy Shores', 2, cfg); expect(ok == false and reason == 'tick-cap', 'per-tick cap -> reject')
+    crimeResetTick(s)
+    ok = crimeAllowed(s, 2050, 'Sandy Shores', 2, cfg);         expect(ok == true,  'after tick reset -> allow')
+    ok = crimeAllowed(s, 3000, '', 2, cfg);                     expect(ok == false, 'empty location -> reject')
+
+    local msg = ('crime throttle: %d passed, %d failed'):format(pass, fail)
+    print('[palm6_brain:director] ' .. msg)
+    if src ~= 0 then
+        TriggerClientEvent('chat:addMessage', src, { color = fail == 0 and { 120, 220, 140 } or { 230, 120, 120 },
+            args = { 'director', msg } })
     end
 end, true)
 

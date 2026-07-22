@@ -249,4 +249,24 @@ Config.Director = {
     -- the observability meter (David's "ship the meter before shipped" rule) —
     -- it is how we watch the Director's decisions before trusting it to actuate.
     Verbose = true,
+
+    -- CRIME DISPATCH THROTTLE. When CrimeEnabled flips on (a later slice), a
+    -- committed crime goal (rob/deal/attack) will fire a police dispatch through
+    -- palm6's alert bus (Bridge.AlertPolice) — but ONLY if this throttle allows,
+    -- so off-peak AI crime can never flood on-duty officers. The throttle is the
+    -- guardrail the roadmap mandates ("rate-limit + CountOnDutyPolice"); it is
+    -- built and battery-tested (/braincrime) BEFORE any live dispatch is wired.
+    -- All limits are advisory numbers, not invariants — tune freely.
+    Crime = {
+        -- Never dispatch to an empty PD: require at least this many on-duty police.
+        -- (An AI crime nobody can respond to is just noise.)
+        MinOnDutyPolice = 1,
+        -- Server-wide floor between ANY two crime dispatches (seconds).
+        GlobalCooldownSec = 45,
+        -- Per-location floor (seconds) — one scene can't spawn back-to-back crimes,
+        -- mirroring palm6_robbery's per-ATM cooldown idiom.
+        LocationCooldownSec = 180,
+        -- Hard cap on crime dispatches accepted in a single Director tick.
+        PerTickMax = 1,
+    },
 }
