@@ -321,6 +321,14 @@ RegisterNetEvent('palm6_brain:goal', function(npcId, goal)
     if goal == false or goal == nil then
         moverGoal[npcId] = nil
     elseif type(goal) == 'table' and type(goal.verb) == 'string' then
+        -- Stamp a MONOTONIC client deadline from the server-side DURATION
+        -- (expiresAt - issuedAt is a difference of two SERVER epochs, so it's
+        -- clock-independent) plus our own GetGameTimer(). Never compare our
+        -- wall-clock to a server epoch — a mis-set client clock would otherwise
+        -- expire goals instantly or never (audit M2).
+        local dur = (tonumber(goal.expiresAt) or 0) - (tonumber(goal.issuedAt) or 0)
+        if dur <= 0 then dur = 120 end   -- fallback if the fields are missing
+        goal._deadline = GetGameTimer() + dur * 1000
         moverGoal[npcId] = goal
     end
 end)
@@ -329,6 +337,7 @@ end)
 -- officers (see bridge/sv_framework.lua), so only cops ever see this. Draws a
 -- temporary routed blip + a 911 notify, matching palm6_robbery's dispatch look;
 -- the blip auto-removes after its TTL. Purely visual — no gameplay effect.
+local dispatchBlips = {}   -- active dispatch blips, so onResourceStop can clear them (audit L2)
 RegisterNetEvent('palm6_brain:dispatch', function(d)
     if type(d) ~= 'table' or type(d.coords) ~= 'table' then return end
     local b = AddBlipForCoord(d.coords.x + 0.0, d.coords.y + 0.0, d.coords.z + 0.0)
@@ -340,11 +349,13 @@ RegisterNetEvent('palm6_brain:dispatch', function(d)
     BeginTextCommandSetBlipName('STRING')
     AddTextComponentSubstringPlayerName(d.label or 'Dispatch')
     EndTextCommandSetBlipName(b)
+    dispatchBlips[b] = true
     if lib and lib.notify then
         lib.notify({ title = '911 Dispatch', description = d.label or 'Reported incident', type = 'inform' })
     end
     SetTimeout((d.duration or 90) * 1000, function()
         if DoesBlipExist(b) then RemoveBlip(b) end
+        dispatchBlips[b] = nil
     end)
 end)
 
@@ -409,8 +420,8 @@ local function driveMover(id, mv)
     local ped = mv.ped
     if not (ped and DoesEntityExist(ped)) then return end
     local goal = moverGoal[id]
-    if goal and goal.expiresAt and os.time() >= goal.expiresAt then
-        moverGoal[id] = nil; goal = nil                -- client-side self-degrade
+    if goal and goal._deadline and GetGameTimer() >= goal._deadline then
+        moverGoal[id] = nil; goal = nil                -- monotonic client-side self-degrade (M2)
     end
     local verb = (goal and goal.verb) or 'wander'      -- ambient wander when ungoaled
     local key = verb .. '|' .. tostring(goal and goal.target or '')
@@ -505,4 +516,8 @@ AddEventHandler('onResourceStop', function(res)
     clearAll()                                   -- scene peds
     for id in pairs(named) do despawnNamed(id) end  -- named peds + their ox_target zones
     for id in pairs(movers) do despawnMover(id) end -- Director mover peds
+    for b in pairs(dispatchBlips) do                -- dispatch blips (audit L2)
+        if DoesBlipExist(b) then RemoveBlip(b) end
+        dispatchBlips[b] = nil
+    end
 end)

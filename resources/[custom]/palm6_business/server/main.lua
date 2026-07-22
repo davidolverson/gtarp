@@ -1625,6 +1625,11 @@ end)
 exports('AccrueNpcPassive', function(businessId, memo)
     if not enabled() then return false end
     if Config.NpcPassiveIncome ~= true then return false end   -- dark by default
+    -- Lock the money-moving faucet to the AI Director (defense in depth — at least
+    -- as restricted as the read-only NpcStorefrontAt seam below). Only palm6_brain
+    -- is an intended caller; the daily-cap + supply guards already bound it, but a
+    -- money export should never be callable by an arbitrary resource on the box.
+    if GetInvokingResource() ~= 'palm6_brain' then return false end
     businessId = sanitizeInt(businessId)
     if not businessId then return false end
     local b = getBusinessById(businessId)

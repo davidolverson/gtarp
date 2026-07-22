@@ -121,3 +121,4 @@ All are ACE-restricted (`command.<name>`).
 - **Memory/factions are in-memory** (reset on restart). Persistence is a documented future hook.
 - **Passive income only reaches shops near the ambient scenes** (movers patronize scenes; a storefront within `BusinessRadius` of a scene gets walk-ins). Placing a storefront near a busy scene is the emergent incentive.
 - **Retaliation is emergent, not guaranteed** — the LLM may or may not act on a grudge.
+- **The passive-income trickle cooldown is in-memory** (`lastPassive`), so a `palm6_brain` restart clears it: a shop credited moments before a restart can be credited again immediately, briefly bypassing `PerBusinessCooldownSec`. The **daily `DailyNpcIncome` cap is in the DB and is unaffected**, so total income stays bounded — only the smoothness of the trickle is affected, never the ceiling.

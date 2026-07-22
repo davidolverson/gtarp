@@ -245,8 +245,12 @@ local function gKey() return GetConvar('palm6:glm_key', '') end
 -- model may wrap JSON in prose or ```json fences despite instructions.
 local function extractActions(resp)
     if type(resp) ~= 'string' then return nil end
-    local arr = resp:match('%[.-%]')                 -- shortest bracketed span
-    if not arr then arr = resp:match('%[.*%]') end   -- fall back to greedy
+    resp = resp:gsub('```json', ''):gsub('```', '')  -- strip markdown code fences first
+    -- Greedy: first '[' to last ']' — the whole top-level array. Our plan is an
+    -- array of FLAT objects (no nested arrays, no ']' inside values), so greedy is
+    -- correct and robust to trailing prose. A malformed grab still fails closed
+    -- (json.decode -> nil -> no actions actuated). Audit L4.
+    local arr = resp:match('%[.*%]')
     if not arr then return nil end
     local ok, data = pcall(json.decode, arr)
     return (ok and type(data) == 'table') and data or nil
@@ -545,6 +549,7 @@ end
 CreateThread(function()
     local d = Config.Director
     if not (d and d.Enabled == true) then return end   -- dark-ship: loop never starts
+    local inFlight = false   -- a runTick's async GLM call is outstanding
     while (Config.Director and Config.Director.Enabled) == true do
         crimeResetTick(crimeState)   -- fresh per-tick crime budget (inert until crime is wired)
 
@@ -557,8 +562,13 @@ CreateThread(function()
         end
 
         local players = #GetPlayers()
-        if players >= (d.MinPlayers or 0) then
+        -- Skip firing while a prior tick's GLM call is still outstanding, so two
+        -- ticks can never commit in the same window (keeps PerTickMax meaningful
+        -- if a GLM call ever runs longer than TickSeconds — audit L1).
+        if players >= (d.MinPlayers or 0) and not inFlight then
+            inFlight = true
             runTick({ players = players }, function(res)
+                inFlight = false
                 if d.Verbose then logTick(res, 'auto') end
                 -- DryRun=false commits the accepted plan to the goal store +
                 -- broadcasts it (still inert until a client executor subscribes).
