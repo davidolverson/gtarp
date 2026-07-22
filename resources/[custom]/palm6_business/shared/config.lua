@@ -289,8 +289,14 @@ Config.Storefront = {
 --
 -- INDEPENDENT gate. While false: no entry target, no bucket is ever assigned, no
 -- prop is ever spawned, /bizshell refuses. Requires a placed storefront (Phase 1a).
+-- *** ENABLED 2026-07-21 for the in-game feel-test (gate of 7, per GO-LIVE-RUNBOOK
+-- §C). SAFE to ship on: the feature is INERT until an admin /bizshell-captures at
+-- least one shell — no Enter option appears, no routing bucket is ever assigned,
+-- and migration 0073 is additive (new table + nullable column). First in-game step
+-- is capture (see docs/BUSINESS-INTERIORS-CAPTURE.md). Rollback = set false +
+-- redeploy; captured shells persist and simply go unused. ***
 -- ---------------------------------------------------------------------------
-Config.Interiors = false
+Config.Interiors = true
 
 Config.Interior = {
     -- ROUTING BUCKETS. bucket = BucketBase + business id. Verified 2026-07-21 that

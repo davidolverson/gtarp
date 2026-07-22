@@ -30,7 +30,7 @@ auto-start).
 | **Manager role** (1c) | `e6a5ebc` `de85f42` `a7a91aa` | **DARK** `Config.ManagerRole` | None |
 | **Transfer / close** | `46bc4db` `84e98f7` `ec612db` `828950f` | **DARK** `Config.OwnershipLifecycle` | None |
 | **Register robbery** | `92221f7` | **DARK** `Config.Robbery` | None |
-| **Interiors** (Phase 1b — enterable buildings) | `feat/business-interiors` | **DARK** `Config.Interiors` | None (gated off) |
+| **Interiors** (Phase 1b — enterable buildings) | `feat/business-interiors` (merged 2026-07-21) | **ENABLED** `Config.Interiors = true` | Inert until an admin `/bizshell`-captures a shell; migration 0073 additive |
 | **Extort owned biz** | (this session) | **DARK** `palm6_protection Config.ExtortOwned` | None |
 | Docs | `802e992` `75a6131` this file + specs | docs only | None |
 
