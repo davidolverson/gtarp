@@ -17,6 +17,7 @@ client_scripts {
 
 server_scripts {
     'server/main.lua',
+    'server/director.lua',   -- Phase 2b: AI Director spine (dry-run, gates dark)
 }
 
 dependencies {

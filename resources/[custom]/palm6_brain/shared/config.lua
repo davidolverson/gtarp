@@ -137,3 +137,79 @@ Config.NamedNpcs = {
 Config.BubbleSeconds = 7.0
 -- How close (m) you must be to keep the conversation open.
 Config.TalkRange = 3.0
+
+-- ===========================================================================
+-- PHASE 2b — THE AI DIRECTOR (docs/AI-NPC-ROADMAP.md §Phase 2).
+--
+-- The Director is a low-frequency, BATCHED, server-side LLM call: once per tick
+-- it looks at the whole NPC roster + world state and assigns each NPC ONE goal
+-- from a CLOSED action enum. The model only ever picks a verb + typed args; the
+-- Lua engine chooses whether/how to act. This is the "on-rails AI" the roadmap
+-- describes: the LLM literally cannot name an action or target we didn't define,
+-- because every returned action passes three validation layers
+-- (shape → referential → legality) before anything happens.
+--
+-- 🔒 SAFETY MODEL — why this ships DARK and in DRY-RUN:
+--   • Config.Director.Enabled = false  → the tick never runs (prod-inert).
+--   • Config.Director.DryRun  = true   → even when the tick runs, accepted
+--       actions are only LOGGED ("Tony WOULD goTo the plaza"), never executed.
+--   • Config.Director.MoneyEnabled / CrimeEnabled = false → the money and crime
+--       verbs still VALIDATE, but the legality layer BLOCKS them, so they can
+--       never fire even if DryRun were off. These are the two capability gates
+--       that guard the live economy and the police-dispatch bus. They are the
+--       flips that require David's browser-walk (money) / rate-limit review
+--       (crime) FIRST — see the roadmap's "Risks & hard parts".
+--
+-- Nothing in this block spawns a ped, moves money, or calls dispatch. It is the
+-- planning spine only. Actuation (networked peds, palm6_business income,
+-- Bridge.AlertPolice) lands in later, individually-gated slices.
+-- ===========================================================================
+Config.Director = {
+    -- MASTER GATE for the whole Director tier. false = the tick loop never
+    -- starts. Independent of Config.Enabled so the ambient/dialogue tiers and
+    -- the Director can be lit up separately.
+    Enabled = false,
+
+    -- DRY-RUN. true = accepted actions are logged, never actuated. This stays
+    -- true until the actuation slices (peds/money/crime) are built AND walked.
+    DryRun = true,
+
+    -- CAPABILITY GATES. Even with DryRun off, a verb whose gate is false is
+    -- BLOCKED by the legality layer. These are the two live-system guards:
+    --   MoneyEnabled → verbs that would move real money (orderAt, buyFrom).
+    --       ⚠️ palm6_business enforces exactly ONE bounded NPC-income faucet
+    --       (owner-present, supply-gated, daily-capped). Auto-crediting an
+    --       ABSENT owner would be a NEW faucet = AFK money-printer. Do NOT flip
+    --       this until the economy model for off-peak income is decided and the
+    --       money path is browser-walked (roadmap "Economy safety").
+    --   CrimeEnabled → verbs that would call the police-dispatch bus
+    --       (rob, attack, deal). Gate off until rate-limits + CountOnDutyPolice
+    --       gating are wired so off-peak crime can't spam on-duty officers.
+    MoneyEnabled = false,
+    CrimeEnabled = false,
+
+    -- Seconds between Director ticks. Roadmap costs are computed at 30–60s; a
+    -- slow tick is what keeps this ~free (one batched call, not per-ped).
+    TickSeconds = 60,
+
+    -- Only run a tick if at least this many real players are ON. Off-peak is the
+    -- whole point, but with ZERO players there is nobody to perceive the world,
+    -- so we save the call. 0 = always tick when Enabled.
+    MinPlayers = 1,
+
+    -- Max NPCs described to the model in one batched call. The batching trick
+    -- (one call for ~20 NPCs) is where the 12× cost win comes from; a hard cap
+    -- keeps the prompt bounded. Roster beyond this is simply not directed.
+    MaxRoster = 20,
+
+    -- Hard ceiling on any `amount` arg the model can request, BEFORE the
+    -- per-verb clamp. A defensive backstop so a hallucinated 9-figure number is
+    -- rejected at the shape layer, never reaching the clamp. Real economy caps
+    -- live in palm6_business; this is just an outer sanity bound.
+    MaxAmount = 100000,
+
+    -- Log every accepted/blocked action to the server console each tick. This is
+    -- the observability meter (David's "ship the meter before shipped" rule) —
+    -- it is how we watch the Director's decisions before trusting it to actuate.
+    Verbose = true,
+}
