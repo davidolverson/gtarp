@@ -268,5 +268,19 @@ Config.Director = {
         LocationCooldownSec = 180,
         -- Hard cap on crime dispatches accepted in a single Director tick.
         PerTickMax = 1,
+
+        -- Dispatch presentation on the officer's map (blip + 911 notify). Sprite/
+        -- colour/scale match palm6_robbery's dispatch look; duration is how long
+        -- the blip lives. Per-verb `labels` set the 911 text; `defaultLabel` is
+        -- the fallback for any crime verb without its own entry.
+        Dispatch = {
+            sprite = 161, colour = 1, scale = 1.2, durationSec = 90,
+            defaultLabel = 'Suspicious activity reported',
+            labels = {
+                rob    = 'Robbery in progress',
+                attack = 'Assault reported',
+                deal   = 'Suspected narcotics activity',
+            },
+        },
     },
 }

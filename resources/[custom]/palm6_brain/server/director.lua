@@ -352,6 +352,10 @@ local function applyExpire(store, now)
     return cleared
 end
 
+-- Forward-declared crime hook (assigned after the crime throttle below, so
+-- commitPlan can reference it while its body is defined later). nil until then.
+local fireCrimeDispatch
+
 -- Commit an accepted plan to the live store and broadcast each goal. Returns count.
 local function commitPlan(accepted)
     local now = os.time()
@@ -359,6 +363,7 @@ local function commitPlan(accepted)
     for _, a in ipairs(accepted) do
         local g = applyCommit(goals, a.npc, a, now, ttl)
         TriggerClientEvent('palm6_brain:goal', -1, a.npc, g)
+        if fireCrimeDispatch then fireCrimeDispatch(a) end   -- crime verbs -> throttled police dispatch
     end
     return #accepted
 end
@@ -423,6 +428,43 @@ local function crimeRecord(state, now, location)
     state.tickCount = (state.tickCount or 0) + 1
 end
 
+-- ── CRIME DISPATCH WIRING — the throttle's live consumer ─────────────────────
+-- Server-side maps: scene label -> coords, mover id -> home label. A committed
+-- crime goal is "reported" at its mover's HOME scene (the mover is a client-local
+-- ped whose live position the server can't see; home is the server-known anchor).
+local sceneCoordSv, moverHomeLabelMap = {}, {}
+for _, s in ipairs(Config.Scenes or {}) do
+    if s.label then sceneCoordSv[s.label] = { x = s.x + 0.0, y = s.y + 0.0, z = s.z + 0.0 } end
+end
+for _, m in ipairs(Config.Movers or {}) do
+    if m.id then moverHomeLabelMap[m.id] = m.home end
+end
+
+-- Assign the forward-declared hook. For a committed crime-gated verb, ask the
+-- throttle, and only if it permits fire the police alert + record it. Triple-
+-- gated: the validator already blocked the verb unless CrimeEnabled (so it only
+-- reaches here with the gate on), commitPlan only runs when DryRun is off, and
+-- the throttle caps rate/location/police-presence. Anything missing = no-op.
+fireCrimeDispatch = function(action)
+    local d = Config.Director or {}
+    if not d.CrimeEnabled then return end                     -- defensive re-check
+    local spec = ACTIONS[action.verb]
+    if not (spec and spec.gate == 'crime') then return end    -- crime verbs only
+    local label = moverHomeLabelMap[action.npc]
+    local coords = label and sceneCoordSv[label]
+    if not coords then return end                             -- no known location
+    local cfg = d.Crime or {}
+    local onDuty = (Bridge and Bridge.CountOnDutyPolice and Bridge.CountOnDutyPolice()) or 0
+    local now = os.time()
+    if not crimeAllowed(crimeState, now, label, onDuty, cfg) then return end
+    local disp = cfg.Dispatch or {}
+    local text = (disp.labels and disp.labels[action.verb]) or disp.defaultLabel or 'Reported incident'
+    Bridge.AlertPolice(coords, ('%s — %s'):format(text, label),
+        disp.durationSec or 90, disp.sprite or 161, disp.colour or 1, disp.scale or 1.2)
+    crimeRecord(crimeState, now, label)
+    if d.Verbose then print(('[palm6_brain:director] crime dispatch fired: %s @ %s'):format(text, label)) end
+end
+
 -- ── The automatic tick loop (only runs when the master gate is on) ───────────
 CreateThread(function()
     local d = Config.Director
@@ -464,6 +506,7 @@ end)
 -- regardless of the auto-loop gate. Lets David watch the LLM→validate pipeline
 -- against the real GLM without lighting the loop. Always DRY-RUN in this slice.
 RegisterCommand('braindirector', function(src)
+    crimeResetTick(crimeState)   -- fresh crime budget per manual probe, like an auto tick
     runTick({ players = #GetPlayers() }, function(res)
         logTick(res, 'manual')
         -- Mirror the auto-loop: commit only when DryRun is off, so the manual

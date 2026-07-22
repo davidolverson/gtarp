@@ -325,6 +325,29 @@ RegisterNetEvent('palm6_brain:goal', function(npcId, goal)
     end
 end)
 
+-- Police dispatch renderer. The server sends palm6_brain:dispatch ONLY to on-duty
+-- officers (see bridge/sv_framework.lua), so only cops ever see this. Draws a
+-- temporary routed blip + a 911 notify, matching palm6_robbery's dispatch look;
+-- the blip auto-removes after its TTL. Purely visual — no gameplay effect.
+RegisterNetEvent('palm6_brain:dispatch', function(d)
+    if type(d) ~= 'table' or type(d.coords) ~= 'table' then return end
+    local b = AddBlipForCoord(d.coords.x + 0.0, d.coords.y + 0.0, d.coords.z + 0.0)
+    SetBlipSprite(b, d.sprite or 161)
+    SetBlipColour(b, d.colour or 1)
+    SetBlipScale(b, d.scale or 1.2)
+    SetBlipAsShortRange(b, false)
+    SetBlipRoute(b, true)
+    BeginTextCommandSetBlipName('STRING')
+    AddTextComponentSubstringPlayerName(d.label or 'Dispatch')
+    EndTextCommandSetBlipName(b)
+    if lib and lib.notify then
+        lib.notify({ title = '911 Dispatch', description = d.label or 'Reported incident', type = 'inform' })
+    end
+    SetTimeout((d.duration or 90) * 1000, function()
+        if DoesBlipExist(b) then RemoveBlip(b) end
+    end)
+end)
+
 -- Start the ped task for a goal verb. Locomotion verbs record a `move` monitor;
 -- everything else is a one-shot task. Unknown/ungated verbs fall through to a
 -- safe idle so no verb is ever unhandled.
@@ -346,6 +369,12 @@ local function startTask(mv, ped, goal, verb)
         TaskStartScenarioInPlace(ped, 'WORLD_HUMAN_STAND_MOBILE', 0, true)
     elseif verb == 'wander' then
         TaskWanderStandard(ped, 10.0, 10)
+    elseif verb == 'rob' or verb == 'attack' or verb == 'deal' then
+        -- Theater only: face the player and hold an agitated stance. The REAL
+        -- signal is the 911 dispatch the server fires; the ped never actually
+        -- fights (keeps it non-janky and safe). Inert until CrimeEnabled is on.
+        TaskTurnPedToFaceEntity(ped, PlayerPedId(), 1500)
+        TaskStartScenarioInPlace(ped, 'WORLD_HUMAN_STAND_IMPATIENT', 0, true)
     else   -- idle / flee / complyWithPolice / anything else -> stand and idle
         TaskStartScenarioInPlace(ped, pick(Config.ScenarioPool), 0, true)
     end

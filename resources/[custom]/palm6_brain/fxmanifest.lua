@@ -16,6 +16,7 @@ client_scripts {
 }
 
 server_scripts {
+    'bridge/sv_framework.lua',  -- qbx_core adapter (police alert bus) — before director
     'server/main.lua',
     'server/director.lua',   -- Phase 2b: AI Director spine (dry-run, gates dark)
 }
