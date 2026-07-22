@@ -29,6 +29,12 @@ local function shellForType(typeKey)
     local key = Config.Interior and Config.Interior.TypeShell and Config.Interior.TypeShell[typeKey]
     return key and shells[key] or nil
 end
+-- The layout a business uses when it has never picked one: its type's default
+-- (so a restaurant defaults to the diner look), else the global DefaultLayout.
+local function defaultLayoutFor(typeKey)
+    local td = Config.Interior and Config.Interior.TypeDefaultLayout
+    return (td and td[typeKey]) or (Config.Interior and Config.Interior.DefaultLayout) or 'bare'
+end
 -- Live interior sessions: src -> { businessId, retX, retY, retZ }. HOISTED here
 -- (declaration only) because the storefront proximity gate (serve/manage) below
 -- must count "inside your OWN business's interior" as "at the shop" — otherwise
@@ -449,7 +455,7 @@ local function pushMenu(src)
                 local lay = MySQL.scalar.await('SELECT interior_layout FROM palm6_businesses WHERE id = ?', { m.business_id })
                 data.business.interior = {
                     available = shellForType(m.biz_type) ~= nil,
-                    layout = lay or Config.Interior.DefaultLayout,
+                    layout = lay or defaultLayoutFor(m.biz_type),
                 }
                 data.cfg.interior = { layouts = Config.Interior.Layouts }
             end
@@ -1348,6 +1354,10 @@ local function opCaptureShell(src, key, label)
                                 captured_by = VALUES(captured_by), captured_at = VALUES(captured_at)
     ]], { key, label, c.x, c.y, c.z, h, Bridge.GetCitizenId(src), os.time() })
     loadShells()
+    -- Re-broadcast storefronts so a business whose type this shell now serves gets
+    -- its Enter target immediately — without this, an already-placed storefront
+    -- keeps the stale (no-interior) render until it's moved or the owner rejoins.
+    broadcastStorefronts()
     notify(src, 'Business', ('Shell "%s" captured here.'):format(key), 'success')
 end
 
@@ -1389,7 +1399,7 @@ local function doEnterInterior(src, businessId)
     SetPlayerRoutingBucket(src, bucketFor(businessId))
     TriggerClientEvent('palm6_business:onEnterInterior', src, {
         x = shell.x, y = shell.y, z = shell.z, h = shell.h,
-        layout = biz.interior_layout or Config.Interior.DefaultLayout,
+        layout = biz.interior_layout or defaultLayoutFor(biz.biz_type),
         name = biz.name,
     })
 end

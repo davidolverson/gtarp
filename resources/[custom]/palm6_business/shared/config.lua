@@ -373,39 +373,106 @@ Config.Interior = {
     -- Offsets are RELATIVE to the shell anchor (x,y,z,h), so one layout works in
     -- any shell. Models are base-game props (always present). A model that fails
     -- to load is skipped, never fatal — a missing prop must not block entry.
-    MaxPropsPerLayout = 24,   -- hard clamp; a layout cannot grief the client
+    MaxPropsPerLayout = 40,   -- hard clamp; a layout cannot grief the client
     PropLoadTimeoutMs = 3000, -- per-model streaming wait before giving up
 
-    -- Owner-selectable dressing styles. This is the knob that makes two
-    -- restaurants look different. Extend freely; keys are validated on write.
-    -- 🔶 VERIFY IN-GAME: these are STARTER layouts. The prop model names are
-    -- base-game props but have NOT been confirmed to render in this build (there
-    -- is no offline way to check a GTA model name). An unknown name is SKIPPED,
-    -- never fatal — so the worst case is a sparser room, not a crash. Walk each
-    -- layout with a prop viewer and swap any that don't show; each layout already
-    -- carries at least one high-confidence prop so none is ever fully empty.
+    -- Owner-selectable dressing styles. This is the knob that makes two shops of
+    -- the same type look different. Extend freely; keys are validated on write.
+    --
+    -- 🔶 PROP NAMES: base-game models chosen from a verified prop kit, but a GTA
+    -- model name can't be confirmed offline. An unknown name is SKIPPED (never
+    -- fatal) AND printed to the server console on entry
+    -- (`[palm6_business] layout "X": N prop(s) failed to load: ...`). So the tuning
+    -- loop is: walk in → read the console → swap any that missed. Higher-confidence
+    -- props are used first so no layout is ever fully empty.
+    --
+    -- Offsets assume the shell anchor sits at a doorway facing +Y INTO the room;
+    -- +X is to the anchor's right. Tune per shell in-game once captured. Table
+    -- height ≈ 0.9m (set oz for props that sit ON a table).
     Layouts = {
-        { key = 'bare',     label = 'Bare',          props = {} },
-        { key = 'stocked',  label = 'Stocked',       props = {
-            { model = 'prop_boxpile_07d', ox = 1.8,  oy = 1.2,  oz = 0.0, oh = 0.0 },
-            { model = 'prop_boxpile_06b', ox = 2.1,  oy = -0.6, oz = 0.0, oh = 45.0 },
-            { model = 'prop_pallet_02a',  ox = -1.9, oy = 1.5,  oz = 0.0, oh = 90.0 },
+        { key = 'bare',     label = 'Bare (empty)',  props = {} },
+
+        -- RESTAURANT — casual diner. Three 2-seat tables, a service counter, and
+        -- greenery. Built from plain tables + separate chairs (higher-confidence
+        -- names) rather than combo props.
+        { key = 'diner',    label = 'Diner',         props = {
+            -- dining set 1 (left)
+            { model = 'prop_table_03',     ox = -1.9, oy = 1.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',    ox = -1.9, oy = 0.9, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',    ox = -1.9, oy = 2.3, oz = 0.0, oh = 180.0 },
+            -- dining set 2 (right)
+            { model = 'prop_table_03',     ox = 1.9,  oy = 1.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',    ox = 1.9,  oy = 0.9, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',    ox = 1.9,  oy = 2.3, oz = 0.0, oh = 180.0 },
+            -- dining set 3 (center back)
+            { model = 'prop_table_03',     ox = 0.0,  oy = 3.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',    ox = 0.0,  oy = 2.9, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',    ox = 0.0,  oy = 4.3, oz = 0.0, oh = 180.0 },
+            -- service / order counter along the right wall
+            { model = 'prop_ff_counter_01', ox = 3.0, oy = 3.4, oz = 0.0, oh = 90.0 },
+            { model = 'prop_ff_counter_02', ox = 3.0, oy = 2.2, oz = 0.0, oh = 90.0 },
+            -- greenery
+            { model = 'prop_pot_plant_01a', ox = -3.0, oy = 0.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_pot_plant_01a', ox = -3.0, oy = 4.2, oz = 0.0, oh = 0.0 },
         } },
-        { key = 'lounge',   label = 'Lounge',        props = {
-            { model = 'prop_sofa_02',     ox = -2.2, oy = 0.8,  oz = 0.0, oh = 90.0 },
-            { model = 'prop_table_04',    ox = -1.4, oy = 0.8,  oz = 0.0, oh = 0.0 },
-            { model = 'prop_plant_int_02a', ox = -2.4, oy = -1.1, oz = 0.0, oh = 0.0 },
+
+        -- RESTAURANT — upscale. Round tables, a glass host stand, plants, a rug.
+        { key = 'fine_dining', label = 'Fine dining', props = {
+            { model = 'prop_table_05',      ox = -1.8, oy = 1.8, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_04a',     ox = -1.8, oy = 1.0, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_04a',     ox = -1.8, oy = 2.6, oz = 0.0, oh = 180.0 },
+            { model = 'prop_table_05',      ox = 1.8,  oy = 1.8, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_04a',     ox = 1.8,  oy = 1.0, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_04a',     ox = 1.8,  oy = 2.6, oz = 0.0, oh = 180.0 },
+            { model = 'p_counter_01_glass', ox = 0.0,  oy = 0.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_plant_int_02a', ox = -2.8, oy = 3.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_plant_int_02a', ox = 2.8,  oy = 3.6, oz = 0.0, oh = 0.0 },
         } },
+
+        -- RESTAURANT / cafe — lighter footprint.
+        { key = 'cafe',     label = 'Cafe',          props = {
+            { model = 'prop_table_03',      ox = -1.6, oy = 1.5, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_02',      ox = -1.6, oy = 0.8, oz = 0.0, oh = 0.0 },
+            { model = 'prop_table_03',      ox = 1.6,  oy = 1.5, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_02',      ox = 1.6,  oy = 0.8, oz = 0.0, oh = 0.0 },
+            { model = 'prop_ff_counter_01', ox = 0.0,  oy = 3.4, oz = 0.0, oh = 180.0 },
+            { model = 'prop_pot_plant_01a', ox = -2.6, oy = 3.0, oz = 0.0, oh = 0.0 },
+        } },
+
+        -- BAR / venue.
+        { key = 'lounge',   label = 'Lounge / bar',  props = {
+            { model = 'prop_ff_counter_01', ox = 2.6,  oy = 2.4, oz = 0.0, oh = 90.0 },
+            { model = 'prop_ff_counter_02', ox = 2.6,  oy = 1.2, oz = 0.0, oh = 90.0 },
+            { model = 'prop_table_03',      ox = -1.8, oy = 1.6, oz = 0.0, oh = 0.0 },
+            { model = 'prop_chair_01a',     ox = -1.8, oy = 0.9, oz = 0.0, oh = 0.0 },
+            { model = 'prop_pot_plant_01a', ox = -2.8, oy = 3.4, oz = 0.0, oh = 0.0 },
+        } },
+
+        -- RETAIL — shop floor.
+        { key = 'stocked',  label = 'Stocked shop',  props = {
+            { model = 'prop_boxpile_07d',   ox = 1.8,  oy = 1.2,  oz = 0.0, oh = 0.0 },
+            { model = 'prop_boxpile_06b',   ox = 2.1,  oy = -0.6, oz = 0.0, oh = 45.0 },
+            { model = 'prop_pallet_02a',    ox = -1.9, oy = 1.5,  oz = 0.0, oh = 90.0 },
+            { model = 'prop_ff_counter_01', ox = 0.0,  oy = 2.8,  oz = 0.0, oh = 180.0 },
+        } },
+
+        -- GARAGE — workshop.
         { key = 'workshop', label = 'Workshop',      props = {
-            { model = 'prop_toolchest_01', ox = 2.0,  oy = 0.4,  oz = 0.0, oh = 180.0 },
-            { model = 'prop_tool_bench02', ox = 2.2,  oy = -1.3, oz = 0.0, oh = 180.0 },
-            { model = 'prop_roadcone02a',  ox = 0.9,  oy = 2.1,  oz = 0.0, oh = 0.0 },
+            { model = 'prop_toolchest_01',  ox = 2.0,  oy = 0.4,  oz = 0.0, oh = 180.0 },
+            { model = 'prop_roadcone02a',   ox = 0.9,  oy = 2.1,  oz = 0.0, oh = 0.0 },
+            { model = 'prop_pot_plant_01a', ox = -2.6, oy = 2.4,  oz = 0.0, oh = 0.0 },
         } },
-        { key = 'upscale',  label = 'Upscale',       props = {
-            { model = 'prop_plant_fern_02a', ox = -2.0, oy = 1.6,  oz = 0.0, oh = 0.0 },
-            { model = 'prop_rope_barrier_01', ox = 1.2, oy = 2.0, oz = 0.0, oh = 90.0 },
-            { model = 'prop_ld_rail_01',   ox = 1.9,  oy = 0.2,  oz = 0.0, oh = 0.0 },
-        } },
+    },
+
+    -- Fallback layout when a business has never picked one, BY TYPE — so a
+    -- restaurant looks like a restaurant on first entry without the owner touching
+    -- anything. Falls through to DefaultLayout for an unlisted type.
+    TypeDefaultLayout = {
+        restaurant = 'diner',
+        bar        = 'lounge',
+        retail     = 'stocked',
+        garage     = 'workshop',
+        dealership = 'fine_dining',
     },
 
     DefaultLayout = 'bare',
