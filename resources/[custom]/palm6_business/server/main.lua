@@ -1654,6 +1654,31 @@ exports('AccrueNpcPassive', function(businessId, memo)
     return true
 end)
 
+-- Nearest PLACED storefront within `radius` of a point, as a business id (or nil).
+-- Purpose-built seam for the AI Director's passive walk-ins — RESTRICTED to the
+-- palm6_brain resource (mirrors BusinessAtCoords's palm6_protection scoping so this
+-- doesn't widen that private export) and phase1-gated. Read-only, and exposes only
+-- what the public map blip already reveals (a storefront's location), never the
+-- account or owner.
+exports('NpcStorefrontAt', function(x, y, z, radius)
+    if not phase1() then return nil end
+    if GetInvokingResource() ~= 'palm6_brain' then return nil end
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    radius = tonumber(radius) or 0.0
+    if not x or not y or not z then return nil end
+    local rows = MySQL.query.await([[
+        SELECT id, loc_x, loc_y, loc_z FROM palm6_businesses
+         WHERE loc_x IS NOT NULL AND loc_y IS NOT NULL AND loc_z IS NOT NULL
+    ]]) or {}
+    local here = { x = x, y = y, z = z }
+    local bestId, bestD
+    for _, r in ipairs(rows) do
+        local d = Bridge.Distance(here, { x = r.loc_x, y = r.loc_y, z = r.loc_z })
+        if d <= radius and (not bestD or d < bestD) then bestId, bestD = r.id, d end
+    end
+    return bestId
+end)
+
 exports('GetAccountBalance', function(businessId)
     if not enabled() then return 0 end
     return MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0

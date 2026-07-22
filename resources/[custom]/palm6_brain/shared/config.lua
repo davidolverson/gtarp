@@ -283,4 +283,21 @@ Config.Director = {
             },
         },
     },
+
+    -- PASSIVE INCOME WIRING. When MoneyEnabled flips on, a committed orderAt goal
+    -- (a mover "shopping" at a scene) credits a player-owned business whose
+    -- storefront sits within BusinessRadius of that scene, via
+    -- exports.palm6_business:AccrueNpcPassive. The MONEY is already hard-bounded by
+    -- palm6_business (shared daily cap + supply cost basis), so this side only
+    -- needs a per-business cooldown to make income a believable TRICKLE rather than
+    -- an instant cap-out. Requires BOTH gates: Config.Director.MoneyEnabled AND
+    -- palm6_business Config.NpcPassiveIncome. Inert until both are on.
+    Money = {
+        -- Metres around a scene anchor to look for an owned storefront to credit.
+        BusinessRadius = 40.0,
+        -- Minimum seconds between passive credits to the SAME business — shapes the
+        -- trickle. The real ceiling is palm6_business's DailyNpcIncome; this just
+        -- spaces credits out so a shop doesn't cap out in minutes.
+        PerBusinessCooldownSec = 300,
+    },
 }

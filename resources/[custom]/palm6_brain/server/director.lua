@@ -352,9 +352,10 @@ local function applyExpire(store, now)
     return cleared
 end
 
--- Forward-declared crime hook (assigned after the crime throttle below, so
--- commitPlan can reference it while its body is defined later). nil until then.
+-- Forward-declared side-effect hooks (assigned after their guardrails below, so
+-- commitPlan can reference them while their bodies are defined later). nil until.
 local fireCrimeDispatch
+local fireMoneyPatronage
 
 -- Commit an accepted plan to the live store and broadcast each goal. Returns count.
 local function commitPlan(accepted)
@@ -363,7 +364,8 @@ local function commitPlan(accepted)
     for _, a in ipairs(accepted) do
         local g = applyCommit(goals, a.npc, a, now, ttl)
         TriggerClientEvent('palm6_brain:goal', -1, a.npc, g)
-        if fireCrimeDispatch then fireCrimeDispatch(a) end   -- crime verbs -> throttled police dispatch
+        if fireCrimeDispatch then fireCrimeDispatch(a) end     -- crime verbs -> throttled police dispatch
+        if fireMoneyPatronage then fireMoneyPatronage(a) end   -- orderAt -> passive business income
     end
     return #accepted
 end
@@ -463,6 +465,38 @@ fireCrimeDispatch = function(action)
         disp.durationSec or 90, disp.sprite or 161, disp.colour or 1, disp.scale or 1.2)
     crimeRecord(crimeState, now, label)
     if d.Verbose then print(('[palm6_brain:director] crime dispatch fired: %s @ %s'):format(text, label)) end
+end
+
+-- ── PASSIVE INCOME WIRING — orderAt goals credit nearby owned businesses ─────
+-- A committed orderAt goal means a mover is "shopping" at a scene. If a player-
+-- owned storefront sits near that scene, credit it through palm6_business's
+-- passive faucet (which is itself daily-capped + supply-bounded — the real money
+-- guard). Per-business cooldown makes it a believable trickle. Requires BOTH
+-- Config.Director.MoneyEnabled AND palm6_business Config.NpcPassiveIncome; with
+-- either off this is a no-op (AccrueNpcPassive returns false).
+local lastPassive = {}   -- businessId -> epoch of last passive credit (trickle cooldown)
+fireMoneyPatronage = function(action)
+    local d = Config.Director or {}
+    if not d.MoneyEnabled then return end                     -- defensive re-check
+    if action.verb ~= 'orderAt' then return end               -- only the "shop at a venue" verb
+    local coords = action.target and sceneCoordSv[action.target]
+    if not coords then return end
+    local mcfg = d.Money or {}
+    local sok, bizId = pcall(function()
+        return exports.palm6_business:NpcStorefrontAt(coords.x, coords.y, coords.z, mcfg.BusinessRadius or 40.0)
+    end)
+    bizId = (sok and bizId) or nil
+    if not bizId then return end                              -- no owned storefront near this scene
+    local now = os.time()
+    local cd = mcfg.PerBusinessCooldownSec or 300
+    if lastPassive[bizId] and (now - lastPassive[bizId]) < cd then return end   -- trickle
+    local aok, credited = pcall(function()
+        return exports.palm6_business:AccrueNpcPassive(bizId, 'AI walk-in')
+    end)
+    if aok and credited == true then
+        lastPassive[bizId] = now
+        if d.Verbose then print(('[palm6_brain:director] passive income: business %s (%s)'):format(bizId, action.target)) end
+    end
 end
 
 -- ── The automatic tick loop (only runs when the master gate is on) ───────────

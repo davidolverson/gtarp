@@ -354,18 +354,19 @@ end)
 local function startTask(mv, ped, goal, verb)
     ClearPedTasks(ped)
     mv.move = nil
-    if verb == 'goTo' or verb == 'queueAt' then
+    if verb == 'goTo' or verb == 'queueAt' or verb == 'orderAt' then
+        -- all three walk to a place; queueAt/orderAt linger there as a customer
         local dst = goal and goal.target and sceneCoord[goal.target]
         if dst then
             TaskFollowNavMeshToCoord(ped, dst.x, dst.y, dst.z, 1.0, 20000, 1.5, false, 0.0)
             mv.move = { dst = dst, deadline = GetGameTimer() + 20000,
                         lastPos = GetEntityCoords(ped), lastMoveAt = GetGameTimer(),
-                        after = (verb == 'queueAt') and 'queue' or 'idle' }
+                        after = (verb == 'goTo') and 'idle' or 'queue' }
         else
             TaskWanderStandard(ped, 10.0, 10)   -- unknown place -> just wander
         end
-    elseif verb == 'talkTo' then
-        TaskTurnPedToFaceEntity(ped, PlayerPedId(), 2000)   -- client-local flavour of "talk"
+    elseif verb == 'talkTo' or verb == 'buyFrom' then
+        TaskTurnPedToFaceEntity(ped, PlayerPedId(), 2000)   -- client-local flavour of "talk"/"buy"
         TaskStartScenarioInPlace(ped, 'WORLD_HUMAN_STAND_MOBILE', 0, true)
     elseif verb == 'wander' then
         TaskWanderStandard(ped, 10.0, 10)
