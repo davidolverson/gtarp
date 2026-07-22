@@ -13,12 +13,15 @@ shared_scripts {
 
 client_scripts {
     'client/main.lua',
+    'client/chatter.lua',    -- Phase 5: ambient NPC-to-NPC chatter (dark)
 }
 
 server_scripts {
     'bridge/sv_framework.lua',  -- qbx_core adapter (police alert bus) — before director
     'server/main.lua',
     'server/director.lua',   -- Phase 2b: AI Director spine (dry-run, gates dark)
+    'server/memory.lua',     -- Phase 3: NPC memory (attaches to Director seam — after director)
+    'server/factions.lua',   -- Phase 4: factions/retaliation (attaches to Director seam — after director)
 }
 
 dependencies {
