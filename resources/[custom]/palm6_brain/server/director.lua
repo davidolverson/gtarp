@@ -744,6 +744,36 @@ RegisterCommand('braincrime', function(src)
     end
 end, true)
 
+-- /brainstatus — one-shot health snapshot of the whole AI-NPC brain: every gate
+-- state + live counts in one place, so a deploy / browser-walk needs ONE command
+-- instead of four. Read-only. This is also the canonical "are all the gates where
+-- I think they are?" check before flipping anything live.
+RegisterCommand('brainstatus', function(src)
+    local d = Config.Director or {}
+    local function yn(v) return v and 'ON' or 'off' end
+    local now = os.time()
+    local ng = 0
+    for _, g in pairs(goals) do if now < g.expiresAt then ng = ng + 1 end end
+    print('[palm6_brain] ===== STATUS =====')
+    print(('  master Config.Enabled = %s'):format(yn(Config.Enabled == true)))
+    print(('  Director: Enabled=%s  DryRun=%s  Tick=%ss  MinPlayers=%s')
+        :format(yn(d.Enabled == true), yn(d.DryRun == true), tostring(d.TickSeconds or 60), tostring(d.MinPlayers or 0)))
+    print(('  capability gates: MoneyEnabled=%s  CrimeEnabled=%s')
+        :format(yn(d.MoneyEnabled == true), yn(d.CrimeEnabled == true)))
+    print(('  roster: %d movers, %d named NPCs, %d scenes')
+        :format(#(Config.Movers or {}), #(Config.NamedNpcs or {}), #(Config.Scenes or {})))
+    print(('  live: %d active goal(s); GLM key %s; %d player(s) online')
+        :format(ng, gKey() ~= '' and 'SET' or 'MISSING', #GetPlayers()))
+    print('  note: passive money needs BOTH Director.MoneyEnabled AND palm6_business Config.NpcPassiveIncome')
+    print('  note: factions + chatter each have their OWN local CFG.Enabled (server/factions.lua, client/chatter.lua)')
+    print('  meters: /brainvalidate /braincrime /braindirector /braingoals /brainmemory')
+    if src ~= 0 then
+        TriggerClientEvent('chat:addMessage', src, { color = { 150, 200, 255 },
+            args = { 'brain', ('Director %s / DryRun %s / Money %s / Crime %s — full status in console')
+                :format(yn(d.Enabled == true), yn(d.DryRun == true), yn(d.MoneyEnabled == true), yn(d.CrimeEnabled == true)) } })
+    end
+end, true)
+
 -- On resource stop, drop every goal (in place, so export closures keep their
 -- upvalue) so a restart never resurrects stale goals. Clients tear down their own
 -- state via the client onResourceStop handler.
