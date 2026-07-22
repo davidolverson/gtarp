@@ -11,10 +11,14 @@
 --   • It never spawns or moves a ped        (actuation = a later gated slice)
 --   • It never moves money                   (Config.Director.MoneyEnabled gate)
 --   • It never calls police dispatch         (Config.Director.CrimeEnabled gate)
--- It is the PLANNING spine only. In DRY-RUN (the default) accepted actions are
--- logged — "Tony WOULD goTo Legion Square" — and discarded. This lets us watch
--- and trust the Director's decisions, and prove the batched-LLM → schema →
--- validate → plan pipeline end-to-end, before a single side effect exists.
+-- It is the PLANNING + GOAL-STATE spine. In DRY-RUN (the default) accepted
+-- actions are logged — "Tony WOULD goTo Legion Square" — and discarded. With
+-- DryRun off they are COMMITTED to the goal store (one per NPC, TTL-expiring) and
+-- broadcast on `palm6_brain:goal` for a future client executor to actuate — but
+-- that broadcast has no consumer yet, so even then no ped moves. Only gate-passed
+-- verbs are ever committed, so the store can never hold a money/crime goal while
+-- those gates are off. This proves the batched-LLM → schema → validate → commit →
+-- degrade pipeline end-to-end before any actuation, money, or dispatch exists.
 --
 -- The ACTIONS registry below is the SINGLE SOURCE OF TRUTH: the LLM prompt and
 -- the validator are both generated from it, so they can never drift apart.
@@ -269,17 +273,113 @@ local function logTick(res, tag)
     end
 end
 
+-- ============================================================================
+-- GOAL STORE + LIFECYCLE — the substrate actuation reads from.
+--
+-- Turns the Director from "decide and forget" (dry-run) into "decide, COMMIT one
+-- goal per NPC with a TTL, and DEGRADE safely." One active goal per npcId. A goal
+-- auto-expires after GoalTtlTicks ticks with no refresh, so a Director/GLM outage
+-- can never freeze an NPC on a stale goal — it expires and the NPC falls back to
+-- the always-on reflex tier. The client-actuation slice subscribes to the
+-- broadcast: `palm6_brain:goal` (npcId, goal|false) — goal={verb,target,amount,
+-- expiresAt}; `false` means "goal cleared, return to reflex". Same seam idiom as
+-- the LLM seam documented in server/main.lua.
+--
+-- applyCommit/applyExpire are PURE given `now` (they mutate the passed store and
+-- return what changed, no I/O) so the lifecycle is deterministically testable in
+-- /brainvalidate. The real commitPlan/expireStale wrap them on the module store
+-- and add the broadcast side effect.
+-- ============================================================================
+local goals = {}   -- npcId -> { verb, target, amount, issuedAt, expiresAt }
+
+local function goalTtlSeconds()
+    local d = Config.Director or {}
+    return ((d.TickSeconds or 60) * (d.GoalTtlTicks or 2))
+end
+
+-- Pure: write one goal into `store`. Returns the stored goal.
+local function applyCommit(store, npcId, action, now, ttl)
+    local g = { verb = action.verb, target = action.target, amount = action.amount,
+                issuedAt = now, expiresAt = now + ttl }
+    store[npcId] = g
+    return g
+end
+
+-- Pure: remove every goal in `store` whose expiresAt has passed. Returns the list
+-- of cleared npcIds.
+local function applyExpire(store, now)
+    local cleared = {}
+    for id, g in pairs(store) do
+        if now >= g.expiresAt then
+            store[id] = nil
+            cleared[#cleared + 1] = id
+        end
+    end
+    return cleared
+end
+
+-- Commit an accepted plan to the live store and broadcast each goal. Returns count.
+local function commitPlan(accepted)
+    local now = os.time()
+    local ttl = goalTtlSeconds()
+    for _, a in ipairs(accepted) do
+        local g = applyCommit(goals, a.npc, a, now, ttl)
+        TriggerClientEvent('palm6_brain:goal', -1, a.npc, g)
+    end
+    return #accepted
+end
+
+-- Expire stale goals on the live store and broadcast a clear for each. Returns count.
+local function expireStale()
+    local cleared = applyExpire(goals, os.time())
+    for _, id in ipairs(cleared) do
+        TriggerClientEvent('palm6_brain:goal', -1, id, false)
+    end
+    return #cleared
+end
+
+-- Read API for any consumer (the ped executor, other resources). Lazy-expires on
+-- read so a caller never sees a stale goal even between sweeps.
+exports('GetGoal', function(npcId)
+    local g = goals[npcId]
+    if not g then return nil end
+    if os.time() >= g.expiresAt then goals[npcId] = nil; return nil end
+    return g
+end)
+
+exports('GetGoals', function()
+    local out, now = {}, os.time()
+    for id, g in pairs(goals) do
+        if now < g.expiresAt then out[id] = g end
+    end
+    return out
+end)
+
 -- ── The automatic tick loop (only runs when the master gate is on) ───────────
 CreateThread(function()
     local d = Config.Director
     if not (d and d.Enabled == true) then return end   -- dark-ship: loop never starts
     while (Config.Director and Config.Director.Enabled) == true do
+        -- Expire stale goals FIRST, every iteration — this runs even when GLM is
+        -- down or players<min, so a Director outage degrades to reflex on schedule
+        -- rather than leaving NPCs stuck on an old goal.
+        local swept = expireStale()
+        if d.Verbose and swept > 0 then
+            print(('[palm6_brain:director] auto — expired %d stale goal(s)'):format(swept))
+        end
+
         local players = #GetPlayers()
         if players >= (d.MinPlayers or 0) then
             runTick({ players = players }, function(res)
                 if d.Verbose then logTick(res, 'auto') end
-                -- DRY-RUN: results are logged above and discarded. Actuation of
-                -- res.accepted lands in the next slice, behind its own gate.
+                -- DryRun=false commits the accepted plan to the goal store +
+                -- broadcasts it (still inert until a client executor subscribes).
+                if not d.DryRun and not res.error then
+                    local n = commitPlan(res.accepted)
+                    if d.Verbose and n > 0 then
+                        print(('[palm6_brain:director] auto — committed %d goal(s)'):format(n))
+                    end
+                end
             end)
         end
         Wait(((d.TickSeconds or 60) * 1000))
@@ -296,10 +396,18 @@ end)
 RegisterCommand('braindirector', function(src)
     runTick({ players = #GetPlayers() }, function(res)
         logTick(res, 'manual')
+        -- Mirror the auto-loop: commit only when DryRun is off, so the manual
+        -- probe reflects exactly what an automatic tick would do.
+        local committed = 0
+        if not (Config.Director and Config.Director.DryRun) and not res.error then
+            committed = commitPlan(res.accepted)
+            print(('[palm6_brain:director] manual — committed %d goal(s)'):format(committed))
+        end
         if src ~= 0 then
             TriggerClientEvent('chat:addMessage', src, { color = { 150, 200, 255 },
                 args = { 'director', res.error and ('error: ' .. res.error)
-                    or ('%d accepted / %d blocked — see server console'):format(#res.accepted, #res.blocked) } })
+                    or ('%d accepted / %d blocked%s — see server console'):format(#res.accepted, #res.blocked,
+                        committed > 0 and (', ' .. committed .. ' committed') or '') } })
         end
     end)
 end, true)
@@ -362,6 +470,22 @@ RegisterCommand('brainvalidate', function(src)
     local clampOk2 = cok2 and clean2 and clean2.amount == 2000   -- clamped to orderAt cap
     if clampOk and clampOk2 then pass = pass + 1 else fail = fail + 1; print('[palm6_brain:director]   FAIL: amount clamp') end
 
+    -- Goal lifecycle (pure, deterministic via injected `now`): a goal survives
+    -- before its TTL, is cleared at/after it, and a refresh extends it. Proves the
+    -- degradation guarantee (stale goals always expire) without waiting real time.
+    do
+        local store = {}
+        applyCommit(store, 'tony', { verb = 'idle' }, 1000, 120)          -- expires 1120
+        local aliveBefore = (#applyExpire(store, 1119) == 0 and store.tony ~= nil)
+        local cl = applyExpire(store, 1120)                                -- 1120 >= 1120 → clear
+        local clearedAt = (#cl == 1 and cl[1] == 'tony' and store.tony == nil)
+        applyCommit(store, 'rosa', { verb = 'wander' }, 1000, 120)         -- expires 1120
+        applyCommit(store, 'rosa', { verb = 'wander' }, 1200, 120)         -- refreshed → 1320
+        local refreshOk = (#applyExpire(store, 1250) == 0 and store.rosa ~= nil)
+        if aliveBefore and clearedAt and refreshOk then pass = pass + 1
+        else fail = fail + 1; print('[palm6_brain:director]   FAIL: goal lifecycle') end
+    end
+
     local msg = ('validator: %d passed, %d failed'):format(pass, fail)
     print('[palm6_brain:director] ' .. msg)
     if src ~= 0 then
@@ -369,3 +493,34 @@ RegisterCommand('brainvalidate', function(src)
             args = { 'director', msg } })
     end
 end, true)
+
+-- /braingoals — print the live goal store (what each NPC is currently committed
+-- to and how long until it expires). The observability meter for the commit path;
+-- empty while the Director is dry-run or has issued nothing.
+RegisterCommand('braingoals', function(src)
+    local now = os.time()
+    local n = 0
+    print('[palm6_brain:director] current goal store:')
+    for id, g in pairs(goals) do
+        local ttl = g.expiresAt - now
+        if ttl > 0 then
+            n = n + 1
+            print(('  %s -> %s%s%s (%ds left)'):format(id, g.verb,
+                g.target and (' -> ' .. g.target) or '',
+                g.amount and (' $' .. g.amount) or '', ttl))
+        end
+    end
+    if n == 0 then print('  (empty — Director is dry-run or has issued no goals)') end
+    if src ~= 0 then
+        TriggerClientEvent('chat:addMessage', src, { color = { 150, 200, 255 },
+            args = { 'director', ('%d active goal(s) — see server console'):format(n) } })
+    end
+end, true)
+
+-- On resource stop, drop every goal (in place, so export closures keep their
+-- upvalue) so a restart never resurrects stale goals. Clients tear down their own
+-- state via the client onResourceStop handler.
+AddEventHandler('onResourceStop', function(res)
+    if res ~= GetCurrentResourceName() then return end
+    for k in pairs(goals) do goals[k] = nil end
+end)

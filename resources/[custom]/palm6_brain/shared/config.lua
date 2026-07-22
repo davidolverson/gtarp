@@ -170,9 +170,21 @@ Config.Director = {
     -- the Director can be lit up separately.
     Enabled = false,
 
-    -- DRY-RUN. true = accepted actions are logged, never actuated. This stays
-    -- true until the actuation slices (peds/money/crime) are built AND walked.
+    -- DRY-RUN. true = accepted actions are only LOGGED and discarded (the tick
+    -- proves the LLM→validate pipeline with zero state change). false = accepted
+    -- actions are COMMITTED to the server-side goal store with a TTL and
+    -- broadcast to clients on `palm6_brain:goal` (npcId, goal|false) — the seam
+    -- the ped-actuation slice subscribes to. NOTE: even with DryRun=false there
+    -- is still NO ped movement, money, or dispatch until the client executor and
+    -- the Money/Crime gates land; a committed goal with no consumer is inert.
+    -- Stays true until the client executor exists AND is browser-walked.
     DryRun = true,
+
+    -- Goal Time-To-Live = TickSeconds * this. A committed goal auto-expires after
+    -- this many ticks with no refresh, so a Director outage (GLM down) can never
+    -- freeze an NPC on a stale goal — it expires and the NPC falls back to the
+    -- always-on Lua reflex tier (the roadmap's graceful-degradation guarantee).
+    GoalTtlTicks = 2,
 
     -- CAPABILITY GATES. Even with DryRun off, a verb whose gate is false is
     -- BLOCKED by the legality layer. These are the two live-system guards:
