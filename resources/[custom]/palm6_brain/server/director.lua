@@ -52,6 +52,43 @@ local ACTIONS = {
     attack           = { desc = 'attack someone',                                        target = 'agent',  gate = 'crime' },
 }
 
+-- ============================================================================
+-- EXTENSION SEAM (Phase 3+). Phase modules (memory, factions, chatter, …) attach
+-- here WITHOUT editing the Director core. `Director` is a resource-global table,
+-- visible to every server_script in palm6_brain. Two hooks, both crash-isolated
+-- (each call is pcall-wrapped) so a broken module can never take down a tick:
+--   Director.RegisterContext(fn) — fn(world) -> string|nil; the string is folded
+--     into the Director's prompt each tick (e.g. "Tony recalls the player stiffed
+--     him"). This is how a module TEACHES the Director without touching its logic.
+--   Director.OnAction(fn)        — fn(action) called once per COMMITTED goal
+--     ({npc,verb,target,amount}); how a module OBSERVES what happened (log a
+--     memory, record a grudge). Observers must be cheap and must not yield.
+-- ============================================================================
+Director = {}
+local ctxProviders, actionObservers = {}, {}
+
+function Director.RegisterContext(fn)
+    if type(fn) == 'function' then ctxProviders[#ctxProviders + 1] = fn end
+end
+function Director.OnAction(fn)
+    if type(fn) == 'function' then actionObservers[#actionObservers + 1] = fn end
+end
+
+-- Gather every provider's line for this tick's prompt (nil/non-string/errors skipped).
+local function gatherContext(world)
+    local out = {}
+    for _, fn in ipairs(ctxProviders) do
+        local ok, s = pcall(fn, world)
+        if ok and type(s) == 'string' and s ~= '' then out[#out + 1] = s end
+    end
+    return out
+end
+
+-- Fan a committed action out to every observer, crash-isolated.
+local function notifyObservers(action)
+    for _, fn in ipairs(actionObservers) do pcall(fn, action) end
+end
+
 -- ── Referential context builders ─────────────────────────────────────────────
 -- The MOVERS the Director may direct (the "acting population"), capped to
 -- MaxRoster. Movers are anonymous extras anchored to a home scene; the Director
@@ -250,6 +287,10 @@ Reply with ONLY a JSON array, one object per character, no prose, no code fences
             residents and ('\n\nRESIDENTS you may talk to (as a target only — they do not move): ' .. residents) or '',
             enumBlock(), world and world.players or 0)
 
+    -- Fold in any Phase-3+ module context (memory, factions, …) via the seam.
+    local extra = gatherContext(world)
+    if #extra > 0 then sys = sys .. '\n\nNotes for this tick:\n- ' .. table.concat(extra, '\n- ') end
+
     local body = json.encode({
         model = G_MODEL,
         messages = { { role = 'system', content = sys },
@@ -366,6 +407,7 @@ local function commitPlan(accepted)
         TriggerClientEvent('palm6_brain:goal', -1, a.npc, g)
         if fireCrimeDispatch then fireCrimeDispatch(a) end     -- crime verbs -> throttled police dispatch
         if fireMoneyPatronage then fireMoneyPatronage(a) end   -- orderAt -> passive business income
+        notifyObservers(a)                                     -- Phase-3+ modules observe committed goals
     end
     return #accepted
 end
