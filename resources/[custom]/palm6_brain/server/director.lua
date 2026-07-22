@@ -53,18 +53,31 @@ local ACTIONS = {
 }
 
 -- ── Referential context builders ─────────────────────────────────────────────
--- The set of NPC ids the Director may direct, capped to MaxRoster. Named NPCs
--- are the grounded roster for this slice (they have stable ids + roles); the
--- virtualized-population layer plugs in here later without touching the validator.
+-- The MOVERS the Director may direct (the "acting population"), capped to
+-- MaxRoster. Movers are anonymous extras anchored to a home scene; the Director
+-- steers them between known places. Named NPCs are deliberately NOT here — they
+-- are stationary conversational anchors and must never be tasked to walk off-post.
 local function buildRoster()
-    local roster, ids = {}, {}
+    local roster = {}
     local cap = (Config.Director and Config.Director.MaxRoster) or 20
-    for _, n in ipairs(Config.NamedNpcs or {}) do
-        if #roster >= cap then break end
-        roster[#roster + 1] = { id = n.id, name = n.name, role = n.role }
-        ids[n.id] = true
+    for _, m in ipairs(Config.Movers or {}) do
+        if m.id and #roster < cap then
+            roster[#roster + 1] = { id = m.id, home = m.home }
+        end
     end
-    return roster, ids
+    return roster
+end
+
+-- Identity sets for the validator, derived from the current mover roster:
+--   directable = mover ids            (may RECEIVE a goal)
+--   targetable = mover ids ∪ named ids (may be the TARGET of an agent verb)
+local function buildIdentity(roster)
+    local directable, targetable = {}, {}
+    for _, m in ipairs(roster) do directable[m.id] = true; targetable[m.id] = true end
+    for _, n in ipairs(Config.NamedNpcs or {}) do
+        if n.id then targetable[n.id] = true end
+    end
+    return directable, targetable
 end
 
 -- The set of valid `place` targets = scene labels (the world's known venues).
@@ -78,7 +91,11 @@ end
 
 -- ── THE VALIDATOR — pure, no side effects, no globals mutated ─────────────────
 -- validateAction(action, ctx) -> ok:boolean, reason:string, clean:table|nil
---   ctx = { npcIds=set, places=set, moneyOn=bool, crimeOn=bool }
+--   ctx = { directable=set, targetable=set, places=set, moneyOn=bool, crimeOn=bool }
+--   directable = ids that may RECEIVE a goal (movers only — never the stationary
+--                named anchors, so the Director can't task Tony to walk off-post).
+--   targetable = ids that may be the TARGET of an agent verb (movers + named
+--                anchors; 'player' is always allowed and checked separately).
 -- `clean` (on success) is the action with its amount clamped to the verb cap.
 -- Three layers, in order; the FIRST failure returns. This function is the whole
 -- safety contract — everything the model produces flows through it.
@@ -109,7 +126,8 @@ local function validateAction(action, ctx)
     end
 
     -- ---- Layer 2: REFERENTIAL --------------------------------------------
-    if not ctx.npcIds[action.npc] then return false, 'npc-not-in-roster:' .. action.npc end
+    -- The ACTOR must be directable (a mover). Named anchors are never directable.
+    if not ctx.directable[action.npc] then return false, 'npc-not-directable:' .. action.npc end
     local tk = spec.target
     if tk == 'none' then
         if action.target ~= nil then return false, 'target-not-allowed-for:' .. verb end
@@ -119,8 +137,9 @@ local function validateAction(action, ctx)
     elseif tk == 'place?' then
         if action.target and not ctx.places[action.target] then return false, 'unknown-place:' .. action.target end
     elseif tk == 'agent' then
+        -- The TARGET may be any targetable id (mover or named anchor) or 'player'.
         if not action.target then return false, 'target-required' end
-        if action.target ~= 'player' and not ctx.npcIds[action.target] then
+        if action.target ~= 'player' and not ctx.targetable[action.target] then
             return false, 'unknown-agent:' .. action.target
         end
         if action.target == action.npc then return false, 'agent-targets-self' end
@@ -156,10 +175,20 @@ end
 
 local function rosterBlock(roster)
     local lines = {}
-    for _, n in ipairs(roster) do
-        lines[#lines + 1] = ('- id "%s" (%s): %s'):format(n.id, n.name or n.id, n.role or 'a resident')
+    for _, m in ipairs(roster) do
+        lines[#lines + 1] = ('- id "%s" (based at %s)'):format(m.id, m.home or 'no fixed spot')
     end
     return table.concat(lines, '\n')
+end
+
+-- Named anchors the movers may talkTo (they never move; listed only as targets).
+local function residentsBlock()
+    local ids = {}
+    for _, n in ipairs(Config.NamedNpcs or {}) do
+        if n.id then ids[#ids + 1] = ('%s (%s)'):format(n.id, n.name or n.id) end
+    end
+    if #ids == 0 then return nil end
+    return table.concat(ids, ', ')
 end
 
 local function placesBlock(places)
@@ -190,23 +219,26 @@ end
 -- error=nil|string }. Pure-ish: it calls GLM and the validator, and NEVER
 -- actuates (this slice). world = { players = N }.
 local function runTick(world, cb)
-    local roster, npcIds = buildRoster()
+    local roster = buildRoster()
     if #roster == 0 then return cb({ accepted = {}, blocked = {}, error = 'empty-roster' }) end
+    local directable, targetable = buildIdentity(roster)
     local places = buildPlaces()
 
     local key = gKey()
     if key == '' then return cb({ accepted = {}, blocked = {}, error = 'no-glm-key' }) end
 
     local d = Config.Director or {}
-    local ctx = { npcIds = npcIds, places = places, moneyOn = d.MoneyEnabled == true, crimeOn = d.CrimeEnabled == true }
+    local ctx = { directable = directable, targetable = targetable, places = places,
+                  moneyOn = d.MoneyEnabled == true, crimeOn = d.CrimeEnabled == true }
 
+    local residents = residentsBlock()
     local sys = ([[You are the DIRECTOR of background characters in a Grand Theft Auto V roleplay city (Los Santos). Each tick you assign EVERY listed character ONE action so the city feels alive, especially when few real players are online.
 
-CHARACTERS (use these exact ids):
+CHARACTERS you direct (use these exact ids, one action each):
 %s
 
 PLACES you may reference as a target:
-%s
+%s%s
 
 ALLOWED ACTIONS (you may ONLY use these verbs and target forms):
 %s
@@ -214,7 +246,9 @@ ALLOWED ACTIONS (you may ONLY use these verbs and target forms):
 Right now %d real player(s) are online. Pick believable, low-key actions — most people idle, wander, or run errands; crime is rare. Keep the city coherent.
 
 Reply with ONLY a JSON array, one object per character, no prose, no code fences. Each object: {"npc":"<id>","verb":"<verb>","target":"<optional>","amount":<optional integer>}. Omit target/amount when the verb takes none.]])
-        :format(rosterBlock(roster), placesBlock(places), enumBlock(), world and world.players or 0)
+        :format(rosterBlock(roster), placesBlock(places),
+            residents and ('\n\nRESIDENTS you may talk to (as a target only — they do not move): ' .. residents) or '',
+            enumBlock(), world and world.players or 0)
 
     local body = json.encode({
         model = G_MODEL,
@@ -416,35 +450,39 @@ end, true)
 -- print PASS/FAIL. NO GLM, fully deterministic: this is a real unit test running
 -- in the real server runtime (per the verification-before-completion rule).
 RegisterCommand('brainvalidate', function(src)
-    -- Fixed context: a known roster + places, both gates OFF (prod default).
+    -- Fixed context: two movers (directable), one named anchor 'tony' (targetable
+    -- only, NOT directable), known places, both gates OFF (prod default).
     local ctx = {
-        npcIds = { tony = true, rosa = true, deak = true },
+        directable = { m1 = true, m2 = true },
+        targetable = { m1 = true, m2 = true, tony = true },
         places = { ['Legion Square'] = true, ['Del Perro Pier'] = true },
         moneyOn = false, crimeOn = false,
     }
     -- Each case: { action, expectOk, label }. expectOk=false means "must reject".
     local cases = {
-        { { npc = 'tony', verb = 'idle' },                                   true,  'idle no-target' },
-        { { npc = 'rosa', verb = 'goTo', target = 'Legion Square' },         true,  'goTo known place' },
-        { { npc = 'rosa', verb = 'goTo', target = 'Narnia' },                false, 'goTo unknown place' },
-        { { npc = 'tony', verb = 'teleport' },                               false, 'unknown verb' },
-        { { npc = 'tony', verb = 'talkTo', target = 'ghost' },               false, 'talkTo unknown agent' },
-        { { npc = 'tony', verb = 'talkTo', target = 'player' },              true,  "talkTo 'player'" },
-        { { npc = 'tony', verb = 'talkTo', target = 'tony' },                false, 'talkTo self' },
-        { { npc = 'deak', verb = 'rob', target = 'player' },                 false, 'rob blocked (crime gate off)' },
-        { { npc = 'tony', verb = 'orderAt', target = 'Legion Square', amount = 999999 }, false, 'amount over MaxAmount' },
-        { { npc = 'tony', verb = 'orderAt', target = 'Legion Square', amount = 500 },    false, 'orderAt blocked (money gate off)' },
-        { { npc = 'nobody', verb = 'idle' },                                 false, 'npc not in roster' },
-        { { npc = 'tony', verb = 'idle', target = 'Legion Square' },         false, 'idle rejects a target' },
-        { { npc = 'tony', verb = 'orderAt', target = 'Legion Square', amount = '500' },  false, 'amount as string' },
-        { { npc = 'tony', verb = 'goTo', target = "Legion Square';DROP" },   false, 'injection-ish target' },
+        { { npc = 'm1', verb = 'idle' },                                     true,  'idle no-target' },
+        { { npc = 'm1', verb = 'goTo', target = 'Legion Square' },           true,  'goTo known place' },
+        { { npc = 'm1', verb = 'goTo', target = 'Narnia' },                  false, 'goTo unknown place' },
+        { { npc = 'm1', verb = 'teleport' },                                 false, 'unknown verb' },
+        { { npc = 'm1', verb = 'talkTo', target = 'ghost' },                 false, 'talkTo unknown agent' },
+        { { npc = 'm1', verb = 'talkTo', target = 'player' },                true,  "talkTo 'player'" },
+        { { npc = 'm1', verb = 'talkTo', target = 'tony' },                  true,  'talkTo a named anchor (targetable)' },
+        { { npc = 'm1', verb = 'talkTo', target = 'm1' },                    false, 'talkTo self' },
+        { { npc = 'tony', verb = 'idle' },                                   false, 'named anchor is NOT directable' },
+        { { npc = 'm2', verb = 'rob', target = 'player' },                   false, 'rob blocked (crime gate off)' },
+        { { npc = 'm1', verb = 'orderAt', target = 'Legion Square', amount = 999999 }, false, 'amount over MaxAmount' },
+        { { npc = 'm1', verb = 'orderAt', target = 'Legion Square', amount = 500 },    false, 'orderAt blocked (money gate off)' },
+        { { npc = 'nobody', verb = 'idle' },                                 false, 'unknown npc not directable' },
+        { { npc = 'm1', verb = 'idle', target = 'Legion Square' },           false, 'idle rejects a target' },
+        { { npc = 'm1', verb = 'orderAt', target = 'Legion Square', amount = '500' },  false, 'amount as string' },
+        { { npc = 'm1', verb = 'goTo', target = "Legion Square';DROP" },     false, 'injection-ish target' },
         { 'not-a-table',                                                     false, 'non-object action' },
     }
     -- Same battery, but with gates ON, proving money/crime PASS when enabled.
-    local ctxOn = { npcIds = ctx.npcIds, places = ctx.places, moneyOn = true, crimeOn = true }
+    local ctxOn = { directable = ctx.directable, targetable = ctx.targetable, places = ctx.places, moneyOn = true, crimeOn = true }
     local gateCases = {
-        { { npc = 'deak', verb = 'rob', target = 'player' },                 true,  'rob passes (crime gate on)' },
-        { { npc = 'tony', verb = 'orderAt', target = 'Legion Square', amount = 500 }, true, 'orderAt passes (money gate on)' },
+        { { npc = 'm2', verb = 'rob', target = 'player' },                   true,  'rob passes (crime gate on)' },
+        { { npc = 'm1', verb = 'orderAt', target = 'Legion Square', amount = 500 }, true, 'orderAt passes (money gate on)' },
     }
 
     local pass, fail = 0, 0
@@ -464,9 +502,9 @@ RegisterCommand('brainvalidate', function(src)
     run(cases, ctx)
     run(gateCases, ctxOn)
     -- Prove the clamp: amount above the per-verb cap is reduced, not rejected.
-    local cok, _, clean = validateAction({ npc = 'tony', verb = 'orderAt', target = 'Legion Square', amount = 1900 }, ctxOn)
+    local cok, _, clean = validateAction({ npc = 'm1', verb = 'orderAt', target = 'Legion Square', amount = 1900 }, ctxOn)
     local clampOk = cok and clean and clean.amount == 1900
-    local cok2, _, clean2 = validateAction({ npc = 'tony', verb = 'orderAt', target = 'Legion Square', amount = 5000 }, ctxOn)
+    local cok2, _, clean2 = validateAction({ npc = 'm1', verb = 'orderAt', target = 'Legion Square', amount = 5000 }, ctxOn)
     local clampOk2 = cok2 and clean2 and clean2.amount == 2000   -- clamped to orderAt cap
     if clampOk and clampOk2 then pass = pass + 1 else fail = fail + 1; print('[palm6_brain:director]   FAIL: amount clamp') end
 

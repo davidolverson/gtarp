@@ -138,6 +138,31 @@ Config.BubbleSeconds = 7.0
 -- How close (m) you must be to keep the conversation open.
 Config.TalkRange = 3.0
 
+-- ---------------------------------------------------------------------------
+-- PHASE 2b — MOVERS: the "acting population" the Director steers.
+--
+-- Movers are ANONYMOUS extras (no dialogue, no identity card) that the Director
+-- can send between known places — the visible motion that makes the world feel
+-- alive off-peak. They are distinct from NamedNpcs on purpose:
+--   • NamedNpcs (Tony/Rosa/Deak) = STATIONARY conversational anchors. The
+--     Director may reference them as a talkTo target but NEVER tasks them to
+--     move (the validator marks them "targetable" but not "directable").
+--   • Movers = DIRECTABLE. The Director assigns each one goal per tick.
+--
+-- `home` MUST be a Config.Scenes label (the Director only knows those places).
+-- `model` is used by the client executor when it materialises the mover.
+--
+-- ⚠️ INERT until the client executor slice lands AND Config.Director.Enabled is
+-- flipped: nothing reads this list except the Director roster, which only runs
+-- when the Director gate is on. Ships as illustrative examples, dark.
+-- ---------------------------------------------------------------------------
+Config.Movers = {
+    { id = 'mover_legion_1', model = 'a_m_y_business_01', home = 'Legion Square' },
+    { id = 'mover_legion_2', model = 'a_f_y_hipster_02',  home = 'Legion Square' },
+    { id = 'mover_pier_1',   model = 'a_m_y_tourist_01',  home = 'Del Perro Pier' },
+    { id = 'mover_beach_1',  model = 'a_f_y_tourist_01',  home = 'Vespucci Beach' },
+}
+
 -- ===========================================================================
 -- PHASE 2b — THE AI DIRECTOR (docs/AI-NPC-ROADMAP.md §Phase 2).
 --
