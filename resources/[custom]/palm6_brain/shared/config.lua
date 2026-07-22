@@ -18,7 +18,11 @@ Config = {}
 -- MASTER GATE. false = prod-inert: the spawn loop returns immediately, no ped is
 -- ever created. Flip true (+ redeploy) for a feel-test. Mirrors the dark-ship
 -- idiom used across palm6_* resources.
-Config.Enabled = false
+-- *** ENABLED 2026-07-22 for the first AI-NPC feel-test: ambient life at 3 plazas
+-- + 3 GLM-powered named NPCs (Big Tony/Rosa/Deak) at Legion Square. GLM convars
+-- (palm6:glm_*) are set on the box; NPCs use canned lines if GLM ever fails.
+-- Rollback = set false + redeploy. Coords are ground-snapped but tune in-game. ***
+Config.Enabled = true
 
 -- Debug: print each scene spawn/despawn to the client console.
 Config.Debug = false
