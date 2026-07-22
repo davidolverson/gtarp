@@ -1611,6 +1611,49 @@ exports('Charge', function(businessId, payerCid, amount, memo)
     return true
 end)
 
+-- Passive NPC income (AI-NPC living world). The Director's mover walk-ins credit
+-- a business EVEN WHEN THE OWNER IS AWAY. This is NOT a new money faucet: it runs
+-- the EXACT same atomic, supply-consuming, daily-capped, ledgered credit as
+-- opServe (the owner-present serve), keyed by business id. It shares the SAME
+-- day_npc_income column + DailyNpcIncome cap AND always consumes 1 pre-bought
+-- supply unit, so an absent owner can NEVER earn more than a present one and never
+-- mints free money — it only converts already-purchased supply into income at the
+-- same bounded margin, up to the same daily ceiling. Gated OFF by default
+-- (Config.NpcPassiveIncome); the AI Director is its only intended caller.
+-- Returns true iff a unit was credited (false = feature off, no supply, or at the
+-- shared daily cap). Non-refundable: no player money is involved.
+exports('AccrueNpcPassive', function(businessId, memo)
+    if not enabled() then return false end
+    if Config.NpcPassiveIncome ~= true then return false end   -- dark by default
+    businessId = sanitizeInt(businessId)
+    if not businessId then return false end
+    local b = getBusinessById(businessId)
+    if not b then return false end
+    local svc = serviceOf(b.biz_type)
+    local pay, cap = svc.payout, svc.dailyCap
+    local today = dayKey()
+    -- SAME atomic guarded write as opServe (server/main.lua opServe): consume 1
+    -- supply, credit payout, bump today's income — guarded on supply>=1 AND the
+    -- SHARED daily cap (the WHERE reads the pre-update row). The supply>=1 guard is
+    -- ALWAYS on here (stricter than the configurable active path) so passive income
+    -- can never free-mint. aff~=1 => a race lost the supply or the cap was hit.
+    local aff = MySQL.update.await([[
+        UPDATE palm6_businesses
+           SET supply_units = supply_units - 1,
+               account_balance = account_balance + ?,
+               day_npc_income = IF(day_key = ?, day_npc_income, 0) + ?,
+               day_key = ?
+         WHERE id = ?
+           AND supply_units >= 1
+           AND (IF(day_key = ?, day_npc_income, 0) + ?) <= ?
+    ]], { pay, today, pay, today, businessId, today, pay, cap })
+    if aff ~= 1 then return false end
+    local bal = MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0
+    insertLedger(businessId, '__NPC__', 'npc_passive', pay, bal,
+        (type(memo) == 'string' and memo:sub(1, 64)) or 'Passive walk-in')
+    return true
+end)
+
 exports('GetAccountBalance', function(businessId)
     if not enabled() then return 0 end
     return MySQL.scalar.await('SELECT account_balance FROM palm6_businesses WHERE id = ?', { businessId }) or 0
