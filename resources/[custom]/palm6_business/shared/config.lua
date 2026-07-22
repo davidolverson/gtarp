@@ -323,11 +323,14 @@ Config.Interior = {
     -- `exitDist` = how far from the entry anchor the exit prompt appears.
     Shells = {},
 
-    -- Admin capture command. Client-side /bizshell verifies you are standing
-    -- INSIDE an interior (GetInteriorAtCoords) then forwards to the server, which
-    -- re-checks the `command.bizshell` ace and reads your coords authoritatively.
-    -- Usage: stand inside the interior, /bizshell <key> <label...>. List what is
-    -- captured (and which type mappings are still missing a shell) with /bizshells.
+    -- Admin capture command. Stand inside a real interior and run
+    -- `/bizshell <type|key> [label]` — a business type (restaurant/bar/garage/
+    -- retail/dealership) auto-maps to that type's shell key, or pass a raw key.
+    -- Client-side it warns (does not block) if it can't detect an interior at your
+    -- feet — a soft guard, because valid map-mesh walk-ins (many 24/7s, LTD) report
+    -- no interior id even though they work. The server re-checks the
+    -- `command.bizshell` ace and reads your coords authoritatively. List captures +
+    -- missing type mappings with /bizshells.
     CaptureCommand = 'bizshell',
 
     -- Which shell each business type prefers, by shell key. A type with no

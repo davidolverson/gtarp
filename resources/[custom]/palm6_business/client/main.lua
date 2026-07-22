@@ -445,21 +445,39 @@ RegisterCommand(Config.Rob and Config.Rob.Command or 'robstore', function()
     end
 end, false)
 
--- Admin shell capture (Phase 1b). Client-side so it can verify the admin is
--- actually standing inside an interior BEFORE capturing — a street coord would
--- teleport every business of that type into the road. The SERVER re-checks the
+-- Admin shell capture (Phase 1b). Client-side so it can sanity-check whether the
+-- admin is standing in a detected interior BEFORE capturing (a street coord would
+-- teleport every business of that type into the road). The SERVER re-checks the
 -- admin ace and reads the coords authoritatively; a non-admin who runs this just
--- gets silently dropped server-side. Usage: /bizshell <key> <label...>
+-- gets silently dropped server-side.
+--
+-- Accepts EITHER a business type (restaurant/bar/garage/retail/dealership — the
+-- server maps it to that type's shell key) OR a raw shell key. So the intuitive
+-- form is: stand in a diner, `/bizshell restaurant`. Usage/no-arg lists the types.
 RegisterCommand(Config.Interior and Config.Interior.CaptureCommand or 'bizshell', function(_src, args)
     if not (Config.Enabled and Config.Phase1Enabled and Config.Interiors) then return end
     local key = args[1]
     if not key then
-        return Game.Notify({ title = 'Business', description = 'Usage: /bizshell <key> <label>', type = 'error' })
-    end
-    if not Game.IsInsideInterior() then
-        return Game.Notify({ title = 'Business', description = 'Stand INSIDE an interior before capturing a shell.', type = 'error' })
+        -- Build a "type -> shell key" hint from config so the admin never has to
+        -- remember the exact shell keys.
+        local hints = {}
+        for t, sk in pairs((Config.Interior and Config.Interior.TypeShell) or {}) do
+            hints[#hints + 1] = ('%s (%s)'):format(t, sk)
+        end
+        table.sort(hints)
+        return Game.Notify({ title = 'Business',
+            description = 'Usage: /bizshell <type|key> [label]. Types: ' .. (table.concat(hints, ', ')),
+            type = 'inform' })
     end
     local label = args[2] and table.concat(args, ' ', 2) or nil
+    -- Soft guardrail, NOT a block: a true MLO interior (Ammu-Nation, clothing)
+    -- reports non-zero, but valid map-mesh walk-ins (many 24/7s, LTD) can report
+    -- zero — so refusing on zero would reject good shells. Warn, then capture.
+    if not Game.IsInsideInterior() then
+        Game.Notify({ title = 'Business',
+            description = "Heads up: no interior detected here. Capturing anyway — after the gate is live, walk in and confirm players land inside, not on the street.",
+            type = 'inform' })
+    end
     TriggerServerEvent('palm6_business:captureShell', key, label)
 end, false)
 

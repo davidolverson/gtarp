@@ -1326,6 +1326,11 @@ local function opCaptureShell(src, key, label)
         return
     end
     key = tostring(key or ''):lower():gsub('[^a-z0-9_]', '')
+    -- Convenience: if the admin passed a BUSINESS TYPE (restaurant/bar/...), map it
+    -- to that type's shell key so `/bizshell restaurant` == `/bizshell shell_restaurant`.
+    -- A raw shell key passes through unchanged.
+    local mapped = Config.Interior and Config.Interior.TypeShell and Config.Interior.TypeShell[key]
+    if mapped then key = mapped end
     if #key < 3 or #key > 48 then
         if src ~= 0 then notify(src, 'Business', 'Shell key must be 3-48 chars (a-z, 0-9, _).', 'error') end
         return
